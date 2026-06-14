@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="ar" dir="rtl">
+<html lang="en">
 
 <head>
 <meta charset="UTF-8">
@@ -7,40 +7,102 @@
 
 <title>BillyBeez Data System MOT</title>
 
-<link rel="stylesheet" href="style.css">
+<style>
+
+body{
+margin:0;
+font-family:Arial;
+background:#0f172a;
+color:white;
+display:flex;
+justify-content:center;
+align-items:center;
+height:100vh;
+}
+
+.container{
+text-align:center;
+}
+
+h1{
+color:#facc15;
+margin-bottom:20px;
+}
+
+button{
+width:220px;
+padding:12px;
+margin:8px;
+border:none;
+border-radius:10px;
+font-size:16px;
+cursor:pointer;
+}
+
+.login{
+background:#22c55e;
+color:white;
+}
+
+.cashier{
+background:#3b82f6;
+color:white;
+}
+
+.delivery{
+background:#f97316;
+color:white;
+}
+
+.dashboard{
+background:#a855f7;
+color:white;
+}
+
+.ai{
+background:#ef4444;
+color:white;
+}
+
+</style>
+
 </head>
 
 <body>
 
-<div class="login-container">
+<div class="container">
 
-<img
-src="BB Logo.png"
-class="logo"
-alt="BillyBeez Logo">
+<h1>🍔 BillyBeez System</h1>
 
-<h1>BDS MOT</h1>
+<p>Data System MOT v2.0</p>
 
-<input
-type="text"
-id="username"
-placeholder="اسم المستخدم">
+<button class="login" onclick="go('login.html')">Login</button>
 
-<input
-type="password"
-id="password"
-placeholder="كلمة المرور">
+<button class="cashier" onclick="go('cashier.html')">Cashier</button>
 
-<button onclick="login()">
-دخول
-</button>
+<button class="delivery" onclick="go('delivery.html')">Delivery</button>
 
-<p id="message"></p>
+<button class="dashboard" onclick="go('dashboard.html')">Dashboard</button>
+
+<button class="ai" onclick="go('ai-dashboard.html')">AI System</button>
 
 </div>
 
-<script src="config.js"></script>
-<script src="app.js"></script>
+<script>
+
+function go(page){
+window.location.href = page;
+}
+
+// auto redirect if logged user exists
+const user = localStorage.getItem("user");
+
+if(user){
+console.log("User logged:",JSON.parse(user));
+}
+
+</script>
 
 </body>
+
 </html>

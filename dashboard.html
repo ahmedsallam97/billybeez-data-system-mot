@@ -69,8 +69,12 @@ body{
 .row{
   display:flex;
   justify-content:space-between;
-  padding:5px 0;
+  padding:8px 0;
   border-bottom:1px solid #eee;
+}
+
+h3{
+  margin-top:0;
 }
 
 </style>
@@ -93,7 +97,7 @@ Logout
 
 <div class="card">
 Total Sales
-<div class="value" id="sales">0</div>
+<div class="value" id="sales">0 EGP</div>
 </div>
 
 <div class="card">
@@ -109,8 +113,11 @@ Pending
 </div>
 
 <div class="table">
+
 <h3>Top Bracelets</h3>
+
 <div id="top"></div>
+
 </div>
 
 <script src="config.js"></script>
@@ -121,39 +128,47 @@ Pending
 const user = localStorage.getItem("currentUser");
 
 if(!user){
-  window.location.href = "login.html";
+  window.location.href = "index.html";
 }
 
 async function load(){
 
   try{
 
-    const res = await fetch(API_URL + "?action=getDashboard");
-    const d = await res.json();
+    const res =
+      await fetch(API_URL + "?action=getDashboard");
+
+    const d =
+      await res.json();
 
     document.getElementById("sales").innerText =
-      d.totalSales + " EGP";
+      (d.totalSales || 0) + " EGP";
 
     document.getElementById("orders").innerText =
-      d.ordersCount;
+      d.ordersCount || 0;
 
     document.getElementById("pending").innerText =
-      d.pending;
+      d.pending || 0;
 
-    let box = document.getElementById("top");
+    let box =
+      document.getElementById("top");
 
     box.innerHTML = "";
 
-    d.topBracelets.forEach(b=>{
+    if(d.topBracelets){
 
-      box.innerHTML += `
-      <div class="row">
-        <span>${b.bracelet}</span>
-        <span>${b.total} EGP</span>
-      </div>
-      `;
+      d.topBracelets.forEach(b=>{
 
-    });
+        box.innerHTML += `
+        <div class="row">
+          <span>${b.bracelet}</span>
+          <span>${b.total} EGP</span>
+        </div>
+        `;
+
+      });
+
+    }
 
   }catch(error){
 
@@ -167,7 +182,7 @@ function logout(){
 
   localStorage.removeItem("currentUser");
 
-  window.location.href = "login.html";
+  window.location.href = "index.html";
 
 }
 
@@ -178,4 +193,5 @@ setInterval(load,5000);
 </script>
 
 </body>
+
 </html>

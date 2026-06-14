@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+<meta charset="UTF-8">
+<title>BillyBeez Invoice</title>
+
+<style>
+
+body{
+  font-family: Arial;
+  padding:20px;
+}
+
+.header{
+  text-align:center;
+  font-size:22px;
+  font-weight:bold;
+  margin-bottom:20px;
+}
+
+.box{
+  border:1px solid #ddd;
+  padding:10px;
+  border-radius:10px;
+  margin-bottom:10px;
+}
+
+table{
+  width:100%;
+  border-collapse:collapse;
+  margin-top:10px;
+}
+
+th,td{
+  border:1px solid #ddd;
+  padding:8px;
+  text-align:center;
+}
+
+.total{
+  text-align:right;
+  font-size:20px;
+  font-weight:bold;
+  margin-top:10px;
+}
+
+.small{
+  font-size:12px;
+  color:gray;
+}
+
+</style>
+
+</head>
+
+<body>
+
+<div class="header">BillyBeez Data System MOT</div>
+
+<div class="box" id="info"></div>
+
+<table>
+<thead>
+<tr>
+<th>Item</th>
+<th>Qty</th>
+<th>Price</th>
+<th>Total</th>
+</tr>
+</thead>
+
+<tbody id="items"></tbody>
+
+</table>
+
+<div class="total" id="total"></div>
+
+<script src="config.js"></script>
+
+<script>
+
+const url = new URLSearchParams(window.location.search);
+const orderId = url.get("id");
+
+async function loadInvoice(){
+
+const res = await fetch(API_URL+"?action=getInvoice&orderId="+orderId);
+const data = await res.json();
+
+if(!data.success){
+  document.body.innerHTML="No Invoice Found";
+  return;
+}
+
+document.getElementById("info").innerHTML = `
+<div><b>Order ID:</b> ${data.order.id}</div>
+<div><b>Bracelet:</b> ${data.order.bracelet}</div>
+<div><b>Child:</b> ${data.order.child}</div>
+<div><b>Cashier:</b> ${data.order.cashier}</div>
+<div class="small">${data.order.time}</div>
+`;
+
+let box = document.getElementById("items");
+box.innerHTML = "";
+
+data.items.forEach(i=>{
+
+box.innerHTML += `
+<tr>
+<td>${i.name}</td>
+<td>${i.qty}</td>
+<td>${i.price}</td>
+<td>${i.total}</td>
+</tr>
+`;
+
+});
+
+document.getElementById("total").innerText =
+"TOTAL: " + data.order.total + " EGP";
+
+setTimeout(()=>window.print(),800);
+
+}
+
+loadInvoice();
+
+</script>
+
+</body>
+</html>

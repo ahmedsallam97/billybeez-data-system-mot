@@ -18,6 +18,24 @@ body{
   color:white;
   padding:15px;
   text-align:center;
+  position:relative;
+}
+
+.logout{
+  position:absolute;
+  left:15px;
+  top:10px;
+  border:none;
+  background:#e74c3c;
+  color:white;
+  padding:8px 15px;
+  border-radius:8px;
+  cursor:pointer;
+  font-size:14px;
+}
+
+.logout:hover{
+  opacity:.9;
 }
 
 .grid{
@@ -62,7 +80,13 @@ body{
 <body>
 
 <div class="header">
+
 Manager Dashboard 📊
+
+<button class="logout" onclick="logout()">
+Logout
+</button>
+
 </div>
 
 <div class="grid">
@@ -93,26 +117,57 @@ Pending
 
 <script>
 
+// حماية الصفحة
+const user = localStorage.getItem("currentUser");
+
+if(!user){
+  window.location.href = "login.html";
+}
+
 async function load(){
 
-const res = await fetch(API_URL+"?action=getDashboard");
-const d = await res.json();
+  try{
 
-document.getElementById("sales").innerText = d.totalSales + " EGP";
-document.getElementById("orders").innerText = d.ordersCount;
-document.getElementById("pending").innerText = d.pending;
+    const res = await fetch(API_URL + "?action=getDashboard");
+    const d = await res.json();
 
-let box = document.getElementById("top");
-box.innerHTML = "";
+    document.getElementById("sales").innerText =
+      d.totalSales + " EGP";
 
-d.topBracelets.forEach(b=>{
-box.innerHTML += `
-<div class="row">
-<span>${b.bracelet}</span>
-<span>${b.total} EGP</span>
-</div>
-`;
-});
+    document.getElementById("orders").innerText =
+      d.ordersCount;
+
+    document.getElementById("pending").innerText =
+      d.pending;
+
+    let box = document.getElementById("top");
+
+    box.innerHTML = "";
+
+    d.topBracelets.forEach(b=>{
+
+      box.innerHTML += `
+      <div class="row">
+        <span>${b.bracelet}</span>
+        <span>${b.total} EGP</span>
+      </div>
+      `;
+
+    });
+
+  }catch(error){
+
+    console.error(error);
+
+  }
+
+}
+
+function logout(){
+
+  localStorage.removeItem("currentUser");
+
+  window.location.href = "login.html";
 
 }
 

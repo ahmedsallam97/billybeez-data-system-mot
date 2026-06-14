@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+
+<head>
+<meta charset="UTF-8">
+<title>Delivery - BillyBeez</title>
+
+<style>
+
+body{
+  font-family: Arial;
+  margin:0;
+  background:#f5f5f5;
+}
+
+.header{
+  background:#e74c3c;
+  color:white;
+  padding:15px;
+  text-align:center;
+}
+
+.container{
+  padding:15px;
+}
+
+.order{
+  background:white;
+  padding:10px;
+  margin-bottom:10px;
+  border-radius:10px;
+  box-shadow:0 2px 5px rgba(0,0,0,.1);
+}
+
+button{
+  width:100%;
+  padding:10px;
+  margin-top:5px;
+  border:none;
+  border-radius:8px;
+  color:white;
+  font-size:14px;
+}
+
+.delivered{background:#27ae60;}
+.paid{background:#2980b9;}
+
+</style>
+
+</head>
+
+<body>
+
+<div class="header">
+Delivery System
+</div>
+
+<div class="container" id="orders"></div>
+
+<script src="config.js"></script>
+
+<script>
+
+let orders = [];
+
+async function loadOrders(){
+
+  const res = await fetch(API_URL + "?action=getPendingOrders");
+  orders = await res.json();
+
+  const container = document.getElementById("orders");
+  container.innerHTML = "";
+
+  orders.forEach(o=>{
+
+    const div = document.createElement("div");
+    div.className = "order";
+
+    div.innerHTML = `
+      <b>${o.orderId}</b><br>
+      Child: ${o.childName}<br>
+      Total: ${o.total} EGP
+    `;
+
+    const btn1 = document.createElement("button");
+    btn1.innerText = "Mark Delivered";
+    btn1.className = "delivered";
+    btn1.onclick = ()=>updateStatus(o.orderId,"Delivered");
+
+    const btn2 = document.createElement("button");
+    btn2.innerText = "Mark Paid";
+    btn2.className = "paid";
+    btn2.onclick = ()=>updateStatus(o.orderId,"Paid");
+
+    div.appendChild(btn1);
+    div.appendChild(btn2);
+
+    container.appendChild(div);
+
+  });
+
+}
+
+async function updateStatus(id,status){
+
+  await fetch(API_URL + "?action=updateOrderStatus", {
+    method:"POST",
+    body: JSON.stringify({orderId:id,status:status})
+  });
+
+  loadOrders();
+
+}
+
+loadOrders();
+
+</script>
+
+</body>
+</html>

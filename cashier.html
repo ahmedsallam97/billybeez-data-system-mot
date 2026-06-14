@@ -3,76 +3,22 @@
 
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-
-<title>Cashier - BillyBeez MOT</title>
+<title>Cashier</title>
 
 <style>
 
-body{
-  font-family: Arial;
-  margin:0;
-  background:#f5f5f5;
-}
+body{font-family:Arial;background:#f5f5f5;margin:0}
+.header{background:#5B2C83;color:#fff;padding:15px;text-align:center}
+.container{padding:15px}
 
-.header{
-  background:#5B2C83;
-  color:white;
-  padding:15px;
-  text-align:center;
-}
+input{width:100%;padding:12px;margin:8px 0;border-radius:10px}
 
-.container{
-  padding:15px;
-}
+.products{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.product{background:#fff;padding:10px;border-radius:10px;text-align:center;cursor:pointer}
 
-input{
-  width:100%;
-  padding:12px;
-  margin:8px 0;
-  border-radius:10px;
-  border:1px solid #ddd;
-  font-size:16px;
-}
+.cart{background:#fff;padding:10px;margin-top:10px;border-radius:10px}
 
-.section-title{
-  margin-top:15px;
-  font-weight:bold;
-}
-
-.products{
-  display:grid;
-  grid-template-columns:repeat(2,1fr);
-  gap:10px;
-  margin-top:10px;
-}
-
-.product{
-  background:white;
-  padding:10px;
-  border-radius:12px;
-  text-align:center;
-  cursor:pointer;
-  box-shadow:0 2px 6px rgba(0,0,0,.1);
-}
-
-.cart{
-  margin-top:15px;
-  background:white;
-  padding:10px;
-  border-radius:12px;
-}
-
-button{
-  width:100%;
-  padding:12px;
-  margin-top:10px;
-  border:none;
-  border-radius:10px;
-  background:#5B2C83;
-  color:white;
-  font-size:16px;
-}
+button{width:100%;padding:12px;margin-top:10px;background:#5B2C83;color:#fff;border:0;border-radius:10px}
 
 </style>
 
@@ -84,16 +30,11 @@ button{
 
 <div class="container">
 
-<div class="section-title">Bracelet No (6 digits)</div>
-<input id="bracelet" maxlength="6">
+<input id="bracelet" placeholder="Bracelet (6 digits)">
+<input id="childName" placeholder="Child Name">
 
-<div class="section-title">Child Name</div>
-<input id="childName">
-
-<div class="section-title">Products</div>
 <div class="products" id="products"></div>
 
-<div class="section-title">Cart</div>
 <div class="cart" id="cart"></div>
 
 <button onclick="submitOrder()">Save Order</button>
@@ -104,87 +45,65 @@ button{
 
 <script>
 
-let products = [];
-let cart = [];
+let products=[];
+let cart=[];
 
-async function loadProducts(){
+async function load(){
 
-  const res = await fetch(API_URL + "?action=getProducts");
-  products = await res.json();
+const res=await fetch(API_URL+"?action=getProducts");
+products=await res.json();
 
-  const container = document.getElementById("products");
+const box=document.getElementById("products");
 
-  products.forEach(p=>{
+products.forEach(p=>{
 
-    const div = document.createElement("div");
-    div.className = "product";
-    div.innerHTML = `${p.productName}<br>${p.price} EGP`;
+let d=document.createElement("div");
+d.className="product";
+d.innerHTML=p.productName+"<br>"+p.price;
 
-    div.onclick = ()=>{
+d.onclick=()=>{cart.push(p);render();};
 
-      cart.push(p);
-      renderCart();
+box.appendChild(d);
 
-    };
-
-    container.appendChild(div);
-
-  });
+});
 
 }
 
-function renderCart(){
+function render(){
 
-  const container = document.getElementById("cart");
-  container.innerHTML = "";
+let c=document.getElementById("cart");
+c.innerHTML="";
+let total=0;
 
-  let total = 0;
+cart.forEach(i=>{
+total+=i.price;
+c.innerHTML+=i.productName+" - "+i.price+"<br>";
+});
 
-  cart.forEach(i=>{
-    total += i.price;
-    container.innerHTML += `<div>${i.productName} - ${i.price}</div>`;
-  });
-
-  container.innerHTML += `<hr><b>Total: ${total} EGP</b>`;
+c.innerHTML+="<hr>Total: "+total;
 
 }
 
 async function submitOrder(){
 
-  const bracelet = document.getElementById("bracelet").value;
-  const childName = document.getElementById("childName").value;
-  const user = JSON.parse(localStorage.getItem("currentUser"));
+const user=JSON.parse(localStorage.getItem("currentUser"));
 
-  if(bracelet.length !== 6){
-    alert("Bracelet must be 6 digits");
-    return;
-  }
+await fetch(API_URL+"?action=createOrder",{
+method:"POST",
+body:JSON.stringify({
+braceletNo:document.getElementById("bracelet").value,
+childName:document.getElementById("childName").value,
+cashierName:user.name,
+items:cart
+})
+});
 
-  const payload = {
-    braceletNo: bracelet,
-    childName: childName,
-    cashierName: user.name,
-    items: cart
-  };
-
-  const res = await fetch(API_URL + "?action=createOrder", {
-    method: "POST",
-    body: JSON.stringify(payload)
-  });
-
-  const data = await res.json();
-
-  if(data.success){
-    alert("Order Saved ✔");
-    cart = [];
-    renderCart();
-  }else{
-    alert("Error");
-  }
+alert("Order Saved");
+cart=[];render();
 
 }
 
-loadProducts();
+load();
 
 </script>
 

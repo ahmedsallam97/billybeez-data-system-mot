@@ -57,8 +57,14 @@ b1.onclick=()=>update(o.orderId,"Delivered");
 let b2=document.createElement("button");
 b2.className="pay";
 b2.innerText="Paid";
-b2.onclick=()=>update(o.orderId,"Paid");
+b2.onclick = async ()=>{
 
+await update(o.orderId,"Paid");
+
+window.open("invoice.html?id="+o.orderId,"_blank");
+
+};
+  
 div.appendChild(b1);
 div.appendChild(b2);
 

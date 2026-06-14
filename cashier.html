@@ -38,7 +38,6 @@ input{
 .section-title{
   margin-top:15px;
   font-weight:bold;
-  color:#333;
 }
 
 .products{
@@ -57,10 +56,6 @@ input{
   box-shadow:0 2px 6px rgba(0,0,0,.1);
 }
 
-.product:hover{
-  background:#F7E500;
-}
-
 .cart{
   margin-top:15px;
   background:white;
@@ -77,16 +72,6 @@ button{
   background:#5B2C83;
   color:white;
   font-size:16px;
-  cursor:pointer;
-}
-
-button:hover{
-  opacity:.9;
-}
-
-.small{
-  font-size:12px;
-  color:gray;
 }
 
 </style>
@@ -95,25 +80,23 @@ button:hover{
 
 <body>
 
-<div class="header">
-Cashier System - BillyBeez MOT
-</div>
+<div class="header">Cashier System</div>
 
 <div class="container">
 
-<div class="section-title">رقم البريسلت (6 أرقام)</div>
-<input type="text" id="bracelet" maxlength="6" placeholder="Enter Bracelet No">
+<div class="section-title">Bracelet No (6 digits)</div>
+<input id="bracelet" maxlength="6">
 
-<div class="section-title">اسم الطفل</div>
-<input type="text" id="childName" placeholder="Child Name">
+<div class="section-title">Child Name</div>
+<input id="childName">
 
-<div class="section-title">الأصناف</div>
+<div class="section-title">Products</div>
 <div class="products" id="products"></div>
 
-<div class="section-title">السلة</div>
+<div class="section-title">Cart</div>
 <div class="cart" id="cart"></div>
 
-<button onclick="submitOrder()">حفظ الأوردر</button>
+<button onclick="submitOrder()">Save Order</button>
 
 </div>
 
@@ -135,23 +118,18 @@ async function loadProducts(){
 
     const div = document.createElement("div");
     div.className = "product";
-    div.innerHTML = `
-      <div>${p.productName}</div>
-      <div class="small">${p.price} EGP</div>
-    `;
+    div.innerHTML = `${p.productName}<br>${p.price} EGP`;
 
-    div.onclick = ()=>addToCart(p);
+    div.onclick = ()=>{
+
+      cart.push(p);
+      renderCart();
+
+    };
 
     container.appendChild(div);
 
   });
-
-}
-
-function addToCart(product){
-
-  cart.push(product);
-  renderCart();
 
 }
 
@@ -162,16 +140,9 @@ function renderCart(){
 
   let total = 0;
 
-  cart.forEach((item,i)=>{
-
-    total += item.price;
-
-    container.innerHTML += `
-      <div>
-        ${item.productName} - ${item.price} EGP
-      </div>
-    `;
-
+  cart.forEach(i=>{
+    total += i.price;
+    container.innerHTML += `<div>${i.productName} - ${i.price}</div>`;
   });
 
   container.innerHTML += `<hr><b>Total: ${total} EGP</b>`;
@@ -182,13 +153,34 @@ async function submitOrder(){
 
   const bracelet = document.getElementById("bracelet").value;
   const childName = document.getElementById("childName").value;
+  const user = JSON.parse(localStorage.getItem("currentUser"));
 
-  if(bracelet.length != 6){
-    alert("لازم رقم بريسلت 6 أرقام");
+  if(bracelet.length !== 6){
+    alert("Bracelet must be 6 digits");
     return;
   }
 
-  alert("سيتم حفظ الأوردر (الخطوة التالية هنربطه بالـ Sheets)");
+  const payload = {
+    braceletNo: bracelet,
+    childName: childName,
+    cashierName: user.name,
+    items: cart
+  };
+
+  const res = await fetch(API_URL + "?action=createOrder", {
+    method: "POST",
+    body: JSON.stringify(payload)
+  });
+
+  const data = await res.json();
+
+  if(data.success){
+    alert("Order Saved ✔");
+    cart = [];
+    renderCart();
+  }else{
+    alert("Error");
+  }
 
 }
 

@@ -3,18 +3,18 @@
 
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>BDS MOT Dashboard</title>
+<title>Manager Dashboard</title>
 
 <style>
+
 body{
-  font-family: Arial;
+  font-family:Arial;
   margin:0;
   background:#f4f4f4;
 }
 
 .header{
-  background:#5B2C83;
+  background:#2c3e50;
   color:white;
   padding:15px;
   text-align:center;
@@ -23,23 +23,38 @@ body{
 .grid{
   display:grid;
   grid-template-columns:repeat(2,1fr);
-  gap:15px;
-  padding:20px;
+  gap:10px;
+  padding:10px;
 }
 
 .card{
   background:white;
-  padding:20px;
-  border-radius:15px;
-  box-shadow:0 2px 10px rgba(0,0,0,.1);
+  padding:15px;
+  border-radius:12px;
   text-align:center;
-  cursor:pointer;
-  font-size:18px;
+  box-shadow:0 2px 5px rgba(0,0,0,.1);
 }
 
-.card:hover{
-  background:#F7E500;
+.value{
+  font-size:22px;
+  font-weight:bold;
+  margin-top:5px;
 }
+
+.table{
+  background:white;
+  margin:10px;
+  padding:10px;
+  border-radius:10px;
+}
+
+.row{
+  display:flex;
+  justify-content:space-between;
+  padding:5px 0;
+  border-bottom:1px solid #eee;
+}
+
 </style>
 
 </head>
@@ -47,23 +62,63 @@ body{
 <body>
 
 <div class="header">
-<h2>BillyBeez Data System MOT</h2>
+Manager Dashboard 📊
 </div>
 
 <div class="grid">
 
-<div class="card" onclick="go('cashier')">🟡 أوردر جديد</div>
-<div class="card" onclick="go('orders')">📦 الأوردرات</div>
-<div class="card" onclick="go('search')">🔍 بحث</div>
-<div class="card" onclick="go('reports')">📊 التقارير</div>
+<div class="card">
+Total Sales
+<div class="value" id="sales">0</div>
+</div>
+
+<div class="card">
+Orders
+<div class="value" id="orders">0</div>
+</div>
+
+<div class="card">
+Pending
+<div class="value" id="pending">0</div>
+</div>
 
 </div>
 
+<div class="table">
+<h3>Top Bracelets</h3>
+<div id="top"></div>
+</div>
+
+<script src="config.js"></script>
+
 <script>
 
-function go(page){
-  alert("هنفتح: " + page);
+async function load(){
+
+const res = await fetch(API_URL+"?action=getDashboard");
+const d = await res.json();
+
+document.getElementById("sales").innerText = d.totalSales + " EGP";
+document.getElementById("orders").innerText = d.ordersCount;
+document.getElementById("pending").innerText = d.pending;
+
+let box = document.getElementById("top");
+box.innerHTML = "";
+
+d.topBracelets.forEach(b=>{
+box.innerHTML += `
+<div class="row">
+<span>${b.bracelet}</span>
+<span>${b.total} EGP</span>
+</div>
+`;
+});
+
 }
+
+load();
+
+setInterval(load,5000);
 
 </script>
 

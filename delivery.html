@@ -37,6 +37,7 @@ const res=await fetch(API_URL+"?action=getPendingOrders");
 const data=await res.json();
 
 let box=document.getElementById("orders");
+box.innerHTML="";
 
 data.forEach(o=>{
 
@@ -76,10 +77,17 @@ box.appendChild(div);
 
 async function update(id,status){
 
-await fetch(API_URL+"?action=updateOrderStatus",{
+const res=await fetch(API_URL+"?action=updateOrderStatus",{
 method:"POST",
 body:JSON.stringify({orderId:id,status})
 });
+
+const data=await res.json();
+
+if(!data.success){
+alert(data.error || "Update failed");
+return;
+}
 
 load();
 

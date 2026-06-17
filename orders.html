@@ -75,14 +75,11 @@ Orders History
 </div>
 
 <script src="config.js"></script>
+<script src="auth.js"></script>
 
 <script>
 
-const user=localStorage.getItem("currentUser");
-
-if(!user){
-  window.location.href="index.html";
-}
+const currentUser=requireRole(["manager","admin"]);
 
 async function loadOrders(){
 
@@ -129,7 +126,9 @@ function printInvoice(orderId){
   window.open("invoice.html?id="+orderId,"_blank");
 }
 
-loadOrders();
+if(currentUser){
+  loadOrders();
+}
 
 </script>
 

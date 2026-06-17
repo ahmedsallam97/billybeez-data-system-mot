@@ -138,15 +138,11 @@ Pending
 </div>
 
 <script src="config.js"></script>
+<script src="auth.js"></script>
 
 <script>
 
-// حماية الصفحة
-const user = localStorage.getItem("currentUser");
-
-if(!user){
-  window.location.href = "index.html";
-}
+const currentUser=requireRole(["manager","admin"]);
 
 async function load(){
 
@@ -195,17 +191,10 @@ async function load(){
 
 }
 
-function logout(){
-
-  localStorage.removeItem("currentUser");
-
-  window.location.href = "index.html";
-
+if(currentUser){
+  load();
+  setInterval(load,5000);
 }
-
-load();
-
-setInterval(load,5000);
 
 </script>
 

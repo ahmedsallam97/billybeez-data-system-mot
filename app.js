@@ -30,7 +30,7 @@ async function login(){
         "تم تسجيل الدخول";
 
       setTimeout(()=>{
-        window.location.href="dashboard.html";
+        redirectToRoleHome(data.user);
       },1000);
 
     }else{

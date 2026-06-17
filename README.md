@@ -22,6 +22,8 @@ Create a Google Sheet with these tabs and columns.
 | id  | name | username | password | role |
 | --- | ---- | -------- | -------- | ---- |
 
+Supported roles are `Manager`, `Cashier`, and `Delivery`. `Admin` is also treated like a manager.
+
 ### Products
 
 | productId | categoryId | productName | price |
@@ -43,11 +45,12 @@ Create a Google Sheet with these tabs and columns.
 2. Go to `Extensions` > `Apps Script`.
 3. Paste the contents of `code.gs`.
 4. Confirm `SHEET_ID` matches your Google Sheet ID.
-5. Deploy as a Web App:
+5. Run `setupSheets()` once from Apps Script to create missing tabs and headers.
+6. Deploy as a Web App:
    - Execute as: `Me`
    - Who has access: `Anyone`
-6. Copy the Web App URL.
-7. Paste it into `config.js` as `API_URL`.
+7. Copy the Web App URL.
+8. Paste it into `config.js` as `API_URL`.
 
 ## Main Flow
 

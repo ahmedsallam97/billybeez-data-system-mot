@@ -17,6 +17,12 @@ input{width:100%;padding:12px;margin:8px 0;border-radius:10px}
 .product{background:#fff;padding:10px;border-radius:10px;text-align:center;cursor:pointer}
 
 .cart{background:#fff;padding:10px;margin-top:10px;border-radius:10px}
+.cart-row{display:grid;grid-template-columns:1fr auto;gap:8px;align-items:center;border-bottom:1px solid #eee;padding:8px 0}
+.cart-row:last-child{border-bottom:0}
+.qty{display:flex;gap:6px;align-items:center}
+.qty button{width:34px;margin:0;padding:8px;border-radius:8px}
+.remove{background:#e74c3c}
+.message{min-height:22px;margin-top:8px;text-align:center;color:#c0392b}
 
 button{width:100%;padding:12px;margin-top:10px;background:#5B2C83;color:#fff;border:0;border-radius:10px}
 
@@ -36,6 +42,7 @@ button{width:100%;padding:12px;margin-top:10px;background:#5B2C83;color:#fff;bor
 <div class="products" id="products"></div>
 
 <div class="cart" id="cart"></div>
+<div class="message" id="message"></div>
 
 <button onclick="submitOrder()">Save Order</button>
 
@@ -54,6 +61,7 @@ const res=await fetch(API_URL+"?action=getProducts");
 products=await res.json();
 
 const box=document.getElementById("products");
+box.innerHTML="";
 
 products.forEach(p=>{
 
@@ -61,11 +69,48 @@ let d=document.createElement("div");
 d.className="product";
 d.innerHTML=p.productName+"<br>"+p.price;
 
-d.onclick=()=>{cart.push(p);render();};
+d.onclick=()=>addToCart(p);
 
 box.appendChild(d);
 
 });
+
+}
+
+function addToCart(product){
+
+const existing=cart.find(i=>i.productId==product.productId);
+
+if(existing){
+existing.qty++;
+}else{
+cart.push({...product,qty:1});
+}
+
+render();
+
+}
+
+function changeQty(productId,change){
+
+const item=cart.find(i=>i.productId==productId);
+
+if(!item) return;
+
+item.qty+=change;
+
+if(item.qty<=0){
+cart=cart.filter(i=>i.productId!=productId);
+}
+
+render();
+
+}
+
+function removeItem(productId){
+
+cart=cart.filter(i=>i.productId!=productId);
+render();
 
 }
 
@@ -76,9 +121,28 @@ c.innerHTML="";
 let total=0;
 
 cart.forEach(i=>{
-total+=i.price;
-c.innerHTML+=i.productName+" - "+i.price+"<br>";
+const lineTotal=i.price*i.qty;
+total+=lineTotal;
+c.innerHTML+=`
+<div class="cart-row">
+  <div>
+    <b>${i.productName}</b><br>
+    ${i.price} x ${i.qty} = ${lineTotal}
+  </div>
+  <div class="qty">
+    <button onclick="changeQty('${i.productId}',1)">+</button>
+    <span>${i.qty}</span>
+    <button onclick="changeQty('${i.productId}',-1)">-</button>
+    <button class="remove" onclick="removeItem('${i.productId}')">x</button>
+  </div>
+</div>
+`;
 });
+
+if(cart.length==0){
+c.innerHTML="No items selected";
+return;
+}
 
 c.innerHTML+="<hr>Total: "+total;
 
@@ -87,23 +151,53 @@ c.innerHTML+="<hr>Total: "+total;
 async function submitOrder(){
 
 const user=JSON.parse(localStorage.getItem("currentUser"));
+const message=document.getElementById("message");
+const bracelet=document.getElementById("bracelet").value.trim();
+const childName=document.getElementById("childName").value.trim();
 
-await fetch(API_URL+"?action=createOrder",{
+message.innerText="";
+
+if(!user){
+window.location.href="index.html";
+return;
+}
+
+if(!bracelet || !childName){
+message.innerText="Please enter bracelet and child name";
+return;
+}
+
+if(cart.length==0){
+message.innerText="Please select at least one product";
+return;
+}
+
+const res=await fetch(API_URL+"?action=createOrder",{
 method:"POST",
 body:JSON.stringify({
-braceletNo:document.getElementById("bracelet").value,
-childName:document.getElementById("childName").value,
+braceletNo:bracelet,
+childName:childName,
 cashierName:user.name,
 items:cart
 })
 });
 
+const data=await res.json();
+
+if(!data.success){
+message.innerText=data.error || "Order save failed";
+return;
+}
+
 alert("Order Saved");
 cart=[];render();
+document.getElementById("bracelet").value="";
+document.getElementById("childName").value="";
 
 }
 
 load();
+render();
 
 </script>
 

@@ -34,6 +34,19 @@ body{
   font-size:14px;
 }
 
+.history{
+  position:absolute;
+  right:15px;
+  top:10px;
+  border:none;
+  background:#5B2C83;
+  color:white;
+  padding:8px 15px;
+  border-radius:8px;
+  cursor:pointer;
+  font-size:14px;
+}
+
 .logout:hover{
   opacity:.9;
 }
@@ -86,6 +99,10 @@ h3{
 <div class="header">
 
 Manager Dashboard 📊
+
+<button class="history" onclick="window.location.href='orders.html'">
+Orders
+</button>
 
 <button class="logout" onclick="logout()">
 Logout

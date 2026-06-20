@@ -26,8 +26,8 @@ Supported roles are `Manager`, `Cashier`, and `Delivery`. `Admin` is also treate
 
 ### Products
 
-| productId | categoryId | productName | price |
-| --------- | ---------- | ----------- | ----- |
+| productId | categoryId | productName | price | imageUrl | categoryName |
+| --------- | ---------- | ----------- | ----- | -------- | ------------ |
 
 ### Orders
 

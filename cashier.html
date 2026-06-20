@@ -3,48 +3,116 @@
 
 <head>
 <meta charset="UTF-8">
-<title>Cashier</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Cashier Dashboard</title>
 
 <style>
 
-body{font-family:Arial;background:#f5f5f5;margin:0}
-.header{background:#5B2C83;color:#fff;padding:15px;text-align:center}
-.container{padding:15px}
-
-input{width:100%;padding:12px;margin:8px 0;border-radius:10px}
-
-.products{display:grid;grid-template-columns:1fr 1fr;gap:10px}
-.product{background:#fff;padding:10px;border-radius:10px;text-align:center;cursor:pointer}
-
-.cart{background:#fff;padding:10px;margin-top:10px;border-radius:10px}
+body{font-family:Arial,sans-serif;background:#fff;margin:0;color:#222}
+.header{background:#5B2C83;color:#fff;padding:14px;text-align:center;position:sticky;top:0;z-index:5}
+.header-title{font-size:20px;font-weight:bold}
+.logout{position:absolute;left:12px;top:9px;background:#e74c3c;color:#fff;border:0;border-radius:8px;padding:8px 14px;cursor:pointer}
+.container{padding:14px;max-width:1100px;margin:0 auto}
+.home-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:14px;margin-top:22px}
+.home-card{background:#fff;border:1px solid #e6e6e6;border-radius:8px;box-shadow:0 2px 10px rgba(0,0,0,.08);padding:28px 14px;text-align:center;cursor:pointer}
+.home-card b{display:block;font-size:22px;margin-top:8px;color:#5B2C83}
+.home-icon{width:46px;height:46px;border-radius:8px;background:#f2eefa;color:#5B2C83;display:inline-flex;align-items:center;justify-content:center;font-size:24px;font-weight:bold}
+.toolbar{display:flex;gap:8px;margin-bottom:12px;align-items:center}
+.toolbar button,.primary,.secondary,.danger{border:0;border-radius:8px;padding:10px 14px;cursor:pointer;color:#fff}
+.primary{background:#5B2C83}
+.secondary{background:#2c3e50}
+.danger{background:#e74c3c}
+.hidden{display:none}
+.orders-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:12px}
+.order-card{border:1px solid #e6e6e6;border-radius:8px;padding:12px;background:#fff;box-shadow:0 2px 8px rgba(0,0,0,.06)}
+.order-top{display:flex;justify-content:space-between;gap:8px;border-bottom:1px solid #eee;padding-bottom:8px;margin-bottom:8px}
+.status{font-weight:bold;color:#5B2C83}
+.items{background:#fafafa;border-radius:8px;padding:8px;margin-top:8px}
+.item-line{display:flex;justify-content:space-between;gap:8px;padding:5px 0;border-bottom:1px solid #eee}
+.item-line:last-child{border-bottom:0}
+.form-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px}
+input{width:100%;padding:12px;border:1px solid #ddd;border-radius:8px;box-sizing:border-box}
+.category-tabs{display:flex;gap:8px;overflow:auto;padding:4px 0 10px}
+.category-tabs button{white-space:nowrap;border:1px solid #ddd;background:#fff;color:#333;border-radius:20px;padding:9px 14px;cursor:pointer}
+.category-tabs button.active{background:#5B2C83;color:#fff;border-color:#5B2C83}
+.products{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}
+.product{border:1px solid #e6e6e6;background:#fff;border-radius:8px;overflow:hidden;cursor:pointer;box-shadow:0 2px 8px rgba(0,0,0,.05)}
+.product img{width:100%;aspect-ratio:1.15/1;object-fit:cover;background:#f2f2f2;display:block}
+.product-placeholder{height:120px;background:#f2eefa;color:#5B2C83;display:flex;align-items:center;justify-content:center;font-size:28px;font-weight:bold}
+.product-body{padding:9px;text-align:center}
+.product-name{font-weight:bold;min-height:36px}
+.product-price{color:#5B2C83;margin-top:4px}
+.cart{border:1px solid #e6e6e6;border-radius:8px;padding:10px;margin-top:12px;background:#fff}
 .cart-row{display:grid;grid-template-columns:1fr auto;gap:8px;align-items:center;border-bottom:1px solid #eee;padding:8px 0}
 .cart-row:last-child{border-bottom:0}
 .qty{display:flex;gap:6px;align-items:center}
-.qty button{width:34px;margin:0;padding:8px;border-radius:8px}
-.remove{background:#e74c3c}
-.message{min-height:22px;margin-top:8px;text-align:center;color:#c0392b}
+.qty button{width:34px;margin:0;padding:8px;border-radius:8px;border:0;background:#5B2C83;color:#fff;cursor:pointer}
+.qty .remove{background:#e74c3c}
+.total{font-size:18px;font-weight:bold;margin-top:10px;text-align:left;color:#5B2C83}
+.message{min-height:24px;margin-top:8px;text-align:center;color:#c0392b}
+.empty{text-align:center;color:#777;padding:18px}
 
-button{width:100%;padding:12px;margin-top:10px;background:#5B2C83;color:#fff;border:0;border-radius:10px}
+@media(max-width:800px){
+  .home-grid,.orders-grid,.form-grid{grid-template-columns:1fr}
+  .products{grid-template-columns:repeat(2,1fr)}
+  .logout{position:static;margin-top:8px}
+}
 
 </style>
-
 </head>
 
 <body>
 
-<div class="header">Cashier System</div>
+<div class="header">
+  <div class="header-title">Cashier Dashboard</div>
+  <button class="logout" onclick="logout()">خروج</button>
+</div>
 
 <div class="container">
 
-<input id="bracelet" placeholder="Bracelet (6 digits)">
-<input id="childName" placeholder="Child Name">
+<section id="homeView">
+  <div class="home-grid">
+    <div class="home-card" onclick="showOrders()">
+      <span class="home-icon">O</span>
+      <b>عرض الطلبات</b>
+    </div>
 
-<div class="products" id="products"></div>
+    <div class="home-card" onclick="showOrderForm()">
+      <span class="home-icon">+</span>
+      <b>إضافة طلب جديد</b>
+    </div>
+  </div>
+</section>
 
-<div class="cart" id="cart"></div>
-<div class="message" id="message"></div>
+<section id="ordersView" class="hidden">
+  <div class="toolbar">
+    <button class="secondary" onclick="showHome()">رجوع</button>
+    <button class="primary" onclick="loadOrders()">تحديث</button>
+  </div>
+  <div id="ordersBox" class="orders-grid"></div>
+</section>
 
-<button onclick="submitOrder()">Save Order</button>
+<section id="formView" class="hidden">
+  <div class="toolbar">
+    <button class="secondary" onclick="showHome()">رجوع</button>
+    <button class="danger hidden" id="cancelEditBtn" onclick="cancelEdit()">خروج من التعديل</button>
+  </div>
+
+  <h3 id="formTitle">إضافة طلب جديد</h3>
+
+  <div class="form-grid" id="newOrderFields">
+    <input id="bracelet" placeholder="Bracelet (6 digits)">
+    <input id="childName" placeholder="Child Name">
+  </div>
+
+  <div class="category-tabs" id="categoryTabs"></div>
+  <div class="products" id="products"></div>
+
+  <div class="cart" id="cart"></div>
+  <div class="message" id="message"></div>
+
+  <button class="primary" id="submitBtn" onclick="submitCart()">Save Order</button>
+</section>
 
 </div>
 
@@ -56,149 +124,295 @@ button{width:100%;padding:12px;margin-top:10px;background:#5B2C83;color:#fff;bor
 const currentUser=requireRole(["cashier","manager","admin"]);
 let products=[];
 let cart=[];
+let activeCategory="All";
+let editingOrderId=null;
 
-async function load(){
+function setView(viewId){
+  ["homeView","ordersView","formView"].forEach(id=>{
+    document.getElementById(id).classList.toggle("hidden",id!==viewId);
+  });
+}
 
-const res=await fetch(API_URL+"?action=getProducts");
-products=await res.json();
+function showHome(){
+  setView("homeView");
+}
 
-const box=document.getElementById("products");
-box.innerHTML="";
+async function showOrders(){
+  setView("ordersView");
+  await loadOrders();
+}
 
-products.forEach(p=>{
+async function showOrderForm(orderId){
+  editingOrderId=orderId || null;
+  cart=[];
+  document.getElementById("message").innerText="";
+  document.getElementById("formTitle").innerText=editingOrderId ? "تعديل الطلب" : "إضافة طلب جديد";
+  document.getElementById("submitBtn").innerText=editingOrderId ? "إضافة items للطلب" : "Save Order";
+  document.getElementById("newOrderFields").classList.toggle("hidden",!!editingOrderId);
+  document.getElementById("cancelEditBtn").classList.toggle("hidden",!editingOrderId);
 
-let d=document.createElement("div");
-d.className="product";
-d.innerHTML=p.productName+"<br>"+p.price;
+  if(!editingOrderId){
+    document.getElementById("bracelet").value="";
+    document.getElementById("childName").value="";
+  }
 
-d.onclick=()=>addToCart(p);
+  setView("formView");
+  await loadProducts();
+  renderCart();
+}
 
-box.appendChild(d);
+function cancelEdit(){
+  editingOrderId=null;
+  cart=[];
+  showOrders();
+}
 
-});
+async function loadProducts(){
+  if(products.length>0){
+    renderCategories();
+    renderProducts();
+    return;
+  }
 
+  const res=await fetch(API_URL+"?action=getProducts");
+  products=await res.json();
+  renderCategories();
+  renderProducts();
+}
+
+function renderCategories(){
+  const categories=["All",...new Set(products.map(p=>p.categoryName || p.categoryId || "Other"))];
+  const box=document.getElementById("categoryTabs");
+  box.innerHTML="";
+
+  categories.forEach(category=>{
+    const button=document.createElement("button");
+    button.innerText=category;
+    button.className=category===activeCategory ? "active" : "";
+    button.onclick=()=>{
+      activeCategory=category;
+      renderCategories();
+      renderProducts();
+    };
+    box.appendChild(button);
+  });
+}
+
+function renderProducts(){
+  const box=document.getElementById("products");
+  box.innerHTML="";
+
+  products
+    .filter(p=>activeCategory==="All" || (p.categoryName || p.categoryId || "Other")===activeCategory)
+    .forEach(product=>{
+      const card=document.createElement("div");
+      card.className="product";
+      card.onclick=()=>addToCart(product);
+      const image=product.imageUrl
+        ? `<img src="${product.imageUrl}" alt="${product.productName}" onerror="this.outerHTML='<div class=&quot;product-placeholder&quot;>${getInitial(product.productName)}</div>'">`
+        : `<div class="product-placeholder">${getInitial(product.productName)}</div>`;
+
+      card.innerHTML=`
+        ${image}
+        <div class="product-body">
+          <div class="product-name">${product.productName}</div>
+          <div class="product-price">${product.price} EGP</div>
+        </div>
+      `;
+      box.appendChild(card);
+    });
+}
+
+function getInitial(name){
+  return String(name || "?").trim().charAt(0).toUpperCase() || "?";
 }
 
 function addToCart(product){
+  const existing=cart.find(i=>i.productId==product.productId);
 
-const existing=cart.find(i=>i.productId==product.productId);
+  if(existing){
+    existing.qty++;
+  }else{
+    cart.push({...product,qty:1});
+  }
 
-if(existing){
-existing.qty++;
-}else{
-cart.push({...product,qty:1});
-}
-
-render();
-
+  renderCart();
 }
 
 function changeQty(productId,change){
+  const item=cart.find(i=>i.productId==productId);
 
-const item=cart.find(i=>i.productId==productId);
+  if(!item) return;
 
-if(!item) return;
+  item.qty+=change;
 
-item.qty+=change;
+  if(item.qty<=0){
+    cart=cart.filter(i=>i.productId!=productId);
+  }
 
-if(item.qty<=0){
-cart=cart.filter(i=>i.productId!=productId);
-}
-
-render();
-
+  renderCart();
 }
 
 function removeItem(productId){
-
-cart=cart.filter(i=>i.productId!=productId);
-render();
-
+  cart=cart.filter(i=>i.productId!=productId);
+  renderCart();
 }
 
-function render(){
+function renderCart(){
+  const box=document.getElementById("cart");
+  let total=0;
+  box.innerHTML="";
 
-let c=document.getElementById("cart");
-c.innerHTML="";
-let total=0;
+  if(cart.length===0){
+    box.innerHTML="<div class='empty'>No items selected</div>";
+    return;
+  }
 
-cart.forEach(i=>{
-const lineTotal=i.price*i.qty;
-total+=lineTotal;
-c.innerHTML+=`
-<div class="cart-row">
-  <div>
-    <b>${i.productName}</b><br>
-    ${i.price} x ${i.qty} = ${lineTotal}
-  </div>
-  <div class="qty">
-    <button onclick="changeQty('${i.productId}',1)">+</button>
-    <span>${i.qty}</span>
-    <button onclick="changeQty('${i.productId}',-1)">-</button>
-    <button class="remove" onclick="removeItem('${i.productId}')">x</button>
-  </div>
-</div>
-`;
-});
+  cart.forEach(item=>{
+    const lineTotal=item.price*item.qty;
+    total+=lineTotal;
+    box.innerHTML+=`
+      <div class="cart-row">
+        <div>
+          <b>${item.productName}</b><br>
+          ${item.price} x ${item.qty} = ${lineTotal}
+        </div>
+        <div class="qty">
+          <button onclick="changeQty('${item.productId}',1)">+</button>
+          <span>${item.qty}</span>
+          <button onclick="changeQty('${item.productId}',-1)">-</button>
+          <button class="remove" onclick="removeItem('${item.productId}')">x</button>
+        </div>
+      </div>
+    `;
+  });
 
-if(cart.length==0){
-c.innerHTML="No items selected";
-return;
+  box.innerHTML+=`<div class="total">Total: ${total} EGP</div>`;
 }
 
-c.innerHTML+="<hr>Total: "+total;
+async function submitCart(){
+  const message=document.getElementById("message");
+  message.innerText="";
 
+  if(cart.length===0){
+    message.innerText="Please select at least one product";
+    return;
+  }
+
+  if(editingOrderId){
+    await addItemsToOrder();
+    return;
+  }
+
+  const bracelet=document.getElementById("bracelet").value.trim();
+  const childName=document.getElementById("childName").value.trim();
+
+  if(!bracelet || !childName){
+    message.innerText="Please enter bracelet and child name";
+    return;
+  }
+
+  const res=await fetch(API_URL+"?action=createOrder",{
+    method:"POST",
+    body:JSON.stringify({
+      braceletNo:bracelet,
+      childName:childName,
+      cashierName:currentUser.name,
+      items:cart
+    })
+  });
+
+  const data=await res.json();
+
+  if(!data.success){
+    message.innerText=data.error || "Order save failed";
+    return;
+  }
+
+  alert("Order Saved");
+  cart=[];
+  renderCart();
+  showHome();
 }
 
-async function submitOrder(){
+async function addItemsToOrder(){
+  const message=document.getElementById("message");
+  const res=await fetch(API_URL+"?action=addOrderItems",{
+    method:"POST",
+    body:JSON.stringify({
+      orderId:editingOrderId,
+      items:cart
+    })
+  });
 
-const message=document.getElementById("message");
-const bracelet=document.getElementById("bracelet").value.trim();
-const childName=document.getElementById("childName").value.trim();
+  const data=await res.json();
 
-message.innerText="";
+  if(!data.success){
+    message.innerText=data.error || "Update failed";
+    return;
+  }
 
-if(!currentUser){
-return;
+  alert("Order Updated");
+  cart=[];
+  editingOrderId=null;
+  await showOrders();
 }
 
-if(!bracelet || !childName){
-message.innerText="Please enter bracelet and child name";
-return;
+async function loadOrders(){
+  const res=await fetch(API_URL+"?action=getOrders");
+  const orders=await res.json();
+  const box=document.getElementById("ordersBox");
+  box.innerHTML="";
+
+  if(!Array.isArray(orders) || orders.length===0){
+    box.innerHTML="<div class='empty'>No orders found</div>";
+    return;
+  }
+
+  for(const order of orders){
+    const details=await fetchOrderDetails(order.orderId);
+    box.appendChild(renderOrderCard(details && details.success ? details.order : order, details && details.items ? details.items : []));
+  }
 }
 
-if(cart.length==0){
-message.innerText="Please select at least one product";
-return;
+async function fetchOrderDetails(orderId){
+  const res=await fetch(API_URL+"?action=getOrderDetails&orderId="+encodeURIComponent(orderId));
+  return await res.json();
 }
 
-const res=await fetch(API_URL+"?action=createOrder",{
-method:"POST",
-body:JSON.stringify({
-braceletNo:bracelet,
-childName:childName,
-cashierName:currentUser.name,
-items:cart
-})
-});
+function renderOrderCard(order,items){
+  const card=document.createElement("div");
+  card.className="order-card";
 
-const data=await res.json();
+  const itemHtml=items.length
+    ? items.map(i=>`
+      <div class="item-line">
+        <span>${i.name} x ${i.qty}</span>
+        <span>${i.total} EGP</span>
+      </div>
+    `).join("")
+    : "<div class='empty'>No items</div>";
 
-if(!data.success){
-message.innerText=data.error || "Order save failed";
-return;
-}
+  card.innerHTML=`
+    <div class="order-top">
+      <div>
+        <b>${order.orderId}</b><br>
+        ${order.childName || order.child || ""} - Bracelet ${order.bracelet}
+      </div>
+      <div class="status">${order.status}</div>
+    </div>
+    <div>Cashier: ${order.cashier || ""}</div>
+    <div>Total now: <b>${order.total || 0} EGP</b></div>
+    <div class="items">${itemHtml}</div>
+    <button class="danger" onclick="showHome()">خروج</button>
+    <button class="primary" onclick="showOrderForm('${order.orderId}')">تعديل على الأوردر</button>
+  `;
 
-alert("Order Saved");
-cart=[];render();
-document.getElementById("bracelet").value="";
-document.getElementById("childName").value="";
-
+  return card;
 }
 
 if(currentUser){
-load();
-render();
+  showHome();
 }
 
 </script>

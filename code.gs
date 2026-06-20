@@ -9,9 +9,21 @@ const SHEETS = {
 
 const SHEET_HEADERS = {
   Users: ["id", "name", "username", "password", "role"],
-  Products: ["productId", "categoryId", "productName", "price"],
+  Products: ["productId", "categoryId", "productName", "price", "imageUrl", "categoryName"],
   Orders: ["orderId", "braceletNo", "childName", "cashierName", "time", "status", "total"],
   OrderItems: ["itemId", "orderId", "productId", "productName", "qty", "price", "total"],
+};
+
+const CATEGORY_NAMES = {
+  DR001: "Drinks",
+  BK001: "Bakery",
+  OT001: "Snacks",
+  PA001: "Pasta",
+  CR001: "Crepe",
+  SN001: "Meals",
+  PI001: "Pizza",
+  BU001: "Burger",
+  SA001: "Salad",
 };
 
 /* =========================
@@ -34,6 +46,9 @@ function doGet(e) {
 
       case "getOrders":
         return jsonResponse(getOrders(params));
+
+      case "getOrderDetails":
+        return jsonResponse(getOrderDetails(params.orderId));
 
       case "getInvoice":
         return jsonResponse(getInvoice(params.orderId));
@@ -60,6 +75,9 @@ function doPost(e) {
 
       case "updateOrderStatus":
         return jsonResponse(updateOrderStatus(body));
+
+      case "addOrderItems":
+        return jsonResponse(addOrderItems(body));
 
       default:
         return jsonResponse({ success: false, error: "Unknown action" });
@@ -107,6 +125,8 @@ function getProducts() {
     categoryId: r[1],
     productName: r[2],
     price: toNumber(r[3]),
+    imageUrl: r[4] || "",
+    categoryName: r[5] || r[1] || "Other",
   }));
 }
 
@@ -135,27 +155,11 @@ function createOrder(body) {
   const orderId = "ORD-" + Date.now();
   const now = new Date();
 
-  let total = 0;
-  const itemRows = data.items.map((item, index) => {
-    const price = toNumber(item.price);
-    const qty = Math.max(1, toNumber(item.qty || item.quantity || 1));
-    const lineTotal = price * qty;
-    total += lineTotal;
-
-    return [
-      "OI-" + now.getTime() + "-" + (index + 1),
-      orderId,
-      item.productId,
-      item.productName,
-      qty,
-      price,
-      lineTotal,
-    ];
-  });
+  const itemResult = buildItemRows(orderId, data.items, now);
 
   items
-    .getRange(items.getLastRow() + 1, 1, itemRows.length, itemRows[0].length)
-    .setValues(itemRows);
+    .getRange(items.getLastRow() + 1, 1, itemResult.rows.length, itemResult.rows[0].length)
+    .setValues(itemResult.rows);
 
   orders.appendRow([
     orderId,
@@ -164,13 +168,13 @@ function createOrder(body) {
     data.cashierName || "",
     now,
     "Pending",
-    total,
+    itemResult.total,
   ]);
 
   return {
     success: true,
     orderId,
-    total,
+    total: itemResult.total,
     warnings: [],
   };
 }
@@ -235,6 +239,28 @@ function getOrders(params) {
     .reverse();
 }
 
+function getOrderDetails(orderId) {
+  if (!orderId) return { success: false, error: "Order ID is required" };
+
+  const invoice = getInvoice(orderId);
+
+  if (!invoice.success) return invoice;
+
+  return {
+    success: true,
+    order: {
+      orderId: invoice.order.id,
+      bracelet: invoice.order.bracelet,
+      childName: invoice.order.child,
+      cashier: invoice.order.cashier,
+      time: invoice.order.time,
+      status: invoice.order.status,
+      total: invoice.order.total,
+    },
+    items: invoice.items,
+  };
+}
+
 /* =========================
    UPDATE STATUS
 ========================= */
@@ -257,6 +283,53 @@ function updateOrderStatus(body) {
   }
 
   return { success: false, error: "Order not found" };
+}
+
+function addOrderItems(body) {
+  const data = JSON.parse(body);
+
+  if (!data.orderId) {
+    return { success: false, error: "Order ID is required" };
+  }
+
+  if (!Array.isArray(data.items) || data.items.length === 0) {
+    return { success: false, error: "Order items are required" };
+  }
+
+  const ss = SpreadsheetApp.openById(SHEET_ID);
+  const orders = ss.getSheetByName(SHEETS.ORDERS);
+  const items = ss.getSheetByName(SHEETS.ORDER_ITEMS);
+  const rows = orders.getDataRange().getValues();
+  let orderRow = -1;
+  let currentTotal = 0;
+
+  for (let i = 1; i < rows.length; i++) {
+    if (rows[i][0] == data.orderId) {
+      orderRow = i + 1;
+      currentTotal = toNumber(rows[i][6]);
+      break;
+    }
+  }
+
+  if (orderRow === -1) {
+    return { success: false, error: "Order not found" };
+  }
+
+  const itemResult = buildItemRows(data.orderId, data.items, new Date());
+
+  items
+    .getRange(items.getLastRow() + 1, 1, itemResult.rows.length, itemResult.rows[0].length)
+    .setValues(itemResult.rows);
+
+  const newTotal = currentTotal + itemResult.total;
+  orders.getRange(orderRow, 7).setValue(newTotal);
+
+  return {
+    success: true,
+    orderId: data.orderId,
+    addedTotal: itemResult.total,
+    total: newTotal,
+  };
 }
 
 /* =========================
@@ -394,6 +467,69 @@ function getRows(sheet) {
 function toNumber(value) {
   const number = Number(value);
   return isNaN(number) ? 0 : number;
+}
+
+function populateProductMetadata() {
+  const sheet = getSheet(SHEETS.PRODUCTS);
+  const lastRow = sheet.getLastRow();
+
+  if (lastRow < 2) {
+    return { success: true, updated: 0 };
+  }
+
+  const range = sheet.getRange(2, 1, lastRow - 1, 6);
+  const rows = range.getValues();
+  let updated = 0;
+
+  const values = rows.map((row) => {
+    const categoryId = row[1];
+    const productName = row[2];
+    const categoryName = row[5] || CATEGORY_NAMES[categoryId] || categoryId || "Other";
+    const imageUrl = row[4] || buildProductImageUrl(productName);
+
+    if (row[4] !== imageUrl || row[5] !== categoryName) {
+      updated++;
+    }
+
+    row[4] = imageUrl;
+    row[5] = categoryName;
+
+    return row;
+  });
+
+  range.setValues(values);
+
+  return {
+    success: true,
+    updated,
+  };
+}
+
+function buildItemRows(orderId, orderItems, now) {
+  let total = 0;
+  const rows = orderItems.map((item, index) => {
+    const price = toNumber(item.price);
+    const qty = Math.max(1, toNumber(item.qty || item.quantity || 1));
+    const lineTotal = price * qty;
+    total += lineTotal;
+
+    return [
+      "OI-" + now.getTime() + "-" + (index + 1),
+      orderId,
+      item.productId,
+      item.productName,
+      qty,
+      price,
+      lineTotal,
+    ];
+  });
+
+  return { rows, total };
+}
+
+function buildProductImageUrl(productName) {
+  const label = encodeURIComponent(String(productName || "Product").trim());
+  return "https://placehold.co/320x240/f2eefa/5B2C83?text=" + label;
 }
 
 function jsonResponse(data) {

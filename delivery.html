@@ -27,7 +27,7 @@ body{font-family:Arial,sans-serif;margin:0;background:#fff;color:#222}
 .items{background:#fafafa;border-radius:8px;padding:8px;margin-top:8px}
 .item-line{display:flex;justify-content:space-between;gap:8px;padding:5px 0;border-bottom:1px solid #eee}
 .item-line:last-child{border-bottom:0}
-.actions{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:10px}
+.actions{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-top:10px}
 button{border:0;border-radius:8px;padding:10px;cursor:pointer;color:#fff}
 .delivered{background:#27ae60}
 .paid{background:#2980b9}
@@ -122,6 +122,7 @@ function renderOrder(order){
       <div>Total: <b>${order.total} EGP</b></div>
       <div>Kitchen: <b>${order.kitchenStatus}</b></div>
       <div>Payment: <b>${order.paymentStatus}</b></div>
+      <div>Method: <b>${order.paymentMethod || "-"}</b></div>
     </div>
 
     <div class="items">${items}</div>
@@ -140,7 +141,8 @@ function renderActions(order){
   return `
     <div class="actions">
       <button class="${deliveredClass}" onclick="markDelivered('${order.orderId}')" ${order.kitchenStatus==="Delivered" ? "disabled" : ""}>تم التسليم</button>
-      <button class="${paidClass}" onclick="markPaid('${order.orderId}')" ${order.paymentStatus==="Paid" ? "disabled" : ""}>تم الدفع</button>
+      <button class="${paidClass}" onclick="markPaid('${order.orderId}','Cash')" ${order.paymentStatus==="Paid" ? "disabled" : ""}>دفع كاش</button>
+      <button class="${paidClass}" onclick="markPaid('${order.orderId}','Visa')" ${order.paymentStatus==="Paid" ? "disabled" : ""}>دفع فيزا</button>
       <button class="archive ${canArchive ? "" : "disabled"}" onclick="archiveOrder('${order.orderId}')" ${canArchive ? "" : "disabled"}>تم تسجيل على السيستم</button>
     </div>
   `;
@@ -150,18 +152,18 @@ async function markDelivered(orderId){
   await updateStatus(orderId,"Delivered");
 }
 
-async function markPaid(orderId){
-  const ok=await updateStatus(orderId,"Paid");
+async function markPaid(orderId,paymentMethod){
+  const ok=await updateStatus(orderId,"Paid",paymentMethod);
 
   if(ok){
     window.open("invoice.html?id="+orderId,"_blank");
   }
 }
 
-async function updateStatus(orderId,status){
+async function updateStatus(orderId,status,paymentMethod){
   const res=await fetch(API_URL+"?action=updateOrderStatus",{
     method:"POST",
-    body:JSON.stringify({orderId,status})
+    body:JSON.stringify({orderId,status,paymentMethod})
   });
   const data=await res.json();
 

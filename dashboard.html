@@ -3,137 +3,91 @@
 
 <head>
 <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Manager Dashboard</title>
 
 <style>
 
-body{
-  font-family:Arial;
-  margin:0;
-  background:#f4f4f4;
-}
+body{font-family:Arial,sans-serif;margin:0;background:#f6f7f9;color:#222}
+.header{background:#2c3e50;color:#fff;padding:14px;text-align:center;position:sticky;top:0;z-index:5}
+.header-title{font-size:20px;font-weight:bold}
+.logout,.history{position:absolute;top:9px;border:0;border-radius:8px;color:#fff;padding:8px 14px;cursor:pointer}
+.logout{left:12px;background:#e74c3c}
+.history{right:12px;background:#5B2C83}
+.container{padding:14px;max-width:1280px;margin:0 auto}
+.tabs{display:flex;gap:8px;overflow:auto;margin-bottom:12px}
+.tabs button{border:1px solid #ddd;background:#fff;color:#333;border-radius:8px;padding:10px 14px;cursor:pointer;white-space:nowrap}
+.tabs button.active{background:#2c3e50;color:#fff;border-color:#2c3e50}
+.grid{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}
+.card,.panel{background:#fff;border:1px solid #e6e6e6;border-radius:8px;box-shadow:0 2px 8px rgba(0,0,0,.05)}
+.card{padding:14px;text-align:center}
+.label{color:#666;font-size:13px}
+.value{font-size:24px;font-weight:bold;margin-top:6px;color:#5B2C83}
+.panel{padding:12px;margin-top:12px}
+.panel h3{margin:0 0 10px}
+.charts{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.tables{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
+.row{display:flex;justify-content:space-between;gap:10px;padding:8px 0;border-bottom:1px solid #eee}
+.row:last-child{border-bottom:0}
+canvas{width:100%;height:260px;border:1px solid #eee;border-radius:8px;background:#fff}
+.note{background:#fff8e1;border:1px solid #f1d27a;border-radius:8px;padding:10px;margin-top:12px;color:#5f4700}
 
-.header{
-  background:#2c3e50;
-  color:white;
-  padding:15px;
-  text-align:center;
-  position:relative;
-}
-
-.logout{
-  position:absolute;
-  left:15px;
-  top:10px;
-  border:none;
-  background:#e74c3c;
-  color:white;
-  padding:8px 15px;
-  border-radius:8px;
-  cursor:pointer;
-  font-size:14px;
-}
-
-.history{
-  position:absolute;
-  right:15px;
-  top:10px;
-  border:none;
-  background:#5B2C83;
-  color:white;
-  padding:8px 15px;
-  border-radius:8px;
-  cursor:pointer;
-  font-size:14px;
-}
-
-.logout:hover{
-  opacity:.9;
-}
-
-.grid{
-  display:grid;
-  grid-template-columns:repeat(2,1fr);
-  gap:10px;
-  padding:10px;
-}
-
-.card{
-  background:white;
-  padding:15px;
-  border-radius:12px;
-  text-align:center;
-  box-shadow:0 2px 5px rgba(0,0,0,.1);
-}
-
-.value{
-  font-size:22px;
-  font-weight:bold;
-  margin-top:5px;
-}
-
-.table{
-  background:white;
-  margin:10px;
-  padding:10px;
-  border-radius:10px;
-}
-
-.row{
-  display:flex;
-  justify-content:space-between;
-  padding:8px 0;
-  border-bottom:1px solid #eee;
-}
-
-h3{
-  margin-top:0;
+@media(max-width:900px){
+  .grid,.charts,.tables{grid-template-columns:1fr}
+  .logout,.history{position:static;margin-top:8px}
 }
 
 </style>
-
 </head>
 
 <body>
 
 <div class="header">
+  <div class="header-title">Manager Dashboard</div>
+  <button class="history" onclick="window.location.href='orders.html'">Orders</button>
+  <button class="logout" onclick="logout()">Logout</button>
+</div>
 
-Manager Dashboard 📊
+<div class="container">
 
-<button class="history" onclick="window.location.href='orders.html'">
-Orders
-</button>
-
-<button class="logout" onclick="logout()">
-Logout
-</button>
-
+<div class="tabs">
+  <button class="active" onclick="setFilter('All',this)">All</button>
+  <button onclick="setFilter('Cash',this)">Cash</button>
+  <button onclick="setFilter('Visa',this)">Visa</button>
+  <button onclick="setFilter('Unpaid',this)">Unpaid</button>
 </div>
 
 <div class="grid">
-
-<div class="card">
-Total Sales
-<div class="value" id="sales">0 EGP</div>
+  <div class="card"><div class="label">Total Paid Sales</div><div class="value" id="sales">0 EGP</div></div>
+  <div class="card"><div class="label">Orders</div><div class="value" id="orders">0</div></div>
+  <div class="card"><div class="label">Pending / Unpaid</div><div class="value" id="pending">0</div></div>
+  <div class="card"><div class="label">Left Unpaid Alerts</div><div class="value" id="leftUnpaid">0</div></div>
 </div>
 
-<div class="card">
-Orders
-<div class="value" id="orders">0</div>
+<div class="note" id="managerNote"></div>
+
+<div class="charts">
+  <div class="panel">
+    <h3>Payment Breakdown</h3>
+    <canvas id="paymentChart" width="600" height="260"></canvas>
+  </div>
+  <div class="panel">
+    <h3>Daily Sales</h3>
+    <canvas id="dailyChart" width="600" height="260"></canvas>
+  </div>
 </div>
 
-<div class="card">
-Pending
-<div class="value" id="pending">0</div>
+<div class="tables">
+  <div class="panel"><h3>Top Products</h3><div id="topProducts"></div></div>
+  <div class="panel"><h3>Cashier Performance</h3><div id="cashiers"></div></div>
+  <div class="panel"><h3>Data Employees</h3><div id="dataEmployees"></div></div>
 </div>
 
+<div class="tables">
+  <div class="panel"><h3>Status Breakdown</h3><div id="statuses"></div></div>
+  <div class="panel"><h3>Top Bracelets</h3><div id="topBracelets"></div></div>
+  <div class="panel"><h3>Manager Actions</h3><div id="actions"></div></div>
 </div>
-
-<div class="table">
-
-<h3>Top Bracelets</h3>
-
-<div id="top"></div>
 
 </div>
 
@@ -143,61 +97,154 @@ Pending
 <script>
 
 const currentUser=requireRole(["manager","admin"]);
+let dashboardData=null;
+let filter="All";
+
+function setFilter(value,button){
+  filter=value;
+  document.querySelectorAll(".tabs button").forEach(btn=>btn.classList.remove("active"));
+  button.classList.add("active");
+  render();
+}
 
 async function load(){
+  const res=await fetch(API_URL+"?action=getDashboard");
+  dashboardData=await res.json();
+  render();
+}
 
-  try{
+function render(){
+  if(!dashboardData) return;
 
-    const res =
-      await fetch(API_URL + "?action=getDashboard");
+  const d=dashboardData;
+  const paymentTotal=getPaymentValue(d.paymentBreakdown || [],filter);
+  const paymentCount=getPaymentValue(d.paymentCounts || [],filter);
+  const filteredSales=filter==="All" ? d.totalSales : filter==="Unpaid" ? 0 : paymentTotal;
+  const filteredOrders=filter==="All" ? d.ordersCount : filter==="Unpaid" ? d.unpaidOrders : paymentCount;
+  const filteredPending=filter==="Unpaid" ? d.unpaidOrders : d.pending;
 
-    const d =
-      await res.json();
+  document.getElementById("sales").innerText=(filteredSales || 0)+" EGP";
+  document.getElementById("orders").innerText=filteredOrders || 0;
+  document.getElementById("pending").innerText=filteredPending || 0;
+  document.getElementById("leftUnpaid").innerText=d.leftUnpaid || 0;
 
-    document.getElementById("sales").innerText =
-      (d.totalSales || 0) + " EGP";
+  document.getElementById("managerNote").innerText=
+    "اقتراحات متابعة: راقب Left Unpaid يوميًا، راجع أفضل المنتجات للمخزون، وقارن أداء الكاشير وموظف الداتا في نهاية كل شيفت.";
 
-    document.getElementById("orders").innerText =
-      d.ordersCount || 0;
+  renderRows("topProducts",filterProducts(d.topProducts || []),"product","total"," EGP");
+  renderRows("cashiers",filterPeople(d.cashierPerformance || []),"name","total"," EGP");
+  renderRows("dataEmployees",filterPeople(d.dataEmployeePerformance || []),"name","total"," EGP");
+  renderRows("statuses",d.statusBreakdown || [],"status","total","");
+  renderRows("topBracelets",d.topBracelets || [],"bracelet","total"," EGP");
+  renderActions();
 
-    document.getElementById("pending").innerText =
-      d.pending || 0;
+  drawBarChart("paymentChart",d.paymentBreakdown || [],"method","total");
+  drawLineChart("dailyChart",d.dailySales || [],"date","total");
+}
 
-    let box =
-      document.getElementById("top");
+function filterProducts(rows){
+  return rows;
+}
 
-    box.innerHTML = "";
+function getPaymentValue(rows,method){
+  if(method==="All") return 0;
+  const row=rows.find(r=>r.method===method);
+  return row ? row.total : 0;
+}
 
-    if(d.topBracelets){
+function filterPeople(rows){
+  return rows;
+}
 
-      d.topBracelets.forEach(b=>{
+function renderRows(id,rows,labelKey,valueKey,suffix){
+  const box=document.getElementById(id);
+  box.innerHTML="";
 
-        box.innerHTML += `
-        <div class="row">
-          <span>${b.bracelet}</span>
-          <span>${b.total} EGP</span>
-        </div>
-        `;
-
-      });
-
-    }
-
-  }catch(error){
-
-    console.error(error);
-
+  if(!rows.length){
+    box.innerHTML="<div class='row'><span>No data</span><span>0</span></div>";
+    return;
   }
 
+  rows.slice(0,8).forEach(row=>{
+    box.innerHTML+=`
+      <div class="row">
+        <span>${row[labelKey]}</span>
+        <b>${row[valueKey]}${suffix}</b>
+      </div>
+    `;
+  });
+}
+
+function renderActions(){
+  document.getElementById("actions").innerHTML=`
+    <div class="row"><span>Review unpaid exits</span><b>${dashboardData.leftUnpaid || 0}</b></div>
+    <div class="row"><span>Archived orders</span><b>${dashboardData.archivedOrders || 0}</b></div>
+    <div class="row"><span>Paid orders</span><b>${dashboardData.paidOrders || 0}</b></div>
+    <div class="row"><span>Unpaid orders</span><b>${dashboardData.unpaidOrders || 0}</b></div>
+  `;
+}
+
+function drawBarChart(id,rows,labelKey,valueKey){
+  const canvas=document.getElementById(id);
+  const ctx=canvas.getContext("2d");
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+  const max=Math.max(...rows.map(r=>r[valueKey]),1);
+  const barWidth=canvas.width/(rows.length || 1)-24;
+
+  rows.forEach((row,index)=>{
+    const height=(row[valueKey]/max)*(canvas.height-60);
+    const x=18+index*(barWidth+24);
+    const y=canvas.height-height-34;
+    ctx.fillStyle=["#5B2C83","#2980b9","#95a5a6"][index%3];
+    ctx.fillRect(x,y,barWidth,height);
+    ctx.fillStyle="#222";
+    ctx.fillText(row[labelKey],x,canvas.height-14);
+    ctx.fillText(row[valueKey],x,y-8);
+  });
+}
+
+function drawLineChart(id,rows,labelKey,valueKey){
+  const canvas=document.getElementById(id);
+  const ctx=canvas.getContext("2d");
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+
+  if(!rows.length){
+    ctx.fillText("No data",20,30);
+    return;
+  }
+
+  const max=Math.max(...rows.map(r=>r[valueKey]),1);
+  const step=rows.length>1 ? (canvas.width-50)/(rows.length-1) : 0;
+
+  ctx.strokeStyle="#5B2C83";
+  ctx.lineWidth=3;
+  ctx.beginPath();
+  rows.forEach((row,index)=>{
+    const x=25+index*step;
+    const y=canvas.height-35-(row[valueKey]/max)*(canvas.height-70);
+    if(index===0) ctx.moveTo(x,y);
+    else ctx.lineTo(x,y);
+  });
+  ctx.stroke();
+
+  rows.forEach((row,index)=>{
+    const x=25+index*step;
+    const y=canvas.height-35-(row[valueKey]/max)*(canvas.height-70);
+    ctx.fillStyle="#5B2C83";
+    ctx.beginPath();
+    ctx.arc(x,y,4,0,Math.PI*2);
+    ctx.fill();
+    ctx.fillStyle="#222";
+    ctx.fillText(row[labelKey].slice(5),x-18,canvas.height-12);
+  });
 }
 
 if(currentUser){
   load();
-  setInterval(load,5000);
+  setInterval(load,10000);
 }
 
 </script>
 
 </body>
-
 </html>

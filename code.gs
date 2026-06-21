@@ -5,13 +5,15 @@ const SHEETS = {
   PRODUCTS: "Products",
   ORDERS: "Orders",
   ORDER_ITEMS: "OrderItems",
+  DATA_EMPLOYEES: "DataEmployees",
 };
 
 const SHEET_HEADERS = {
   Users: ["id", "name", "username", "password", "role"],
   Products: ["productId", "categoryId", "productName", "price", "imageUrl", "categoryName"],
-  Orders: ["orderId", "braceletNo", "childName", "cashierName", "time", "status", "total", "kitchenStatus", "paymentStatus", "customerLeft", "archivedAt"],
+  Orders: ["orderId", "braceletNo", "childName", "cashierName", "time", "status", "total", "kitchenStatus", "paymentStatus", "customerLeft", "archivedAt", "dataEmployee", "childrenCount", "paymentMethod"],
   OrderItems: ["itemId", "orderId", "productId", "productName", "qty", "price", "total"],
+  DataEmployees: ["employeeId", "employeeName", "active"],
 };
 
 const CATEGORY_NAMES = {
@@ -40,6 +42,9 @@ function doGet(e) {
 
       case "getProducts":
         return jsonResponse(getProducts());
+
+      case "getDataEmployees":
+        return jsonResponse(getDataEmployees());
 
       case "getPendingOrders":
         return jsonResponse(getPendingOrders());
@@ -139,6 +144,46 @@ function getProducts() {
   }));
 }
 
+function getDataEmployees() {
+  const employeesSheet = getSheet(SHEETS.DATA_EMPLOYEES);
+  const employees = getRows(employeesSheet)
+    .filter((r) => r[1] && String(r[2] || "TRUE").toUpperCase() != "FALSE")
+    .map((r) => ({
+      id: r[0],
+      name: r[1],
+    }));
+
+  if (employees.length > 0) return employees;
+
+  const users = getRows(getSheet(SHEETS.USERS))
+    .filter((r) => r[1])
+    .map((r) => ({
+      id: r[0],
+      name: r[1],
+    }));
+
+  return users;
+}
+
+function syncDataEmployeesFromUsers() {
+  const employeesSheet = getSheet(SHEETS.DATA_EMPLOYEES);
+
+  if (employeesSheet.getLastRow() > 1) {
+    return { success: true, added: 0 };
+  }
+
+  const users = getRows(getSheet(SHEETS.USERS)).filter((r) => r[0] && r[1]);
+
+  if (users.length === 0) {
+    return { success: true, added: 0 };
+  }
+
+  const values = users.map((r) => [r[0], r[1], "TRUE"]);
+  employeesSheet.getRange(2, 1, values.length, values[0].length).setValues(values);
+
+  return { success: true, added: values.length };
+}
+
 /* =========================
    ORDERS
 ========================= */
@@ -181,6 +226,9 @@ function createOrder(body) {
     "Pending",
     "Unpaid",
     "",
+    "",
+    data.dataEmployee || "",
+    Math.max(1, toNumber(data.childrenCount || 1)),
     "",
   ]);
 
@@ -312,6 +360,7 @@ function updateOrderStatus(body) {
       } else if (status == "Paid") {
         sheet.getRange(rowNumber, 9).setValue("Paid");
         sheet.getRange(rowNumber, 6).setValue("Paid");
+        sheet.getRange(rowNumber, 14).setValue(data.paymentMethod || getPaymentMethod(current) || "Cash");
       } else {
         sheet.getRange(rowNumber, 6).setValue(status);
       }
@@ -449,6 +498,9 @@ function getInvoice(orderId) {
       paymentStatus: getPaymentStatus(order),
       customerLeft: isCustomerLeft(order),
       archivedAt: order[10] || "",
+      dataEmployee: order[11] || "",
+      childrenCount: Math.max(1, toNumber(order[12] || 1)),
+      paymentMethod: getPaymentMethod(order),
     },
     items: orderItems.map(mapItemRow),
   };
@@ -459,27 +511,62 @@ function getInvoice(orderId) {
 ========================= */
 
 function getDashboard() {
-  const sheet = getSheet(SHEETS.ORDERS);
-  const data = getRows(sheet);
+  const ss = SpreadsheetApp.openById(SHEET_ID);
+  const data = getRows(ss.getSheetByName(SHEETS.ORDERS));
+  const items = getRows(ss.getSheetByName(SHEETS.ORDER_ITEMS));
 
   let totalSales = 0;
   let pending = 0;
   const braceletMap = {};
+  const paymentMap = { Cash: 0, Visa: 0, Unspecified: 0 };
+  const paymentCountMap = { Cash: 0, Visa: 0, Unspecified: 0 };
+  const statusMap = {};
+  const cashierMap = {};
+  const dataEmployeeMap = {};
+  const dailyMap = {};
 
   data.forEach((r) => {
     const bracelet = r[1];
     const status = r[5];
     const total = toNumber(r[6]);
+    const paymentStatus = getPaymentStatus(r);
+    const paymentMethod = getPaymentMethod(r);
+    const cashier = r[3] || "Unknown";
+    const dataEmployee = r[11] || "Unassigned";
+    const dateKey = formatDateKey(r[4]);
 
-    totalSales += total;
+    if (paymentStatus == "Paid") {
+      totalSales += total;
+      paymentMap[paymentMethod] = (paymentMap[paymentMethod] || 0) + total;
+      paymentCountMap[paymentMethod] = (paymentCountMap[paymentMethod] || 0) + 1;
+    }
 
-    if (status != "Paid") pending++;
+    if (paymentStatus != "Paid") pending++;
+    statusMap[status || "Pending"] = (statusMap[status || "Pending"] || 0) + 1;
 
     if (!braceletMap[bracelet]) {
       braceletMap[bracelet] = 0;
     }
 
     braceletMap[bracelet] += total;
+    cashierMap[cashier] = (cashierMap[cashier] || 0) + total;
+    dataEmployeeMap[dataEmployee] = (dataEmployeeMap[dataEmployee] || 0) + total;
+    dailyMap[dateKey] = (dailyMap[dateKey] || 0) + total;
+  });
+
+  const productMap = {};
+
+  items.forEach((item) => {
+    const name = item[3] || "Unknown";
+    const qty = toNumber(item[4]);
+    const total = toNumber(item[6]);
+
+    if (!productMap[name]) {
+      productMap[name] = { product: name, qty: 0, total: 0 };
+    }
+
+    productMap[name].qty += qty;
+    productMap[name].total += total;
   });
 
   const topBracelets = Object.keys(braceletMap)
@@ -494,7 +581,23 @@ function getDashboard() {
     totalSales,
     ordersCount: data.length,
     pending,
+    paidOrders: data.filter((r) => getPaymentStatus(r) == "Paid").length,
+    unpaidOrders: data.filter((r) => getPaymentStatus(r) != "Paid").length,
+    archivedOrders: data.filter(isArchived).length,
+    leftUnpaid: data.filter((r) => isCustomerLeft(r) && getPaymentStatus(r) != "Paid").length,
+    paymentBreakdown: mapToList(paymentMap, "method"),
+    paymentCounts: mapToList(paymentCountMap, "method"),
+    statusBreakdown: mapToList(statusMap, "status"),
     topBracelets,
+    topProducts: Object.keys(productMap)
+      .map((k) => productMap[k])
+      .sort((a, b) => b.total - a.total)
+      .slice(0, 8),
+    cashierPerformance: mapToList(cashierMap, "name").sort((a, b) => b.total - a.total),
+    dataEmployeePerformance: mapToList(dataEmployeeMap, "name").sort((a, b) => b.total - a.total),
+    dailySales: Object.keys(dailyMap)
+      .sort()
+      .map((date) => ({ date, total: dailyMap[date] })),
   };
 }
 
@@ -630,6 +733,9 @@ function mapOrderRow(r) {
     paymentStatus: getPaymentStatus(r),
     customerLeft: isCustomerLeft(r),
     archivedAt: r[10] || "",
+    dataEmployee: r[11] || "",
+    childrenCount: Math.max(1, toNumber(r[12] || 1)),
+    paymentMethod: getPaymentMethod(r),
   };
 }
 
@@ -650,12 +756,33 @@ function getPaymentStatus(row) {
   return row[8] || (row[5] == "Paid" ? "Paid" : "Unpaid");
 }
 
+function getPaymentMethod(row) {
+  return row[13] || (getPaymentStatus(row) == "Paid" ? "Unspecified" : "");
+}
+
 function isCustomerLeft(row) {
   return row[9] === true || String(row[9]).toUpperCase() == "TRUE" || row[5] == "Left Unpaid";
 }
 
 function isArchived(row) {
   return !!row[10] || row[5] == "Archived";
+}
+
+function mapToList(map, keyName) {
+  return Object.keys(map).map((key) => ({
+    [keyName]: key,
+    total: map[key],
+  }));
+}
+
+function formatDateKey(value) {
+  const date = value instanceof Date ? value : new Date(value);
+
+  if (isNaN(date.getTime())) {
+    return "Unknown";
+  }
+
+  return Utilities.formatDate(date, Session.getScriptTimeZone(), "yyyy-MM-dd");
 }
 
 function jsonResponse(data) {

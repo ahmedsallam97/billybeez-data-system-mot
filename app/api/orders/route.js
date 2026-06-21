@@ -44,7 +44,7 @@ export async function POST(request) {
   }
 
   if (!body.dataEmployeeId) {
-    return NextResponse.json({ success: false, error: "Data employee is required" }, { status: 400 });
+    return NextResponse.json({ success: false, error: "Employee is required" }, { status: 400 });
   }
 
   if (!items.length) {

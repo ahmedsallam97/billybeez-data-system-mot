@@ -14,9 +14,12 @@ export default function AppShell({ title, user, children }) {
   return (
     <div className="shell">
       <header className="topbar">
-        <div>
-          <div className="brand">{title}</div>
-          <div className="muted">{user.name} · {user.role}</div>
+        <div className="brand-block">
+          <img src="/bb-logo.png" alt="Billy Beez" className="brand-logo" />
+          <div>
+            <div className="brand">{title}</div>
+            <div className="muted">{user.name} · {user.role}</div>
+          </div>
         </div>
         <nav className="nav">
           {(user.role === "ADMIN" || user.role === "MANAGER") && <Link href="/manager">Manager</Link>}

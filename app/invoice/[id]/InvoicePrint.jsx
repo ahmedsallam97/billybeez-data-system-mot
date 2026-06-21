@@ -10,7 +10,13 @@ export default function InvoicePrint({ order }) {
 
   return (
     <div className="invoice">
-      <h1>BillyBeez Data System MOT</h1>
+      <div className="invoice-head">
+        <img src="/bb-logo.png" alt="Billy Beez" className="invoice-logo" />
+        <div className="invoice-title">
+          <h1>BDS MOT Invoice</h1>
+          <div className="muted">{new Date(order.createdAt).toLocaleString()}</div>
+        </div>
+      </div>
       <div className="panel">
         <div>Order ID: <b>{order.id}</b></div>
         <div>Bracelet: <b>{order.braceletNo}</b></div>
@@ -25,7 +31,7 @@ export default function InvoicePrint({ order }) {
             <b>{item.total} EGP</b>
           </div>
         ))}
-        <div className="row"><span>Total</span><b>{order.total} EGP</b></div>
+        <div className="row invoice-total"><span>Total</span><b>{order.total} EGP</b></div>
       </div>
       <button className="no-print" onClick={() => window.print()}>Print</button>
     </div>

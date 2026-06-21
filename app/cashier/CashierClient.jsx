@@ -142,10 +142,10 @@ export default function CashierClient() {
         <h2>{editingOrder ? "تعديل الطلب" : "إضافة طلب جديد"}</h2>
         {editingOrder ? (
           <div className="summary">
-            <div>Order: <b>{editingOrder.id}</b></div>
-            <div>Bracelet: <b>{editingOrder.braceletNo}</b></div>
-            <div>Children: <b>{editingOrder.childNames}</b></div>
-            <div>Current Total: <b>{editingOrder.total} EGP</b></div>
+            <div className="meta-line"><span>Order</span><b>{editingOrder.id}</b></div>
+            <div className="meta-line"><span>Bracelet</span><b>{editingOrder.braceletNo}</b></div>
+            <div className="meta-line"><span>Children</span><b>{editingOrder.childNames}</b></div>
+            <div className="meta-line"><span>Current Total</span><b>{editingOrder.total} EGP</b></div>
             <div className="panel">
               {editingOrder.items.map((item) => (
                 <div className="row" key={item.id}><span>{item.name} x {item.qty}</span><b>{item.total} EGP</b></div>
@@ -160,6 +160,7 @@ export default function CashierClient() {
                 {[1, 2, 3, 4, 5, 6].map((count) => <option key={count} value={count}>{count} child</option>)}
               </select>
               <select value={dataEmployeeId} onChange={(event) => setDataEmployeeId(event.target.value)}>
+                <option value="">Employee</option>
                 {employees.map((employee) => <option key={employee.id} value={employee.id}>{employee.name}</option>)}
               </select>
               <select value={paymentMethod} onChange={(event) => setPaymentMethod(event.target.value)}>
@@ -194,7 +195,7 @@ export default function CashierClient() {
               />
               <div className="product-body">
                 <div className="product-name">{product.name}</div>
-                <div className="muted">{product.price} EGP</div>
+                <div className="product-price">{product.price} EGP</div>
               </div>
             </button>
           ))}
@@ -227,13 +228,13 @@ export default function CashierClient() {
           {orders.map((order) => (
             <div className="card" key={order.id}>
               <div className="row"><b>{order.id}</b><span className={`badge ${order.paymentStatus === "PAID" ? "paid" : "unpaid"}`}>{order.paymentStatus}</span></div>
-              <div>Bracelet: <b>{order.braceletNo}</b></div>
-              <div>Children: <b>{order.childNames}</b></div>
-              <div>Cashier: <b>{order.cashier || "-"}</b></div>
-              <div>Data Employee: <b>{order.dataEmployee || "-"}</b></div>
-              <div>Kitchen: <b>{order.kitchenStatus}</b></div>
-              <div>Payment Method: <b>{order.paymentMethod}</b></div>
-              <div>Total: <b>{order.total} EGP</b></div>
+              <div className="meta-line"><span>Bracelet</span><b>{order.braceletNo}</b></div>
+              <div className="meta-line"><span>Children</span><b>{order.childNames}</b></div>
+              <div className="meta-line"><span>Cashier</span><b>{order.cashier || "-"}</b></div>
+              <div className="meta-line"><span>Employee</span><b>{order.dataEmployee || "-"}</b></div>
+              <div className="meta-line"><span>Kitchen</span><b>{order.kitchenStatus}</b></div>
+              <div className="meta-line"><span>Payment Method</span><b>{order.paymentMethod}</b></div>
+              <div className="meta-line"><span>Total</span><b>{order.total} EGP</b></div>
               <div className="summary">
                 {order.items.length === 0 ? (
                   <div className="muted">No items</div>

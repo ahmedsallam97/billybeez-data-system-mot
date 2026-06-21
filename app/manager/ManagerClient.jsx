@@ -82,7 +82,7 @@ export default function ManagerClient() {
 
   return (
     <>
-      <section className="grid">
+      <section className="grid five">
         <Metric label="Total Paid Sales" value={`${data.totalSales} EGP`} />
         <Metric label="Orders" value={data.ordersCount} />
         <Metric label="Unpaid" value={data.unpaidOrders} />
@@ -115,10 +115,10 @@ export default function ManagerClient() {
                 <b>{order.id}</b>
                 <span className={`badge ${order.paymentStatus === "PAID" ? "paid" : "unpaid"}`}>{order.paymentStatus}</span>
               </div>
-              <div>Bracelet: <b>{order.braceletNo}</b></div>
-              <div>Children: <b>{order.childNames}</b></div>
-              <div>Method: <b>{order.paymentMethod}</b></div>
-              <div>Total: <b>{order.total} EGP</b></div>
+              <div className="meta-line"><span>Bracelet</span><b>{order.braceletNo}</b></div>
+              <div className="meta-line"><span>Children</span><b>{order.childNames}</b></div>
+              <div className="meta-line"><span>Method</span><b>{order.paymentMethod}</b></div>
+              <div className="meta-line"><span>Total</span><b>{order.total} EGP</b></div>
               <div className="actions">
                 <button onClick={() => setSelectedOrder(order)}>Details</button>
                 <button className="secondary" onClick={() => window.open(`/invoice/${order.id}`, "_blank")}>Print</button>
@@ -152,7 +152,7 @@ export default function ManagerClient() {
 
       <section className="grid three">
         <Report title="Cashier Performance" rows={data.cashierPerformance} labelKey="name" valueKey="total" suffix=" EGP" />
-        <Report title="Data Employees" rows={data.dataEmployeePerformance} labelKey="name" valueKey="total" suffix=" EGP" />
+        <Report title="Employees" rows={data.dataEmployeePerformance} labelKey="name" valueKey="total" suffix=" EGP" />
         <Report title="Top Bracelets" rows={data.topBracelets} labelKey="bracelet" valueKey="total" suffix=" EGP" />
       </section>
 
@@ -165,14 +165,14 @@ export default function ManagerClient() {
         <div className="panel">
           <h2>{selectedOrder.id}</h2>
           <div className="grid two">
-            <div>Bracelet: <b>{selectedOrder.braceletNo}</b></div>
-            <div>Children: <b>{selectedOrder.childNames}</b></div>
-            <div>Cashier: <b>{selectedOrder.cashier}</b></div>
-            <div>Data Employee: <b>{selectedOrder.dataEmployee}</b></div>
-            <div>Kitchen: <b>{selectedOrder.kitchenStatus}</b></div>
-            <div>Payment: <b>{selectedOrder.paymentStatus} / {selectedOrder.paymentMethod}</b></div>
-            <div>Status: <b>{selectedOrder.status}</b></div>
-            <div>Archived: <b>{selectedOrder.archivedAt ? "Yes" : "No"}</b></div>
+            <div className="meta-line"><span>Bracelet</span><b>{selectedOrder.braceletNo}</b></div>
+            <div className="meta-line"><span>Children</span><b>{selectedOrder.childNames}</b></div>
+            <div className="meta-line"><span>Cashier</span><b>{selectedOrder.cashier}</b></div>
+            <div className="meta-line"><span>Employee</span><b>{selectedOrder.dataEmployee}</b></div>
+            <div className="meta-line"><span>Kitchen</span><b>{selectedOrder.kitchenStatus}</b></div>
+            <div className="meta-line"><span>Payment</span><b>{selectedOrder.paymentStatus} / {selectedOrder.paymentMethod}</b></div>
+            <div className="meta-line"><span>Status</span><b>{selectedOrder.status}</b></div>
+            <div className="meta-line"><span>Archived</span><b>{selectedOrder.archivedAt ? "Yes" : "No"}</b></div>
           </div>
           <div className="panel">
             {selectedOrder.items.map((item) => (

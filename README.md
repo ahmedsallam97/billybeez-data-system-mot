@@ -73,7 +73,7 @@ Supported roles are `Manager`, `Cashier`, and `Delivery`. `Admin` is also treate
 | itemId | orderId | productId | productName | qty | price | total |
 | ------ | ------- | --------- | ----------- | --- | ----- | ----- |
 
-### الموظفين
+### Employees
 
 | employeeId | employeeName | active |
 | ---------- | ------------ | ------ |

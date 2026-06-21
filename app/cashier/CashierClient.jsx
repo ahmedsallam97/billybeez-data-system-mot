@@ -187,7 +187,11 @@ export default function CashierClient() {
         <div className="products">
           {visibleProducts.map((product) => (
             <button className="card product" key={product.id} onClick={() => addToCart(product)}>
-              <img src={product.imageUrl || "https://placehold.co/320x240?text=Product"} alt="" />
+              <img
+                src={product.imageUrl || "https://placehold.co/320x240?text=Product"}
+                alt={product.name}
+                onError={(event) => { event.currentTarget.src = "https://placehold.co/320x240?text=Product"; }}
+              />
               <div className="product-body">
                 <div className="product-name">{product.name}</div>
                 <div className="muted">{product.price} EGP</div>

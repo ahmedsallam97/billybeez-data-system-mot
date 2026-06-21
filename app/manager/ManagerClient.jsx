@@ -5,6 +5,10 @@ import { useEffect, useMemo, useState } from "react";
 export default function ManagerClient() {
   const [data, setData] = useState(null);
   const [filter, setFilter] = useState("ALL");
+  const [archiveFilter, setArchiveFilter] = useState("ALL");
+  const [query, setQuery] = useState("");
+  const [fromDate, setFromDate] = useState("");
+  const [toDate, setToDate] = useState("");
   const [selectedOrder, setSelectedOrder] = useState(null);
 
   useEffect(() => {
@@ -17,11 +21,36 @@ export default function ManagerClient() {
   }
 
   const orders = useMemo(() => {
-    const rows = data?.orders || [];
-    if (filter === "UNPAID") return rows.filter((order) => order.paymentStatus !== "PAID");
-    if (filter === "CASH" || filter === "VISA") return rows.filter((order) => order.paymentStatus === "PAID" && order.paymentMethod === filter);
+    let rows = data?.orders || [];
+
+    if (filter === "UNPAID") rows = rows.filter((order) => order.paymentStatus !== "PAID");
+    if (filter === "CASH" || filter === "VISA") rows = rows.filter((order) => order.paymentStatus === "PAID" && order.paymentMethod === filter);
+    if (archiveFilter === "ACTIVE") rows = rows.filter((order) => !order.archivedAt);
+    if (archiveFilter === "ARCHIVED") rows = rows.filter((order) => order.archivedAt);
+
+    const search = query.trim().toLowerCase();
+    if (search) {
+      rows = rows.filter((order) => [
+        order.id,
+        order.braceletNo,
+        order.childNames,
+        order.cashier,
+        order.dataEmployee,
+      ].some((value) => String(value || "").toLowerCase().includes(search)));
+    }
+
+    if (fromDate) {
+      rows = rows.filter((order) => new Date(order.createdAt) >= new Date(fromDate));
+    }
+
+    if (toDate) {
+      const end = new Date(toDate);
+      end.setHours(23, 59, 59, 999);
+      rows = rows.filter((order) => new Date(order.createdAt) <= end);
+    }
+
     return rows;
-  }, [data, filter]);
+  }, [data, filter, archiveFilter, query, fromDate, toDate]);
 
   async function payOrder(orderId, paymentMethod) {
     const res = await fetch(`/api/orders/${orderId}/pay`, {
@@ -67,6 +96,18 @@ export default function ManagerClient() {
             <button key={item} className={filter === item ? "active" : ""} onClick={() => setFilter(item)}>{item}</button>
           ))}
         </div>
+        <div className="tabs">
+          {["ALL", "ACTIVE", "ARCHIVED"].map((item) => (
+            <button key={item} className={archiveFilter === item ? "active" : ""} onClick={() => setArchiveFilter(item)}>{item}</button>
+          ))}
+        </div>
+        <div className="form-grid">
+          <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search order, bracelet, child, cashier" />
+          <input type="date" value={fromDate} onChange={(event) => setFromDate(event.target.value)} />
+          <input type="date" value={toDate} onChange={(event) => setToDate(event.target.value)} />
+          <button className="secondary" onClick={() => { setQuery(""); setFromDate(""); setToDate(""); }}>Clear Filters</button>
+        </div>
+        <div className="row"><span>Visible orders</span><b>{orders.length}</b></div>
         <div className="grid three">
           {orders.map((order) => (
             <div className="card" key={order.id}>
@@ -93,6 +134,7 @@ export default function ManagerClient() {
           {data.paymentBreakdown.map((row) => (
             <div className="row" key={row.method}><span>{row.method} ({row.count})</span><b>{row.total} EGP</b></div>
           ))}
+          <MiniBars rows={data.paymentBreakdown} labelKey="method" valueKey="total" />
         </div>
         <div className="panel">
           <h3>Top Products</h3>
@@ -112,6 +154,11 @@ export default function ManagerClient() {
         <Report title="Cashier Performance" rows={data.cashierPerformance} labelKey="name" valueKey="total" suffix=" EGP" />
         <Report title="Data Employees" rows={data.dataEmployeePerformance} labelKey="name" valueKey="total" suffix=" EGP" />
         <Report title="Top Bracelets" rows={data.topBracelets} labelKey="bracelet" valueKey="total" suffix=" EGP" />
+      </section>
+
+      <section className="panel">
+        <h3>Daily Sales</h3>
+        <MiniBars rows={data.dailySales} labelKey="date" valueKey="total" />
       </section>
 
       {selectedOrder && (
@@ -175,6 +222,25 @@ function Report({ title, rows, labelKey, valueKey, suffix = "" }) {
           <b>{row[valueKey]}{suffix}</b>
         </div>
       ))}
+    </div>
+  );
+}
+
+function MiniBars({ rows, labelKey, valueKey }) {
+  const max = Math.max(...rows.map((row) => Number(row[valueKey]) || 0), 1);
+
+  return (
+    <div className="stack">
+      {rows.map((row) => {
+        const value = Number(row[valueKey]) || 0;
+        return (
+          <div className="bar-row" key={row[labelKey]}>
+            <span>{row[labelKey]}</span>
+            <div className="bar-track"><div className="bar-fill" style={{ width: `${Math.max(4, (value / max) * 100)}%` }} /></div>
+            <b>{value}</b>
+          </div>
+        );
+      })}
     </div>
   );
 }

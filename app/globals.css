@@ -49,6 +49,42 @@ h1,h2,h3{color:var(--bb-purple);font-weight:900;margin-top:0}
 .grid.two{grid-template-columns:repeat(2,1fr)}
 .grid.three{grid-template-columns:repeat(3,1fr)}
 .grid.five{grid-template-columns:repeat(5,1fr)}
+.honey-grid{gap:16px;background:
+  linear-gradient(30deg,rgba(248,200,0,.12) 12%,transparent 12.5%,transparent 87%,rgba(248,200,0,.12) 87.5%,rgba(248,200,0,.12)),
+  linear-gradient(150deg,rgba(48,24,72,.08) 12%,transparent 12.5%,transparent 87%,rgba(48,24,72,.08) 87.5%,rgba(48,24,72,.08));
+  background-size:36px 62px;
+  border-radius:8px;
+  padding:14px;
+}
+.order-cell{
+  position:relative;
+  isolation:isolate;
+  padding:22px 20px;
+  border:0;
+  border-radius:0;
+  clip-path:polygon(18px 0,calc(100% - 18px) 0,100% 50%,calc(100% - 18px) 100%,18px 100%,0 50%);
+  background:linear-gradient(135deg,#fff 0%,#fffdf4 72%,#f4ecff 100%);
+  box-shadow:none;
+}
+.order-cell::before{
+  content:"";
+  position:absolute;
+  inset:0;
+  z-index:-1;
+  clip-path:inherit;
+  background:linear-gradient(90deg,var(--bb-purple),var(--bb-red),var(--bb-sky),var(--bb-orange));
+  opacity:.2;
+}
+.order-cell::after{
+  content:"";
+  position:absolute;
+  inset:3px;
+  z-index:-1;
+  clip-path:inherit;
+  background:linear-gradient(135deg,#fff 0%,#fffdf4 72%,#f4ecff 100%);
+}
+.order-cell .row:first-child{padding-top:0}
+.order-cell .actions{justify-content:flex-end}
 .metric{border-top:6px solid var(--bb-purple)}
 .metric:nth-child(2){border-top-color:var(--bb-red)}
 .metric:nth-child(3){border-top-color:var(--bb-sky)}

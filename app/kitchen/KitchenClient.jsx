@@ -60,9 +60,9 @@ export default function KitchenClient() {
           <button className={showArchive ? "secondary" : ""} onClick={() => setShowArchive(true)}>Archive</button>
         </div>
       </div>
-      <div className="grid three">
+      <div className="grid three honey-grid">
         {orders.map((order) => (
-          <div className="card" key={order.id}>
+          <div className="card order-cell" key={order.id}>
             <div className="row">
               <b>{order.id}</b>
               <span className={`badge ${order.paymentStatus === "PAID" ? "paid" : "unpaid"}`}>{order.paymentStatus}</span>

@@ -108,9 +108,9 @@ export default function ManagerClient() {
           <button className="secondary" onClick={() => { setQuery(""); setFromDate(""); setToDate(""); }}>Clear Filters</button>
         </div>
         <div className="row"><span>Visible orders</span><b>{orders.length}</b></div>
-        <div className="grid three">
+        <div className="grid three honey-grid">
           {orders.map((order) => (
-            <div className="card" key={order.id}>
+            <div className="card order-cell" key={order.id}>
               <div className="row">
                 <b>{order.id}</b>
                 <span className={`badge ${order.paymentStatus === "PAID" ? "paid" : "unpaid"}`}>{order.paymentStatus}</span>

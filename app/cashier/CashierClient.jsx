@@ -224,9 +224,9 @@ export default function CashierClient() {
 
       <section className="panel">
         <h2>الطلبات الحالية</h2>
-        <div className="grid three">
+        <div className="grid three honey-grid">
           {orders.map((order) => (
-            <div className="card" key={order.id}>
+            <div className="card order-cell" key={order.id}>
               <div className="row"><b>{order.id}</b><span className={`badge ${order.paymentStatus === "PAID" ? "paid" : "unpaid"}`}>{order.paymentStatus}</span></div>
               <div className="meta-line"><span>Bracelet</span><b>{order.braceletNo}</b></div>
               <div className="meta-line"><span>Children</span><b>{order.childNames}</b></div>

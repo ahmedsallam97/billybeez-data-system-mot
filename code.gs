@@ -310,20 +310,10 @@ function getKitchenOrders(params) {
   const orders = getRows(ss.getSheetByName(SHEETS.ORDERS));
   const items = getRows(ss.getSheetByName(SHEETS.ORDER_ITEMS));
 
-  return orders
-    .filter((r) => includeArchived ? isArchived(r) : !isArchived(r))
-    .map((r) => {
-      const order = mapOrderRow(r);
-      const orderItems = items
-        .filter((i) => i[1] == order.orderId)
-        .map(mapItemRow);
-
-      return {
-        ...order,
-        items: orderItems,
-      };
-    })
-    .reverse();
+  return buildOrdersWithItems(
+    orders.filter((r) => includeArchived ? isArchived(r) : !isArchived(r)),
+    items
+  ).reverse();
 }
 
 function getOrderDetails(orderId) {
@@ -621,6 +611,7 @@ function getDashboard() {
     dailySales: Object.keys(dailyMap)
       .sort()
       .map((date) => ({ date, total: dailyMap[date] })),
+    orders: buildOrdersWithItems(data, items).reverse(),
   };
 }
 
@@ -768,6 +759,29 @@ function mapOrderRow(r) {
     childrenCount: Math.max(1, toNumber(r[12] || 1)),
     paymentMethod: getPaymentMethod(r),
   };
+}
+
+function buildOrdersWithItems(orders, items) {
+  const itemMap = {};
+
+  items.forEach((item) => {
+    const orderId = item[1];
+
+    if (!itemMap[orderId]) {
+      itemMap[orderId] = [];
+    }
+
+    itemMap[orderId].push(mapItemRow(item));
+  });
+
+  return orders.map((row) => {
+    const order = mapOrderRow(row);
+
+    return {
+      ...order,
+      items: itemMap[order.orderId] || [],
+    };
+  });
 }
 
 function mapItemRow(i) {

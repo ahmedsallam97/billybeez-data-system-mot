@@ -29,7 +29,7 @@ function getRoleHome(role) {
 }
 
 function redirectToRoleHome(user) {
-  window.location.href = getRoleHome(user && user.role);
+  window.location.replace(getRoleHome(user && user.role));
 }
 
 function requireLogin() {

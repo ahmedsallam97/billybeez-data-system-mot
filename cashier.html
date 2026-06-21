@@ -489,7 +489,7 @@ async function addItemsToOrder(){
 }
 
 async function loadOrders(){
-  const res=await fetch(API_URL+"?action=getOrders");
+  const res=await fetch(API_URL+"?action=getKitchenOrders&archived=false");
   const orders=await res.json();
   const box=document.getElementById("ordersBox");
   box.innerHTML="";
@@ -500,8 +500,7 @@ async function loadOrders(){
   }
 
   for(const order of orders){
-    const details=await fetchOrderDetails(order.orderId);
-    box.appendChild(renderOrderCard(details && details.success ? details.order : order, details && details.items ? details.items : []));
+    box.appendChild(renderOrderCard(order, order.items || []));
   }
 }
 

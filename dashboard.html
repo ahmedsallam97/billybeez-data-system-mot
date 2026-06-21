@@ -31,9 +31,29 @@ body{font-family:Arial,sans-serif;margin:0;background:#f6f7f9;color:#222}
 .row:last-child{border-bottom:0}
 canvas{width:100%;height:260px;border:1px solid #eee;border-radius:8px;background:#fff}
 .note{background:#fff8e1;border:1px solid #f1d27a;border-radius:8px;padding:10px;margin-top:12px;color:#5f4700}
+.orders-toolbar{display:flex;justify-content:space-between;gap:10px;align-items:center;margin-bottom:10px}
+.orders-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+.order-card{background:#fff;border:1px solid #e6e6e6;border-radius:8px;padding:12px;box-shadow:0 2px 8px rgba(0,0,0,.05)}
+.order-head{display:flex;justify-content:space-between;gap:8px;border-bottom:1px solid #eee;padding-bottom:8px;margin-bottom:8px}
+.order-meta{display:grid;grid-template-columns:1fr 1fr;gap:6px;font-size:13px;color:#444}
+.badge{display:inline-block;border-radius:999px;padding:4px 8px;background:#eef2f7;color:#2c3e50;font-weight:bold;font-size:12px}
+.badge.unpaid{background:#fdecea;color:#c0392b}
+.badge.paid{background:#eafaf1;color:#1e8449}
+.order-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+.orders-toolbar button,.order-actions button,.modal-actions button{border:0;border-radius:8px;padding:9px 12px;color:#fff;cursor:pointer;background:#5B2C83}
+.orders-toolbar .secondary,.order-actions .secondary,.modal-actions .secondary{background:#2c3e50}
+.modal{position:fixed;inset:0;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;padding:14px;z-index:20}
+.modal.hidden{display:none}
+.modal-box{background:#fff;border-radius:8px;max-width:720px;width:100%;max-height:90vh;overflow:auto;padding:14px}
+.modal-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:10px 0}
+.items{background:#fafafa;border-radius:8px;padding:8px;margin-top:8px}
+.item-line{display:flex;justify-content:space-between;gap:8px;padding:6px 0;border-bottom:1px solid #eee}
+.item-line:last-child{border-bottom:0}
+.empty{text-align:center;color:#777;padding:16px}
+select{padding:10px;border:1px solid #ddd;border-radius:8px;background:#fff}
 
 @media(max-width:900px){
-  .grid,.charts,.tables{grid-template-columns:1fr}
+  .grid,.charts,.tables,.orders-grid,.modal-grid{grid-template-columns:1fr}
   .logout,.history{position:static;margin-top:8px}
 }
 
@@ -89,6 +109,24 @@ canvas{width:100%;height:260px;border:1px solid #eee;border-radius:8px;backgroun
   <div class="panel"><h3>Manager Actions</h3><div id="actions"></div></div>
 </div>
 
+<div class="panel">
+  <div class="orders-toolbar">
+    <h3 id="ordersTitle">Orders</h3>
+    <button onclick="load()">Refresh</button>
+  </div>
+  <div class="orders-grid" id="managerOrders"></div>
+</div>
+
+</div>
+
+<div class="modal hidden" id="orderModal">
+  <div class="modal-box">
+    <div class="orders-toolbar">
+      <h3 id="modalTitle">Order Details</h3>
+      <button class="secondary" onclick="closeOrderModal()">Close</button>
+    </div>
+    <div id="modalContent"></div>
+  </div>
 </div>
 
 <script src="config.js"></script>
@@ -99,6 +137,7 @@ canvas{width:100%;height:260px;border:1px solid #eee;border-radius:8px;backgroun
 const currentUser=requireRole(["manager","admin"]);
 let dashboardData=null;
 let filter="All";
+let selectedOrder=null;
 
 function setFilter(value,button){
   filter=value;
@@ -137,6 +176,7 @@ function render(){
   renderRows("statuses",d.statusBreakdown || [],"status","total","");
   renderRows("topBracelets",d.topBracelets || [],"bracelet","total"," EGP");
   renderActions();
+  renderManagerOrders();
 
   drawBarChart("paymentChart",d.paymentBreakdown || [],"method","total");
   drawLineChart("dailyChart",d.dailySales || [],"date","total");
@@ -182,6 +222,132 @@ function renderActions(){
     <div class="row"><span>Paid orders</span><b>${dashboardData.paidOrders || 0}</b></div>
     <div class="row"><span>Unpaid orders</span><b>${dashboardData.unpaidOrders || 0}</b></div>
   `;
+}
+
+function getFilteredOrders(){
+  const orders=(dashboardData && dashboardData.orders) || [];
+
+  if(filter==="Unpaid"){
+    return orders.filter(order=>order.paymentStatus!=="Paid");
+  }
+
+  if(filter==="Cash" || filter==="Visa"){
+    return orders.filter(order=>order.paymentStatus==="Paid" && order.paymentMethod===filter);
+  }
+
+  return orders;
+}
+
+function renderManagerOrders(){
+  const box=document.getElementById("managerOrders");
+  const orders=getFilteredOrders();
+  document.getElementById("ordersTitle").innerText=filter==="All" ? "Orders" : filter+" Orders";
+  box.innerHTML="";
+
+  if(!orders.length){
+    box.innerHTML="<div class='empty'>No orders found</div>";
+    return;
+  }
+
+  orders.slice(0,60).forEach(order=>{
+    const paymentClass=order.paymentStatus==="Paid" ? "paid" : "unpaid";
+    const itemsCount=(order.items || []).reduce((sum,item)=>sum+(Number(item.qty) || 0),0);
+    const card=document.createElement("div");
+    card.className="order-card";
+    card.innerHTML=`
+      <div class="order-head">
+        <b>${order.orderId}</b>
+        <span class="badge ${paymentClass}">${order.paymentStatus}</span>
+      </div>
+      <div class="order-meta">
+        <span>Bracelet: <b>${order.bracelet || ""}</b></span>
+        <span>Total: <b>${order.total} EGP</b></span>
+        <span>Child: <b>${order.childName || ""}</b></span>
+        <span>Items: <b>${itemsCount}</b></span>
+        <span>Kitchen: <b>${order.kitchenStatus || ""}</b></span>
+        <span>Method: <b>${order.paymentMethod || "-"}</b></span>
+      </div>
+      <div class="order-actions">
+        <button onclick="openOrderModal('${order.orderId}')">Details</button>
+        <button class="secondary" onclick="printInvoice('${order.orderId}')">Print Invoice</button>
+      </div>
+    `;
+    box.appendChild(card);
+  });
+}
+
+function openOrderModal(orderId){
+  selectedOrder=((dashboardData && dashboardData.orders) || []).find(order=>order.orderId===orderId);
+
+  if(!selectedOrder) return;
+
+  const items=(selectedOrder.items || []).length
+    ? selectedOrder.items.map(item=>`
+      <div class="item-line">
+        <span>${item.name} x ${item.qty}</span>
+        <span>${item.total} EGP</span>
+      </div>
+    `).join("")
+    : "<div class='empty'>No items</div>";
+
+  document.getElementById("modalTitle").innerText=selectedOrder.orderId;
+  document.getElementById("modalContent").innerHTML=`
+    <div class="modal-grid">
+      <div>Bracelet: <b>${selectedOrder.bracelet || ""}</b></div>
+      <div>Children: <b>${selectedOrder.childName || ""}</b></div>
+      <div>Cashier: <b>${selectedOrder.cashier || ""}</b></div>
+      <div>Data Employee: <b>${selectedOrder.dataEmployee || "-"}</b></div>
+      <div>Kitchen Status: <b>${selectedOrder.kitchenStatus || ""}</b></div>
+      <div>Payment Status: <b>${selectedOrder.paymentStatus || ""}</b></div>
+      <div>Payment Method: <b>${selectedOrder.paymentMethod || "-"}</b></div>
+      <div>Total: <b>${selectedOrder.total} EGP</b></div>
+      <div>Time: <b>${selectedOrder.time || ""}</b></div>
+      <div>Archived: <b>${selectedOrder.archivedAt ? "Yes" : "No"}</b></div>
+    </div>
+    <label>Change payment method</label>
+    <select id="managerPaymentMethod">
+      <option value="Cash" ${selectedOrder.paymentMethod==="Cash" ? "selected" : ""}>Cash</option>
+      <option value="Visa" ${selectedOrder.paymentMethod==="Visa" ? "selected" : ""}>Visa</option>
+    </select>
+    <div class="items">${items}</div>
+    <div class="modal-actions order-actions">
+      <button onclick="savePaymentMethod()">Save Payment</button>
+      <button class="secondary" onclick="printInvoice('${selectedOrder.orderId}')">Print Invoice</button>
+    </div>
+  `;
+  document.getElementById("orderModal").classList.remove("hidden");
+}
+
+function closeOrderModal(){
+  selectedOrder=null;
+  document.getElementById("orderModal").classList.add("hidden");
+}
+
+async function savePaymentMethod(){
+  if(!selectedOrder) return;
+
+  const paymentMethod=document.getElementById("managerPaymentMethod").value || "Cash";
+  const res=await fetch(API_URL+"?action=updateOrderStatus",{
+    method:"POST",
+    body:JSON.stringify({
+      orderId:selectedOrder.orderId,
+      status:"Paid",
+      paymentMethod:paymentMethod
+    })
+  });
+  const data=await res.json();
+
+  if(!data.success){
+    alert(data.error || "Payment update failed");
+    return;
+  }
+
+  closeOrderModal();
+  await load();
+}
+
+function printInvoice(orderId){
+  window.open("invoice.html?id="+orderId,"_blank");
 }
 
 function drawBarChart(id,rows,labelKey,valueKey){

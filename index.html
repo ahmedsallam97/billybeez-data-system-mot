@@ -42,10 +42,15 @@ placeholder="كلمة المرور">
 <script src="config.js"></script>
 <script src="auth.js"></script>
 <script>
-const existingUser=getCurrentUser();
-if(existingUser){
-  redirectToRoleHome(existingUser);
+function redirectLoggedInUser(){
+  const existingUser=getCurrentUser();
+  if(existingUser){
+    redirectToRoleHome(existingUser);
+  }
 }
+
+redirectLoggedInUser();
+window.addEventListener("pageshow",redirectLoggedInUser);
 </script>
 <script src="app.js"></script>
 

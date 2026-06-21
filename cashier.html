@@ -403,12 +403,28 @@ function renderOrderCard(order,items){
     </div>
     <div>Cashier: ${order.cashier || ""}</div>
     <div>Total now: <b>${order.total || 0} EGP</b></div>
+    ${order.customerLeft && order.paymentStatus!=="Paid" ? "<div class='message'>العميل خرج ولسه متعملش تم الدفع</div>" : ""}
     <div class="items">${itemHtml}</div>
-    <button class="danger" onclick="showHome()">خروج</button>
+    <button class="danger" onclick="markCustomerLeft('${order.orderId}')">تم الخروج</button>
     <button class="primary" onclick="showOrderForm('${order.orderId}')">تعديل على الأوردر</button>
   `;
 
   return card;
+}
+
+async function markCustomerLeft(orderId){
+  const res=await fetch(API_URL+"?action=markCustomerLeft",{
+    method:"POST",
+    body:JSON.stringify({orderId})
+  });
+  const data=await res.json();
+
+  if(!data.success){
+    alert(data.error || "Update failed");
+    return;
+  }
+
+  await loadOrders();
 }
 
 if(currentUser){

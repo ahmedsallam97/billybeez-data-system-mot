@@ -3,29 +3,63 @@
 
 <head>
 <meta charset="UTF-8">
-<title>Delivery</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Kitchen Dashboard</title>
 
 <style>
 
-body{font-family:Arial;margin:0;background:#f5f5f5}
-.header{background:#e74c3c;color:#fff;padding:15px;text-align:center}
-.container{padding:15px}
+body{font-family:Arial,sans-serif;margin:0;background:#fff;color:#222}
+.header{background:#2c3e50;color:#fff;padding:14px;text-align:center;position:sticky;top:0;z-index:5}
+.header-title{font-size:20px;font-weight:bold}
+.logout{position:absolute;left:12px;top:9px;background:#e74c3c;color:#fff;border:0;border-radius:8px;padding:8px 14px;cursor:pointer}
+.container{padding:14px;max-width:1180px;margin:0 auto}
+.tabs{display:flex;gap:8px;margin-bottom:14px}
+.tabs button{border:1px solid #ddd;background:#fff;color:#333;border-radius:8px;padding:10px 14px;cursor:pointer}
+.tabs button.active{background:#2c3e50;color:#fff;border-color:#2c3e50}
+.orders-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:12px}
+.order{border:1px solid #e6e6e6;border-radius:8px;background:#fff;padding:12px;box-shadow:0 2px 8px rgba(0,0,0,.06)}
+.order.warning{border-color:#e74c3c;background:#fff5f5}
+.order.archived{background:#f8f8f8}
+.order-top{display:flex;justify-content:space-between;gap:8px;border-bottom:1px solid #eee;padding-bottom:8px;margin-bottom:8px}
+.status{font-weight:bold;color:#2c3e50}
+.warning-text{background:#e74c3c;color:#fff;padding:8px;border-radius:8px;margin:8px 0;text-align:center;font-weight:bold}
+.details{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:8px}
+.items{background:#fafafa;border-radius:8px;padding:8px;margin-top:8px}
+.item-line{display:flex;justify-content:space-between;gap:8px;padding:5px 0;border-bottom:1px solid #eee}
+.item-line:last-child{border-bottom:0}
+.actions{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:10px}
+button{border:0;border-radius:8px;padding:10px;cursor:pointer;color:#fff}
+.delivered{background:#27ae60}
+.paid{background:#2980b9}
+.archive{background:#5B2C83}
+.disabled{opacity:.55}
+.empty{text-align:center;color:#777;padding:18px}
 
-.order{background:#fff;padding:10px;margin-bottom:10px;border-radius:10px}
-
-button{width:100%;padding:10px;border:0;margin-top:5px;color:#fff;border-radius:8px}
-.del{background:#27ae60}
-.pay{background:#2980b9}
+@media(max-width:800px){
+  .orders-grid,.details,.actions{grid-template-columns:1fr}
+  .logout{position:static;margin-top:8px}
+}
 
 </style>
-
 </head>
 
 <body>
 
-<div class="header">Delivery System</div>
+<div class="header">
+  <div class="header-title">Kitchen Dashboard</div>
+  <button class="logout" onclick="logout()">خروج</button>
+</div>
 
-<div class="container" id="orders"></div>
+<div class="container">
+
+<div class="tabs">
+  <button id="activeTab" class="active" onclick="switchTab(false)">الطلبات الحالية</button>
+  <button id="archiveTab" onclick="switchTab(true)">الأرشيف</button>
+</div>
+
+<div class="orders-grid" id="orders"></div>
+
+</div>
 
 <script src="config.js"></script>
 <script src="auth.js"></script>
@@ -33,75 +67,134 @@ button{width:100%;padding:10px;border:0;margin-top:5px;color:#fff;border-radius:
 <script>
 
 const currentUser=requireRole(["delivery","manager","admin"]);
+let showingArchive=false;
+
+function switchTab(archive){
+  showingArchive=archive;
+  document.getElementById("activeTab").classList.toggle("active",!archive);
+  document.getElementById("archiveTab").classList.toggle("active",archive);
+  load();
+}
 
 async function load(){
+  const res=await fetch(API_URL+"?action=getKitchenOrders&archived="+showingArchive);
+  const data=await res.json();
+  const box=document.getElementById("orders");
+  box.innerHTML="";
 
-const res=await fetch(API_URL+"?action=getPendingOrders");
-const data=await res.json();
+  if(!Array.isArray(data) || data.length===0){
+    box.innerHTML="<div class='empty'>No orders found</div>";
+    return;
+  }
 
-let box=document.getElementById("orders");
-box.innerHTML="";
-
-data.forEach(o=>{
-
-let div=document.createElement("div");
-div.className="order";
-
-div.innerHTML=`
-<b>${o.orderId}</b><br>
-${o.childName}<br>
-${o.total} EGP
-`;
-
-let b1=document.createElement("button");
-b1.className="del";
-b1.innerText="Delivered";
-b1.onclick=()=>update(o.orderId,"Delivered");
-
-let b2=document.createElement("button");
-b2.className="pay";
-b2.innerText="Paid";
-b2.onclick = async ()=>{
-
-await update(o.orderId,"Paid");
-
-window.open("invoice.html?id="+o.orderId,"_blank");
-
-};
-  
-div.appendChild(b1);
-div.appendChild(b2);
-
-box.appendChild(div);
-
-});
-
+  data.forEach(order=>{
+    box.appendChild(renderOrder(order));
+  });
 }
 
-async function update(id,status){
+function renderOrder(order){
+  const div=document.createElement("div");
+  const needsPayment=order.customerLeft && order.paymentStatus!=="Paid";
+  div.className="order"+(needsPayment ? " warning" : "")+(showingArchive ? " archived" : "");
 
-const res=await fetch(API_URL+"?action=updateOrderStatus",{
-method:"POST",
-body:JSON.stringify({orderId:id,status})
-});
+  const items=order.items && order.items.length
+    ? order.items.map(i=>`
+      <div class="item-line">
+        <span>${i.name} x ${i.qty}</span>
+        <span>${i.total} EGP</span>
+      </div>
+    `).join("")
+    : "<div class='empty'>No items</div>";
 
-const data=await res.json();
+  div.innerHTML=`
+    <div class="order-top">
+      <div>
+        <b>${order.orderId}</b><br>
+        ${order.childName} - Bracelet ${order.bracelet}
+      </div>
+      <div class="status">${order.status}</div>
+    </div>
 
-if(!data.success){
-alert(data.error || "Update failed");
-return;
+    ${needsPayment ? "<div class='warning-text'>تنبيه: العميل خرج ولسه متعملش تم الدفع</div>" : ""}
+
+    <div class="details">
+      <div>Cashier: <b>${order.cashier || ""}</b></div>
+      <div>Total: <b>${order.total} EGP</b></div>
+      <div>Kitchen: <b>${order.kitchenStatus}</b></div>
+      <div>Payment: <b>${order.paymentStatus}</b></div>
+    </div>
+
+    <div class="items">${items}</div>
+
+    ${showingArchive ? `<div class="empty">Archived at: ${order.archivedAt || ""}</div>` : renderActions(order)}
+  `;
+
+  return div;
 }
 
-load();
+function renderActions(order){
+  const deliveredClass=order.kitchenStatus==="Delivered" ? "delivered disabled" : "delivered";
+  const paidClass=order.paymentStatus==="Paid" ? "paid disabled" : "paid";
+  const canArchive=order.kitchenStatus==="Delivered" && order.paymentStatus==="Paid";
 
+  return `
+    <div class="actions">
+      <button class="${deliveredClass}" onclick="markDelivered('${order.orderId}')" ${order.kitchenStatus==="Delivered" ? "disabled" : ""}>تم التسليم</button>
+      <button class="${paidClass}" onclick="markPaid('${order.orderId}')" ${order.paymentStatus==="Paid" ? "disabled" : ""}>تم الدفع</button>
+      <button class="archive ${canArchive ? "" : "disabled"}" onclick="archiveOrder('${order.orderId}')" ${canArchive ? "" : "disabled"}>تم تسجيل على السيستم</button>
+    </div>
+  `;
+}
+
+async function markDelivered(orderId){
+  await updateStatus(orderId,"Delivered");
+}
+
+async function markPaid(orderId){
+  const ok=await updateStatus(orderId,"Paid");
+
+  if(ok){
+    window.open("invoice.html?id="+orderId,"_blank");
+  }
+}
+
+async function updateStatus(orderId,status){
+  const res=await fetch(API_URL+"?action=updateOrderStatus",{
+    method:"POST",
+    body:JSON.stringify({orderId,status})
+  });
+  const data=await res.json();
+
+  if(!data.success){
+    alert(data.error || "Update failed");
+    return false;
+  }
+
+  await load();
+  return true;
+}
+
+async function archiveOrder(orderId){
+  const res=await fetch(API_URL+"?action=archiveOrder",{
+    method:"POST",
+    body:JSON.stringify({orderId})
+  });
+  const data=await res.json();
+
+  if(!data.success){
+    alert(data.error || "Archive failed");
+    return;
+  }
+
+  await load();
 }
 
 if(currentUser){
-load();
+  load();
+  setInterval(load,8000);
 }
 
 </script>
 
 </body>
 </html>
-

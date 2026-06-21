@@ -10,7 +10,7 @@ const SHEETS = {
 const SHEET_HEADERS = {
   Users: ["id", "name", "username", "password", "role"],
   Products: ["productId", "categoryId", "productName", "price", "imageUrl", "categoryName"],
-  Orders: ["orderId", "braceletNo", "childName", "cashierName", "time", "status", "total"],
+  Orders: ["orderId", "braceletNo", "childName", "cashierName", "time", "status", "total", "kitchenStatus", "paymentStatus", "customerLeft", "archivedAt"],
   OrderItems: ["itemId", "orderId", "productId", "productName", "qty", "price", "total"],
 };
 
@@ -50,6 +50,9 @@ function doGet(e) {
       case "getOrderDetails":
         return jsonResponse(getOrderDetails(params.orderId));
 
+      case "getKitchenOrders":
+        return jsonResponse(getKitchenOrders(params));
+
       case "getInvoice":
         return jsonResponse(getInvoice(params.orderId));
 
@@ -78,6 +81,12 @@ function doPost(e) {
 
       case "addOrderItems":
         return jsonResponse(addOrderItems(body));
+
+      case "markCustomerLeft":
+        return jsonResponse(markCustomerLeft(body));
+
+      case "archiveOrder":
+        return jsonResponse(archiveOrder(body));
 
       default:
         return jsonResponse({ success: false, error: "Unknown action" });
@@ -169,6 +178,10 @@ function createOrder(body) {
     now,
     "Pending",
     itemResult.total,
+    "Pending",
+    "Unpaid",
+    "",
+    "",
   ]);
 
   return {
@@ -188,16 +201,8 @@ function getPendingOrders() {
   const data = getRows(sheet);
 
   return data
-    .filter((r) => r[5] != "Paid")
-    .map((r) => ({
-      orderId: r[0],
-      bracelet: r[1],
-      childName: r[2],
-      cashier: r[3],
-      time: r[4],
-      status: r[5],
-      total: toNumber(r[6]),
-    }));
+    .filter((r) => getPaymentStatus(r) != "Paid" && !isArchived(r))
+    .map(mapOrderRow);
 }
 
 /* =========================
@@ -227,15 +232,29 @@ function getOrders(params) {
 
       return true;
     })
-    .map((r) => ({
-      orderId: r[0],
-      bracelet: r[1],
-      childName: r[2],
-      cashier: r[3],
-      time: r[4],
-      status: r[5],
-      total: toNumber(r[6]),
-    }))
+    .map(mapOrderRow)
+    .reverse();
+}
+
+function getKitchenOrders(params) {
+  const includeArchived = params.archived == "true";
+  const ss = SpreadsheetApp.openById(SHEET_ID);
+  const orders = getRows(ss.getSheetByName(SHEETS.ORDERS));
+  const items = getRows(ss.getSheetByName(SHEETS.ORDER_ITEMS));
+
+  return orders
+    .filter((r) => includeArchived ? isArchived(r) : !isArchived(r))
+    .map((r) => {
+      const order = mapOrderRow(r);
+      const orderItems = items
+        .filter((i) => i[1] == order.orderId)
+        .map(mapItemRow);
+
+      return {
+        ...order,
+        items: orderItems,
+      };
+    })
     .reverse();
 }
 
@@ -256,6 +275,10 @@ function getOrderDetails(orderId) {
       time: invoice.order.time,
       status: invoice.order.status,
       total: invoice.order.total,
+      kitchenStatus: invoice.order.kitchenStatus,
+      paymentStatus: invoice.order.paymentStatus,
+      customerLeft: invoice.order.customerLeft,
+      archivedAt: invoice.order.archivedAt,
     },
     items: invoice.items,
   };
@@ -277,7 +300,70 @@ function updateOrderStatus(body) {
 
   for (let i = 1; i < rows.length; i++) {
     if (rows[i][0] == data.orderId) {
-      sheet.getRange(i + 1, 6).setValue(data.status);
+      const rowNumber = i + 1;
+      const current = rows[i];
+      let status = data.status;
+
+      if (status == "Delivered") {
+        sheet.getRange(rowNumber, 8).setValue("Delivered");
+        if (getPaymentStatus(current) != "Paid") {
+          sheet.getRange(rowNumber, 6).setValue("Delivered");
+        }
+      } else if (status == "Paid") {
+        sheet.getRange(rowNumber, 9).setValue("Paid");
+        sheet.getRange(rowNumber, 6).setValue("Paid");
+      } else {
+        sheet.getRange(rowNumber, 6).setValue(status);
+      }
+
+      return { success: true };
+    }
+  }
+
+  return { success: false, error: "Order not found" };
+}
+
+function markCustomerLeft(body) {
+  const data = JSON.parse(body);
+
+  if (!data.orderId) {
+    return { success: false, error: "Order ID is required" };
+  }
+
+  const sheet = getSheet(SHEETS.ORDERS);
+  const rows = sheet.getDataRange().getValues();
+
+  for (let i = 1; i < rows.length; i++) {
+    if (rows[i][0] == data.orderId) {
+      const rowNumber = i + 1;
+      sheet.getRange(rowNumber, 10).setValue("TRUE");
+
+      if (getPaymentStatus(rows[i]) != "Paid") {
+        sheet.getRange(rowNumber, 6).setValue("Left Unpaid");
+      }
+
+      return { success: true };
+    }
+  }
+
+  return { success: false, error: "Order not found" };
+}
+
+function archiveOrder(body) {
+  const data = JSON.parse(body);
+
+  if (!data.orderId) {
+    return { success: false, error: "Order ID is required" };
+  }
+
+  const sheet = getSheet(SHEETS.ORDERS);
+  const rows = sheet.getDataRange().getValues();
+
+  for (let i = 1; i < rows.length; i++) {
+    if (rows[i][0] == data.orderId) {
+      const rowNumber = i + 1;
+      sheet.getRange(rowNumber, 11).setValue(new Date());
+      sheet.getRange(rowNumber, 6).setValue("Archived");
       return { success: true };
     }
   }
@@ -359,13 +445,12 @@ function getInvoice(orderId) {
       time: order[4],
       status: order[5],
       total: toNumber(order[6]),
+      kitchenStatus: getKitchenStatus(order),
+      paymentStatus: getPaymentStatus(order),
+      customerLeft: isCustomerLeft(order),
+      archivedAt: order[10] || "",
     },
-    items: orderItems.map((i) => ({
-      name: i[3],
-      qty: toNumber(i[4]),
-      price: toNumber(i[5]),
-      total: toNumber(i[6]),
-    })),
+    items: orderItems.map(mapItemRow),
   };
 }
 
@@ -530,6 +615,47 @@ function buildItemRows(orderId, orderItems, now) {
 function buildProductImageUrl(productName) {
   const label = encodeURIComponent(String(productName || "Product").trim());
   return "https://placehold.co/320x240/f2eefa/5B2C83?text=" + label;
+}
+
+function mapOrderRow(r) {
+  return {
+    orderId: r[0],
+    bracelet: r[1],
+    childName: r[2],
+    cashier: r[3],
+    time: r[4],
+    status: r[5],
+    total: toNumber(r[6]),
+    kitchenStatus: getKitchenStatus(r),
+    paymentStatus: getPaymentStatus(r),
+    customerLeft: isCustomerLeft(r),
+    archivedAt: r[10] || "",
+  };
+}
+
+function mapItemRow(i) {
+  return {
+    name: i[3],
+    qty: toNumber(i[4]),
+    price: toNumber(i[5]),
+    total: toNumber(i[6]),
+  };
+}
+
+function getKitchenStatus(row) {
+  return row[7] || (row[5] == "Delivered" || row[5] == "Paid" ? "Delivered" : "Pending");
+}
+
+function getPaymentStatus(row) {
+  return row[8] || (row[5] == "Paid" ? "Paid" : "Unpaid");
+}
+
+function isCustomerLeft(row) {
+  return row[9] === true || String(row[9]).toUpperCase() == "TRUE" || row[5] == "Left Unpaid";
+}
+
+function isArchived(row) {
+  return !!row[10] || row[5] == "Archived";
 }
 
 function jsonResponse(data) {

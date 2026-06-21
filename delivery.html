@@ -153,10 +153,17 @@ async function markDelivered(orderId){
 }
 
 async function markPaid(orderId,paymentMethod){
+  const invoiceWindow=window.open("about:blank","_blank");
   const ok=await updateStatus(orderId,"Paid",paymentMethod);
 
   if(ok){
-    window.open("invoice.html?id="+orderId,"_blank");
+    if(invoiceWindow){
+      invoiceWindow.location.href="invoice.html?id="+orderId;
+    }else{
+      window.open("invoice.html?id="+orderId,"_blank");
+    }
+  }else if(invoiceWindow){
+    invoiceWindow.close();
   }
 }
 

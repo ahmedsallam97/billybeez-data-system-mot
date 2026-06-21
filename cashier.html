@@ -134,6 +134,15 @@ let cart=[];
 let activeCategory="All";
 let editingOrderId=null;
 let editingOrderDetails=null;
+const popularProducts=[
+  "water",
+  "pepsi",
+  "burger",
+  "nuggets",
+  "fries",
+  "chips",
+  "juice"
+];
 
 function setView(viewId){
   ["homeView","formView"].forEach(id=>{
@@ -286,6 +295,8 @@ function renderProducts(){
 
   products
     .filter(p=>activeCategory==="All" || (p.categoryName || p.categoryId || "Other")===activeCategory)
+    .slice()
+    .sort(sortProductsByDemand)
     .forEach(product=>{
       const card=document.createElement("div");
       card.className="product";
@@ -303,6 +314,22 @@ function renderProducts(){
       `;
       box.appendChild(card);
     });
+}
+
+function sortProductsByDemand(a,b){
+  const rankA=getPopularRank(a.productName);
+  const rankB=getPopularRank(b.productName);
+
+  if(rankA!==rankB) return rankA-rankB;
+
+  return String(a.productName || "").localeCompare(String(b.productName || ""));
+}
+
+function getPopularRank(productName){
+  const name=String(productName || "").toLowerCase();
+  const index=popularProducts.findIndex(keyword=>name.includes(keyword));
+
+  return index===-1 ? popularProducts.length : index;
 }
 
 function getInitial(name){
@@ -454,10 +481,11 @@ async function addItemsToOrder(){
     return;
   }
 
-  alert("Order Updated");
   cart=[];
   editingOrderId=null;
-  await showOrders();
+  editingOrderDetails=null;
+  renderCart();
+  showHome();
 }
 
 async function loadOrders(){

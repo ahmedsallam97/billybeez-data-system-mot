@@ -4,15 +4,16 @@ import { useEffect, useState } from "react";
 
 export default function KitchenClient() {
   const [orders, setOrders] = useState([]);
+  const [showArchive, setShowArchive] = useState(false);
 
   useEffect(() => {
     load();
     const timer = setInterval(load, 8000);
     return () => clearInterval(timer);
-  }, []);
+  }, [showArchive]);
 
   async function load() {
-    const res = await fetch("/api/orders?archived=false");
+    const res = await fetch(`/api/orders?archived=${showArchive}`);
     setOrders(await res.json());
   }
 
@@ -38,9 +39,27 @@ export default function KitchenClient() {
     }
   }
 
+  async function archive(orderId) {
+    const res = await fetch(`/api/orders/${orderId}/archive`, { method: "POST" });
+    const data = await res.json();
+
+    if (!data.success) {
+      alert(data.error || "Archive failed");
+      return;
+    }
+
+    await load();
+  }
+
   return (
     <section className="panel">
-      <h2>Kitchen Orders</h2>
+      <div className="row">
+        <h2>{showArchive ? "Archive" : "Kitchen Orders"}</h2>
+        <div className="actions">
+          <button className={!showArchive ? "secondary" : ""} onClick={() => setShowArchive(false)}>Active</button>
+          <button className={showArchive ? "secondary" : ""} onClick={() => setShowArchive(true)}>Archive</button>
+        </div>
+      </div>
       <div className="grid three">
         {orders.map((order) => (
           <div className="card" key={order.id}>
@@ -52,6 +71,7 @@ export default function KitchenClient() {
             <div>Children: <b>{order.childNames}</b></div>
             <div>Total: <b>{order.total} EGP</b></div>
             <div>Kitchen: <b>{order.kitchenStatus}</b></div>
+            {order.customerLeft && order.paymentStatus !== "PAID" && <div className="warning">العميل خرج ولسه متعملش تم الدفع</div>}
             <div className="panel">
               {order.items.map((item) => (
                 <div className="row" key={item.id}>
@@ -60,11 +80,22 @@ export default function KitchenClient() {
                 </div>
               ))}
             </div>
-            <div className="actions">
-              <button disabled={order.kitchenStatus === "DELIVERED"} onClick={() => deliver(order.id)}>تم التسليم</button>
-              <button disabled={order.paymentStatus === "PAID"} onClick={() => pay(order.id, "CASH")}>دفع كاش</button>
-              <button disabled={order.paymentStatus === "PAID"} onClick={() => pay(order.id, "VISA")}>دفع فيزا</button>
-            </div>
+            {showArchive ? (
+              <div className="muted">Archived at: {order.archivedAt ? new Date(order.archivedAt).toLocaleString() : ""}</div>
+            ) : (
+              <div className="actions">
+                <button disabled={order.kitchenStatus === "DELIVERED"} onClick={() => deliver(order.id)}>تم التسليم</button>
+                <button disabled={order.paymentStatus === "PAID"} onClick={() => pay(order.id, "CASH")}>دفع كاش</button>
+                <button disabled={order.paymentStatus === "PAID"} onClick={() => pay(order.id, "VISA")}>دفع فيزا</button>
+                <button
+                  className="secondary"
+                  disabled={order.kitchenStatus !== "DELIVERED" || order.paymentStatus !== "PAID"}
+                  onClick={() => archive(order.id)}
+                >
+                  تم تسجيل على السيستم
+                </button>
+              </div>
+            )}
           </div>
         ))}
       </div>

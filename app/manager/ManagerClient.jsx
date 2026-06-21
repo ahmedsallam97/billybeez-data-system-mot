@@ -45,6 +45,7 @@ export default function ManagerClient() {
         <Metric label="Orders" value={data.ordersCount} />
         <Metric label="Unpaid" value={data.unpaidOrders} />
         <Metric label="Left Unpaid" value={data.leftUnpaid} />
+        <Metric label="Archived" value={data.archivedOrders} />
       </section>
 
       <section className="panel">
@@ -73,11 +74,12 @@ export default function ManagerClient() {
         </div>
       </section>
 
-      <section className="grid two">
+      <section className="grid three">
         <div className="panel">
           <h3>Payment Breakdown</h3>
-          <div className="row"><span>Cash</span><b>{data.cashSales} EGP</b></div>
-          <div className="row"><span>Visa</span><b>{data.visaSales} EGP</b></div>
+          {data.paymentBreakdown.map((row) => (
+            <div className="row" key={row.method}><span>{row.method} ({row.count})</span><b>{row.total} EGP</b></div>
+          ))}
         </div>
         <div className="panel">
           <h3>Top Products</h3>
@@ -85,6 +87,18 @@ export default function ManagerClient() {
             <div className="row" key={product.name}><span>{product.name}</span><b>{product.total} EGP</b></div>
           ))}
         </div>
+        <div className="panel">
+          <h3>Status Breakdown</h3>
+          {data.statusBreakdown.map((row) => (
+            <div className="row" key={row.status}><span>{row.status}</span><b>{row.count}</b></div>
+          ))}
+        </div>
+      </section>
+
+      <section className="grid three">
+        <Report title="Cashier Performance" rows={data.cashierPerformance} labelKey="name" valueKey="total" suffix=" EGP" />
+        <Report title="Data Employees" rows={data.dataEmployeePerformance} labelKey="name" valueKey="total" suffix=" EGP" />
+        <Report title="Top Bracelets" rows={data.topBracelets} labelKey="bracelet" valueKey="total" suffix=" EGP" />
       </section>
 
       {selectedOrder && (
@@ -97,6 +111,8 @@ export default function ManagerClient() {
             <div>Data Employee: <b>{selectedOrder.dataEmployee}</b></div>
             <div>Kitchen: <b>{selectedOrder.kitchenStatus}</b></div>
             <div>Payment: <b>{selectedOrder.paymentStatus} / {selectedOrder.paymentMethod}</b></div>
+            <div>Status: <b>{selectedOrder.status}</b></div>
+            <div>Archived: <b>{selectedOrder.archivedAt ? "Yes" : "No"}</b></div>
           </div>
           <div className="panel">
             {selectedOrder.items.map((item) => (
@@ -121,6 +137,22 @@ function Metric({ label, value }) {
     <div className="card metric">
       <div className="label">{label}</div>
       <div className="value">{value}</div>
+    </div>
+  );
+}
+
+function Report({ title, rows, labelKey, valueKey, suffix = "" }) {
+  return (
+    <div className="panel">
+      <h3>{title}</h3>
+      {rows.length === 0 ? (
+        <div className="muted">No data</div>
+      ) : rows.slice(0, 8).map((row) => (
+        <div className="row" key={row[labelKey]}>
+          <span>{row[labelKey]}</span>
+          <b>{row[valueKey]}{suffix}</b>
+        </div>
+      ))}
     </div>
   );
 }

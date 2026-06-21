@@ -39,6 +39,8 @@ input,select{width:100%;padding:11px;border:1px solid #dcdfe4;border-radius:8px;
 .logo{width:150px;height:auto;margin-bottom:10px}
 .stack{display:grid;gap:10px}
 .message{color:#c0392b;min-height:22px}
+.warning{background:#fdecea;border:1px solid #f5b7b1;color:#922b21;border-radius:8px;padding:8px;margin-top:8px}
+.summary{background:#fafafa;border:1px solid #e5e7eb;border-radius:8px;padding:10px}
 .tabs{display:flex;gap:8px;overflow:auto;margin-bottom:12px}
 .tabs button{background:#fff;color:#222;border:1px solid #dcdfe4;white-space:nowrap}
 .tabs button.active{background:#2c3e50;color:#fff;border-color:#2c3e50}

@@ -1,5 +1,31 @@
 # BillyBeez Data System MOT
 
+## Next.js Version
+
+The new version is a Next.js app with Prisma. The old Google Apps Script files are still kept in the repo while the migration is completed.
+
+### Run Locally
+
+```bash
+npm install
+npx prisma db push
+npm run db:seed
+npm run dev
+```
+
+Open `http://localhost:3000`.
+
+Seed users:
+
+| Role | Username | Password |
+| ---- | -------- | -------- |
+| Manager | manager | manager123 |
+| Cashier | cashier | cashier123 |
+| Kitchen | kitchen | kitchen123 |
+| Admin | admin | admin123 |
+
+The local dev database uses SQLite from `DATABASE_URL` in `.env`. For production, switch `DATABASE_URL` to PostgreSQL and run the same Prisma setup commands.
+
 Simple cashier, delivery, invoice, and manager dashboard system backed by Google Sheets and Google Apps Script.
 
 ## Files

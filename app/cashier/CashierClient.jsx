@@ -225,8 +225,21 @@ export default function CashierClient() {
               <div className="row"><b>{order.id}</b><span className={`badge ${order.paymentStatus === "PAID" ? "paid" : "unpaid"}`}>{order.paymentStatus}</span></div>
               <div>Bracelet: <b>{order.braceletNo}</b></div>
               <div>Children: <b>{order.childNames}</b></div>
+              <div>Cashier: <b>{order.cashier || "-"}</b></div>
+              <div>Data Employee: <b>{order.dataEmployee || "-"}</b></div>
+              <div>Kitchen: <b>{order.kitchenStatus}</b></div>
+              <div>Payment Method: <b>{order.paymentMethod}</b></div>
               <div>Total: <b>{order.total} EGP</b></div>
-              <div className="muted">{order.items.length} items</div>
+              <div className="summary">
+                {order.items.length === 0 ? (
+                  <div className="muted">No items</div>
+                ) : order.items.map((item) => (
+                  <div className="row" key={item.id}>
+                    <span>{item.name} x {item.qty}</span>
+                    <b>{item.total} EGP</b>
+                  </div>
+                ))}
+              </div>
               {order.customerLeft && order.paymentStatus !== "PAID" && <div className="warning">العميل خرج ولسه متعملش تم الدفع</div>}
               <div className="actions">
                 <button onClick={() => startEdit(order)}>تعديل على الأوردر</button>

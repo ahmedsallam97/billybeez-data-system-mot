@@ -15,6 +15,14 @@ npm run dev
 
 Open `http://localhost:3000`.
 
+To import the current Google Apps Script data into the local Prisma database:
+
+```bash
+npm run db:import:apps-script
+```
+
+The importer reads the Apps Script URL from `config.js` and upserts products, employees, orders, and order items.
+
 Seed users:
 
 | Role | Username | Password |

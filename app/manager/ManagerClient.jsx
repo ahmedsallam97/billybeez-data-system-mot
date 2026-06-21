@@ -36,6 +36,19 @@ export default function ManagerClient() {
     }
   }
 
+  async function runOrderAction(orderId, action) {
+    const res = await fetch(`/api/orders/${orderId}/${action}`, { method: "POST" });
+    const result = await res.json();
+
+    if (!result.success) {
+      alert(result.error || "Order update failed");
+      return;
+    }
+
+    setSelectedOrder(null);
+    await load();
+  }
+
   if (!data) return <div className="panel">Loading...</div>;
 
   return (
@@ -123,6 +136,15 @@ export default function ManagerClient() {
           <div className="actions">
             <button onClick={() => payOrder(selectedOrder.id, "CASH")}>Set Cash Paid</button>
             <button onClick={() => payOrder(selectedOrder.id, "VISA")}>Set Visa Paid</button>
+            <button className="secondary" onClick={() => runOrderAction(selectedOrder.id, "deliver")}>Mark Delivered</button>
+            <button className="danger" onClick={() => runOrderAction(selectedOrder.id, "left")}>Mark Customer Left</button>
+            <button
+              className="secondary"
+              disabled={selectedOrder.kitchenStatus !== "DELIVERED" || selectedOrder.paymentStatus !== "PAID"}
+              onClick={() => runOrderAction(selectedOrder.id, "archive")}
+            >
+              Archive
+            </button>
             <button className="secondary" onClick={() => window.open(`/invoice/${selectedOrder.id}`, "_blank")}>Print Invoice</button>
             <button className="danger" onClick={() => setSelectedOrder(null)}>Close</button>
           </div>

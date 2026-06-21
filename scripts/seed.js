@@ -24,13 +24,17 @@ const categories = [
   { id: "SNACKS", name: "Snacks" },
 ];
 
+function imageUrl(name, category) {
+  return `https://loremflickr.com/320/240/${encodeURIComponent(`${name},${category},food`)}`;
+}
+
 const products = [
-  { id: "WATER", categoryId: "DRINKS", name: "Water", price: 15, popular: true, sortOrder: 1 },
-  { id: "PEPSI", categoryId: "DRINKS", name: "Pepsi", price: 30, popular: true, sortOrder: 2 },
-  { id: "BURGER", categoryId: "BURGERS", name: "Burger", price: 120, popular: true, sortOrder: 3 },
-  { id: "NUGGETS", categoryId: "MEALS", name: "Nuggets", price: 95, popular: true, sortOrder: 4 },
-  { id: "FRIES", categoryId: "SNACKS", name: "Fries", price: 55, popular: true, sortOrder: 5 },
-  { id: "JUICE", categoryId: "DRINKS", name: "Juice", price: 35, popular: false, sortOrder: 20 },
+  { id: "WATER", categoryId: "DRINKS", name: "Water", price: 15, popular: true, sortOrder: 1, imageUrl: imageUrl("Water", "drink") },
+  { id: "PEPSI", categoryId: "DRINKS", name: "Pepsi", price: 30, popular: true, sortOrder: 2, imageUrl: imageUrl("Pepsi", "drink") },
+  { id: "BURGER", categoryId: "BURGERS", name: "Burger", price: 120, popular: true, sortOrder: 3, imageUrl: imageUrl("Burger", "burger") },
+  { id: "NUGGETS", categoryId: "MEALS", name: "Nuggets", price: 95, popular: true, sortOrder: 4, imageUrl: imageUrl("Nuggets", "meal") },
+  { id: "FRIES", categoryId: "SNACKS", name: "Fries", price: 55, popular: true, sortOrder: 5, imageUrl: imageUrl("Fries", "snack") },
+  { id: "JUICE", categoryId: "DRINKS", name: "Juice", price: 35, popular: false, sortOrder: 20, imageUrl: imageUrl("Juice", "drink") },
 ];
 
 const users = [

@@ -1,0 +1,121 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  ADMIN
+  MANAGER
+  CASHIER
+  KITCHEN
+}
+
+enum OrderStatus {
+  OPEN
+  DELIVERED
+  PAID
+  ARCHIVED
+}
+
+enum KitchenStatus {
+  PENDING
+  DELIVERED
+}
+
+enum PaymentStatus {
+  UNPAID
+  PAID
+}
+
+enum PaymentMethod {
+  CASH
+  VISA
+}
+
+model User {
+  id        String   @id @default(cuid())
+  name      String
+  username  String   @unique
+  password  String
+  role      Role
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  orders Order[] @relation("CashierOrders")
+}
+
+model Employee {
+  id        String   @id @default(cuid())
+  name      String   @unique
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  orders Order[]
+}
+
+model Category {
+  id        String   @id
+  name      String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  products Product[]
+}
+
+model Product {
+  id         String   @id
+  name       String
+  price      Float
+  imageUrl   String?
+  active     Boolean  @default(true)
+  popular    Boolean  @default(false)
+  sortOrder  Int      @default(100)
+  categoryId String
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  category Category    @relation(fields: [categoryId], references: [id])
+  items    OrderItem[]
+}
+
+model Order {
+  id             String        @id
+  braceletNo    String
+  childNames     String
+  childrenCount  Int           @default(1)
+  total          Float         @default(0)
+  status         OrderStatus   @default(OPEN)
+  kitchenStatus  KitchenStatus @default(PENDING)
+  paymentStatus  PaymentStatus @default(UNPAID)
+  paymentMethod  PaymentMethod @default(CASH)
+  customerLeft   Boolean       @default(false)
+  archivedAt     DateTime?
+  cashierId      String?
+  dataEmployeeId String?
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+
+  cashier      User?       @relation("CashierOrders", fields: [cashierId], references: [id])
+  dataEmployee Employee?   @relation(fields: [dataEmployeeId], references: [id])
+  items        OrderItem[]
+}
+
+model OrderItem {
+  id        String   @id @default(cuid())
+  orderId   String
+  productId String
+  name      String
+  qty       Int      @default(1)
+  price     Float
+  total     Float
+  createdAt DateTime @default(now())
+
+  order   Order   @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  product Product @relation(fields: [productId], references: [id])
+}

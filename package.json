@@ -1,5 +1,24 @@
 {
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint",
+    "db:push": "prisma db push",
+    "db:seed": "node scripts/seed.js",
+    "clasp:push": "clasp push --force"
+  },
+  "dependencies": {
+    "@prisma/client": "^6.19.1",
+    "next": "^16.2.9",
+    "prisma": "^6.19.1",
+    "react": "^19.2.7",
+    "react-dom": "^19.2.7"
+  },
   "devDependencies": {
     "@google/clasp": "^3.3.0"
+  },
+  "prisma": {
+    "seed": "node scripts/seed.js"
   }
 }

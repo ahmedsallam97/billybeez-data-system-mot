@@ -5,7 +5,7 @@ const SHEETS = {
   PRODUCTS: "Products",
   ORDERS: "Orders",
   ORDER_ITEMS: "OrderItems",
-  DATA_EMPLOYEES: "DataEmployees",
+  DATA_EMPLOYEES: "الموظفين",
 };
 
 const SHEET_HEADERS = {
@@ -13,8 +13,23 @@ const SHEET_HEADERS = {
   Products: ["productId", "categoryId", "productName", "price", "imageUrl", "categoryName"],
   Orders: ["orderId", "braceletNo", "childName", "cashierName", "time", "status", "total", "kitchenStatus", "paymentStatus", "customerLeft", "archivedAt", "dataEmployee", "childrenCount", "paymentMethod"],
   OrderItems: ["itemId", "orderId", "productId", "productName", "qty", "price", "total"],
-  DataEmployees: ["employeeId", "employeeName", "active"],
+  "الموظفين": ["employeeId", "employeeName", "active"],
 };
+
+const DATA_EMPLOYEE_NAMES = [
+  "محمد عصام",
+  "محمد جمال",
+  "صلاح محمد",
+  "مصطفي عمارة",
+  "محمد مدكور",
+  "يوسف فهمي",
+  "محمد عادل",
+  "عبدالرحمن هشام",
+  "مصطفي خالد",
+  "مهرا سمير",
+  "الاء نصار",
+  "سلمي سلطان",
+];
 
 const CATEGORY_NAMES = {
   DR001: "Drinks",
@@ -167,19 +182,20 @@ function getDataEmployees() {
 
 function syncDataEmployeesFromUsers() {
   const employeesSheet = getSheet(SHEETS.DATA_EMPLOYEES);
+  const existing = getRows(employeesSheet).map((r) => String(r[1] || "").trim());
+  const values = [];
 
-  if (employeesSheet.getLastRow() > 1) {
-    return { success: true, added: 0 };
+  DATA_EMPLOYEE_NAMES.forEach((name, index) => {
+    if (!existing.includes(name)) {
+      values.push(["EMP" + String(index + 1).padStart(3, "0"), name, "TRUE"]);
+    }
+  });
+
+  if (values.length > 0) {
+    employeesSheet
+      .getRange(employeesSheet.getLastRow() + 1, 1, values.length, values[0].length)
+      .setValues(values);
   }
-
-  const users = getRows(getSheet(SHEETS.USERS)).filter((r) => r[0] && r[1]);
-
-  if (users.length === 0) {
-    return { success: true, added: 0 };
-  }
-
-  const values = users.map((r) => [r[0], r[1], "TRUE"]);
-  employeesSheet.getRange(2, 1, values.length, values[0].length).setValues(values);
 
   return { success: true, added: values.length };
 }
@@ -193,6 +209,10 @@ function createOrder(body) {
 
   if (!data.braceletNo) {
     return { success: false, error: "Bracelet number is required" };
+  }
+
+  if (!isValidBracelet(data.braceletNo)) {
+    return { success: false, error: "Bracelet must be 6 digits and start with 0, 1, 2, or 3" };
   }
 
   if (!data.childName) {
@@ -229,7 +249,7 @@ function createOrder(body) {
     "",
     data.dataEmployee || "",
     Math.max(1, toNumber(data.childrenCount || 1)),
-    "",
+    data.paymentMethod || "Cash",
   ]);
 
   return {
@@ -327,6 +347,9 @@ function getOrderDetails(orderId) {
       paymentStatus: invoice.order.paymentStatus,
       customerLeft: invoice.order.customerLeft,
       archivedAt: invoice.order.archivedAt,
+      dataEmployee: invoice.order.dataEmployee,
+      childrenCount: invoice.order.childrenCount,
+      paymentMethod: invoice.order.paymentMethod,
     },
     items: invoice.items,
   };
@@ -657,6 +680,10 @@ function toNumber(value) {
   return isNaN(number) ? 0 : number;
 }
 
+function isValidBracelet(value) {
+  return /^[0-3][0-9]{5}$/.test(String(value || "").trim());
+}
+
 function populateProductMetadata() {
   const sheet = getSheet(SHEETS.PRODUCTS);
   const lastRow = sheet.getLastRow();
@@ -673,7 +700,9 @@ function populateProductMetadata() {
     const categoryId = row[1];
     const productName = row[2];
     const categoryName = row[5] || CATEGORY_NAMES[categoryId] || categoryId || "Other";
-    const imageUrl = row[4] || buildProductImageUrl(productName);
+    const imageUrl = !row[4] || String(row[4]).indexOf("placehold.co") > -1
+      ? buildProductImageUrl(productName, categoryId)
+      : row[4];
 
     if (row[4] !== imageUrl || row[5] !== categoryName) {
       updated++;
@@ -715,9 +744,11 @@ function buildItemRows(orderId, orderItems, now) {
   return { rows, total };
 }
 
-function buildProductImageUrl(productName) {
-  const label = encodeURIComponent(String(productName || "Product").trim());
-  return "https://placehold.co/320x240/f2eefa/5B2C83?text=" + label;
+function buildProductImageUrl(productName, categoryId) {
+  const name = String(productName || "food").toLowerCase();
+  const category = String(CATEGORY_NAMES[categoryId] || "food").toLowerCase();
+  const query = encodeURIComponent(name + "," + category);
+  return "https://loremflickr.com/320/240/" + query;
 }
 
 function mapOrderRow(r) {

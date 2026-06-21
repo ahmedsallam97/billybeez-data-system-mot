@@ -39,6 +39,11 @@ Supported roles are `Manager`, `Cashier`, and `Delivery`. `Admin` is also treate
 | itemId | orderId | productId | productName | qty | price | total |
 | ------ | ------- | --------- | ----------- | --- | ----- | ----- |
 
+### الموظفين
+
+| employeeId | employeeName | active |
+| ---------- | ------------ | ------ |
+
 ## Apps Script Setup
 
 1. Open the Google Sheet.

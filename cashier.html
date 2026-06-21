@@ -30,6 +30,7 @@ body{font-family:Arial,sans-serif;background:#fff;margin:0;color:#222}
 .items{background:#fafafa;border-radius:8px;padding:8px;margin-top:8px}
 .item-line{display:flex;justify-content:space-between;gap:8px;padding:5px 0;border-bottom:1px solid #eee}
 .item-line:last-child{border-bottom:0}
+.edit-summary{border:1px solid #e6e6e6;border-radius:8px;background:#fafafa;padding:10px;margin-bottom:12px}
 .form-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px}
 input,select{width:100%;padding:12px;border:1px solid #ddd;border-radius:8px;box-sizing:border-box;background:#fff}
 .category-tabs{display:flex;gap:8px;overflow:auto;padding:4px 0 10px}
@@ -86,7 +87,7 @@ input,select{width:100%;padding:12px;border:1px solid #ddd;border-radius:8px;box
 <section id="formView" class="hidden">
   <div class="toolbar">
     <button class="secondary" onclick="showHome()">رجوع</button>
-    <button class="danger hidden" id="cancelEditBtn" onclick="cancelEdit()">خروج من التعديل</button>
+    <button class="danger hidden" id="cancelEditBtn" onclick="cancelEdit()">Cancel</button>
   </div>
 
   <h3 id="formTitle">إضافة طلب جديد</h3>
@@ -102,8 +103,13 @@ input,select{width:100%;padding:12px;border:1px solid #ddd;border-radius:8px;box
       <option value="6">6 أطفال</option>
     </select>
     <select id="dataEmployee"></select>
+    <select id="paymentMethod">
+      <option value="Cash">Cash</option>
+      <option value="Visa">Visa</option>
+    </select>
   </div>
   <div class="form-grid" id="childrenFields"></div>
+  <div class="edit-summary hidden" id="editSummary"></div>
 
   <div class="category-tabs" id="categoryTabs"></div>
   <div class="products" id="products"></div>
@@ -127,6 +133,7 @@ let dataEmployees=[];
 let cart=[];
 let activeCategory="All";
 let editingOrderId=null;
+let editingOrderDetails=null;
 
 function setView(viewId){
   ["homeView","formView"].forEach(id=>{
@@ -145,18 +152,24 @@ async function showOrders(){
 
 async function showOrderForm(orderId){
   editingOrderId=orderId || null;
+  editingOrderDetails=null;
   cart=[];
   document.getElementById("message").innerText="";
   document.getElementById("formTitle").innerText=editingOrderId ? "تعديل الطلب" : "إضافة طلب جديد";
   document.getElementById("submitBtn").innerText=editingOrderId ? "إضافة items للطلب" : "Save Order";
   document.getElementById("newOrderFields").classList.toggle("hidden",!!editingOrderId);
   document.getElementById("cancelEditBtn").classList.toggle("hidden",!editingOrderId);
+  document.getElementById("editSummary").classList.toggle("hidden",!editingOrderId);
 
   if(!editingOrderId){
     document.getElementById("bracelet").value="";
     document.getElementById("childrenCount").value="1";
+    document.getElementById("paymentMethod").value="Cash";
     renderChildrenInputs();
     await loadDataEmployees();
+    document.getElementById("editSummary").innerHTML="";
+  }else{
+    await loadEditSummary(editingOrderId);
   }
 
   setView("formView");
@@ -203,8 +216,37 @@ function renderChildrenInputs(){
 
 function cancelEdit(){
   editingOrderId=null;
+  editingOrderDetails=null;
   cart=[];
-  showOrders();
+  renderCart();
+  showHome();
+}
+
+async function loadEditSummary(orderId){
+  const data=await fetchOrderDetails(orderId);
+  const box=document.getElementById("editSummary");
+
+  if(!data.success){
+    box.innerHTML="<div class='message'>Order details not found</div>";
+    return;
+  }
+
+  editingOrderDetails=data;
+  const items=data.items.length
+    ? data.items.map(i=>`
+      <div class="item-line">
+        <span>${i.name} x ${i.qty}</span>
+        <span>${i.total} EGP</span>
+      </div>
+    `).join("")
+    : "<div class='empty'>No previous items</div>";
+
+  box.innerHTML=`
+    <b>Bracelet:</b> ${data.order.bracelet}<br>
+    <b>Children:</b> ${data.order.childName}<br>
+    <b>Current Total:</b> ${data.order.total} EGP
+    <div class="items">${items}</div>
+  `;
 }
 
 async function loadProducts(){
@@ -350,9 +392,15 @@ async function submitCart(){
     .filter(Boolean);
   const childrenCount=Number(document.getElementById("childrenCount").value) || 1;
   const dataEmployee=document.getElementById("dataEmployee").value;
+  const paymentMethod=document.getElementById("paymentMethod").value || "Cash";
 
-  if(!bracelet || childNames.length!==childrenCount){
-    message.innerText="Please enter bracelet and all child names";
+  if(!/^[0-3][0-9]{5}$/.test(bracelet)){
+    message.innerText="Bracelet must be 6 digits and start with 0, 1, 2, or 3";
+    return;
+  }
+
+  if(childNames.length!==childrenCount){
+    message.innerText="Please enter all child names";
     return;
   }
 
@@ -370,6 +418,7 @@ async function submitCart(){
       childName:childNames.join(", "),
       childrenCount:childrenCount,
       dataEmployee:dataEmployee,
+      paymentMethod:paymentMethod,
       cashierName:currentUser.name,
       items:cart
     })

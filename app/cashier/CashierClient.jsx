@@ -5,7 +5,7 @@ import { useToast } from "../ToastProvider";
 
 export default function CashierClient() {
   const toast = useToast();
-  const fallbackImage = "/products/fallback.svg";
+  const fallbackImage = "/products/fallback.jpg";
   const formRef = useRef(null);
   const ordersRef = useRef(null);
   const [products, setProducts] = useState([]);

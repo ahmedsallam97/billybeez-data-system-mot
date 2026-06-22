@@ -1,30 +1,42 @@
 const { PrismaClient } = require("@prisma/client");
-const { ensureFallbackImage, ensureProductImage, productImagePath } = require("./product-images");
+const { productImagePath, syncProductPhoto, writeFallbackFrom, writeSources } = require("./product-images");
 
 const prisma = new PrismaClient();
 
-async function main() {
-  ensureFallbackImage();
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
 
+async function main() {
   const products = await prisma.product.findMany({
     include: { category: true },
     orderBy: [{ categoryId: "asc" }, { sortOrder: "asc" }, { name: "asc" }],
   });
 
+  const sources = [];
+
   for (const product of products) {
-    ensureProductImage({
+    const synced = await syncProductPhoto({
       id: product.id,
       name: product.name,
       categoryName: product.category?.name || product.categoryId,
     });
 
+    sources.push(synced);
+
     await prisma.product.update({
       where: { id: product.id },
       data: { imageUrl: productImagePath(product.id) },
     });
+
+    console.log(`Photo synced: ${product.id} ${product.name}`);
+    await sleep(900);
   }
 
-  console.log(`Synced ${products.length} local product images`);
+  writeFallbackFrom("BURGER");
+  writeSources(sources);
+
+  console.log(`Synced ${products.length} real local product photos`);
 }
 
 main()

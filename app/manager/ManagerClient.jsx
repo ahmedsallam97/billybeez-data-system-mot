@@ -23,8 +23,42 @@ export default function ManagerClient() {
     setData(await res.json());
   }
 
+  function localDateKey(value) {
+    if (!value) return "";
+
+    if (typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value)) {
+      return value.slice(0, 10);
+    }
+
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return "";
+
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, "0");
+    const day = String(date.getDate()).padStart(2, "0");
+    return `${year}-${month}-${day}`;
+  }
+
+  function filterDateFor(order) {
+    if (viewMode === "HISTORY") {
+      return localDateKey(order.closedAt || order.archivedAt || order.businessDate || order.createdAt);
+    }
+
+    return localDateKey(order.businessDate || order.createdAt);
+  }
+
+  const currentArchivedOrders = useMemo(
+    () => (data?.orders || []).filter((order) => order.archivedAt).map((order) => ({ ...order, isCurrentArchive: true })),
+    [data],
+  );
+
+  const historyRows = useMemo(
+    () => [...currentArchivedOrders, ...(data?.orderHistory || [])],
+    [currentArchivedOrders, data],
+  );
+
   const visibleOrders = useMemo(() => {
-    let rows = viewMode === "HISTORY" ? data?.orderHistory || [] : data?.orders || [];
+    let rows = viewMode === "HISTORY" ? historyRows : data?.orders || [];
 
     if (filter === "UNPAID") rows = rows.filter((order) => order.paymentStatus !== "PAID");
     if (filter === "CASH" || filter === "VISA") rows = rows.filter((order) => order.paymentStatus === "PAID" && order.paymentMethod === filter);
@@ -45,17 +79,15 @@ export default function ManagerClient() {
     }
 
     if (fromDate) {
-      rows = rows.filter((order) => new Date(order.businessDate || order.createdAt) >= new Date(fromDate));
+      rows = rows.filter((order) => filterDateFor(order) >= fromDate);
     }
 
     if (toDate) {
-      const end = new Date(toDate);
-      end.setHours(23, 59, 59, 999);
-      rows = rows.filter((order) => new Date(order.businessDate || order.createdAt) <= end);
+      rows = rows.filter((order) => filterDateFor(order) <= toDate);
     }
 
     return rows;
-  }, [data, viewMode, filter, archiveFilter, query, fromDate, toDate]);
+  }, [data, viewMode, historyRows, filter, archiveFilter, query, fromDate, toDate]);
 
   async function payOrder(orderId, paymentMethod) {
     const res = await fetch(`/api/orders/${orderId}/pay`, {
@@ -96,7 +128,7 @@ export default function ManagerClient() {
         <Metric label="Orders" value={data.ordersCount} />
         <Metric label="Unpaid" value={data.unpaidOrders} />
         <Metric label="Left Unpaid" value={data.leftUnpaid} />
-        <Metric label="History" value={(data.orderHistory || []).length} />
+        <Metric label="History" value={historyRows.length} />
       </section>
 
       <section className="panel">
@@ -143,7 +175,8 @@ export default function ManagerClient() {
               <div className="meta-line"><span>Children</span><b>{order.childNames}</b></div>
               <div className="meta-line"><span>Method</span><b>{order.paymentMethod}</b></div>
               <div className="meta-line"><span>Order Total</span><b>{order.total} EGP</b></div>
-              {viewMode === "HISTORY" && <div className="meta-line"><span>Closed</span><b>{new Date(order.closedAt).toLocaleString()}</b></div>}
+              {viewMode === "HISTORY" && order.closedAt && <div className="meta-line"><span>Closed</span><b>{new Date(order.closedAt).toLocaleString()}</b></div>}
+              {viewMode === "HISTORY" && !order.closedAt && order.archivedAt && <div className="meta-line"><span>Archived</span><b>{new Date(order.archivedAt).toLocaleString()}</b></div>}
               <div className="actions">
                 <button onClick={() => setSelectedOrder(order)}>Details</button>
                 <button className="secondary" onClick={() => window.open(`/invoice/${order.id}`, "_blank")}>Print</button>
@@ -213,7 +246,7 @@ export default function ManagerClient() {
             </div>
             <div className="grid two">
               <div className="meta-line"><span>Bracelet</span><b>{selectedOrder.braceletNo}</b></div>
-              {selectedOrder.isHistory && <div className="meta-line"><span>Business Day</span><b>{selectedOrder.businessDate}</b></div>}
+              {(selectedOrder.isHistory || selectedOrder.isCurrentArchive) && <div className="meta-line"><span>Business Day</span><b>{selectedOrder.businessDate}</b></div>}
               <div className="meta-line"><span>Phone</span><b>{selectedOrder.customerPhone || "-"}</b></div>
               <div className="meta-line"><span>Children</span><b>{selectedOrder.childNames}</b></div>
               <div className="meta-line"><span>Cashier</span><b>{selectedOrder.cashier}</b></div>
@@ -223,7 +256,8 @@ export default function ManagerClient() {
               <div className="meta-line"><span>Status</span><b>{selectedOrder.status}</b></div>
               <div className="meta-line"><span>Order Total</span><b>{selectedOrder.total} EGP</b></div>
               <div className="meta-line"><span>Archived</span><b>{selectedOrder.archivedAt ? "Yes" : "No"}</b></div>
-              {selectedOrder.isHistory && <div className="meta-line"><span>Closed At</span><b>{new Date(selectedOrder.closedAt).toLocaleString()}</b></div>}
+              {selectedOrder.closedAt && <div className="meta-line"><span>Closed At</span><b>{new Date(selectedOrder.closedAt).toLocaleString()}</b></div>}
+              {selectedOrder.archivedAt && <div className="meta-line"><span>Archived At</span><b>{new Date(selectedOrder.archivedAt).toLocaleString()}</b></div>}
             </div>
             <div className="detail-items">
               {selectedOrder.items.map((item) => (

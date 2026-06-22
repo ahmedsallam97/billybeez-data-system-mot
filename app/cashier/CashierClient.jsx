@@ -51,6 +51,12 @@ export default function CashierClient() {
   const total = cart.reduce((sum, item) => sum + item.price * item.qty, 0);
   const orderTotalPreview = editingOrder ? Number(editingOrder.total || 0) + total : total;
 
+  function orderAlertClass(order) {
+    if (!order.customerLeft || order.archivedAt) return "";
+    if (order.paymentStatus !== "PAID") return "left-unpaid";
+    return "needs-system";
+  }
+
   function scrollToSection(ref) {
     setTimeout(() => ref.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 0);
   }
@@ -183,7 +189,20 @@ export default function CashierClient() {
       return;
     }
 
-    toast("Customer marked as left and archived", "info");
+    toast("Customer marked as left", "info");
+    await load();
+  }
+
+  async function archiveOrder(orderId) {
+    const res = await fetch(`/api/orders/${orderId}/archive`, { method: "POST" });
+    const data = await res.json();
+
+    if (!data.success) {
+      toast(data.error || "Archive failed", "error");
+      return;
+    }
+
+    toast("Order registered on system", "info");
     await load();
   }
 
@@ -301,7 +320,7 @@ export default function CashierClient() {
         <h2>الطلبات الحالية</h2>
         <div className="grid three honey-grid">
           {orders.map((order) => (
-            <div className="card order-cell" key={order.id}>
+            <div className={`card order-cell ${orderAlertClass(order)}`} key={order.id}>
               <div className="row"><b>{order.id}</b><span className={`badge ${order.paymentStatus === "PAID" ? "paid" : "unpaid"}`}>{order.paymentStatus}</span></div>
               <div className="meta-line"><span>Bracelet</span><b>{order.braceletNo}</b></div>
               <div className="meta-line"><span>Phone</span><b>{order.customerPhone || "-"}</b></div>
@@ -321,10 +340,18 @@ export default function CashierClient() {
                   </div>
                 ))}
               </div>
-              {order.customerLeft && order.paymentStatus !== "PAID" && <div className="warning">العميل خرج ولسه متعملش تم الدفع</div>}
+              {order.customerLeft && order.paymentStatus !== "PAID" && <div className="warning warning-orange">العميل خرج ولسه متعملش تم الدفع</div>}
+              {order.customerLeft && order.paymentStatus === "PAID" && !order.archivedAt && <div className="warning">العميل خرج ولسه متسجلش على السيستم</div>}
               <div className="actions">
-                <button onClick={() => startEdit(order)}>تعديل على الأوردر</button>
-                <button className="danger" onClick={() => markCustomerLeft(order.id)}>تم الخروج</button>
+                <button className="btn-edit" onClick={() => startEdit(order)}>تعديل على الأوردر</button>
+                <button className="btn-exit" disabled={order.customerLeft} onClick={() => markCustomerLeft(order.id)}>تم الخروج</button>
+                <button
+                  className="btn-system"
+                  disabled={order.kitchenStatus !== "DELIVERED" || order.paymentStatus !== "PAID"}
+                  onClick={() => archiveOrder(order.id)}
+                >
+                  تم التسجيل على السيستم
+                </button>
               </div>
             </div>
           ))}

@@ -47,6 +47,12 @@ export default function ManagerClient() {
     return localDateKey(order.businessDate || order.createdAt);
   }
 
+  function orderAlertClass(order) {
+    if (!order.customerLeft || order.archivedAt) return "";
+    if (order.paymentStatus !== "PAID") return "left-unpaid";
+    return "needs-system";
+  }
+
   const currentArchivedOrders = useMemo(
     () => (data?.orders || []).filter((order) => order.archivedAt).map((order) => ({ ...order, isCurrentArchive: true })),
     [data],
@@ -164,7 +170,7 @@ export default function ManagerClient() {
         <div className="row"><span>Visible orders</span><b>{visibleOrders.length}</b></div>
         <div className="grid three honey-grid">
           {visibleOrders.map((order) => (
-            <div className="card order-cell" key={order.id}>
+            <div className={`card order-cell ${orderAlertClass(order)}`} key={order.id}>
               <div className="row">
                 <b>{order.id}</b>
                 <span className={`badge ${order.paymentStatus === "PAID" ? "paid" : "unpaid"}`}>{order.paymentStatus}</span>
@@ -175,6 +181,8 @@ export default function ManagerClient() {
               <div className="meta-line"><span>Children</span><b>{order.childNames}</b></div>
               <div className="meta-line"><span>Method</span><b>{order.paymentMethod}</b></div>
               <div className="meta-line"><span>Order Total</span><b>{order.total} EGP</b></div>
+              {order.customerLeft && order.paymentStatus !== "PAID" && <div className="warning warning-orange">العميل خرج ولسه متعملش تم الدفع</div>}
+              {order.customerLeft && order.paymentStatus === "PAID" && !order.archivedAt && <div className="warning">العميل خرج ولسه متسجلش على السيستم</div>}
               {viewMode === "HISTORY" && order.closedAt && <div className="meta-line"><span>Closed</span><b>{new Date(order.closedAt).toLocaleString()}</b></div>}
               {viewMode === "HISTORY" && !order.closedAt && order.archivedAt && <div className="meta-line"><span>Archived</span><b>{new Date(order.archivedAt).toLocaleString()}</b></div>}
               <div className="actions">
@@ -265,14 +273,16 @@ export default function ManagerClient() {
               ))}
               <div className="row"><span>Order Total</span><b>{selectedOrder.total} EGP</b></div>
             </div>
+            {selectedOrder.customerLeft && selectedOrder.paymentStatus !== "PAID" && <div className="warning warning-orange">العميل خرج ولسه متعملش تم الدفع</div>}
+            {selectedOrder.customerLeft && selectedOrder.paymentStatus === "PAID" && !selectedOrder.archivedAt && <div className="warning">العميل خرج ولسه متسجلش على السيستم</div>}
             <div className="actions">
-              {!selectedOrder.isHistory && <button onClick={() => payOrder(selectedOrder.id, "CASH")}>Set Cash Paid</button>}
-              {!selectedOrder.isHistory && <button onClick={() => payOrder(selectedOrder.id, "VISA")}>Set Visa Paid</button>}
-              {!selectedOrder.isHistory && <button className="secondary" onClick={() => runOrderAction(selectedOrder.id, "deliver")}>Mark Delivered</button>}
-              {!selectedOrder.isHistory && <button className="danger" onClick={() => runOrderAction(selectedOrder.id, "left")}>Mark Customer Left</button>}
+              {!selectedOrder.isHistory && <button className="btn-pay-cash" onClick={() => payOrder(selectedOrder.id, "CASH")}>Set Cash Paid</button>}
+              {!selectedOrder.isHistory && <button className="btn-pay-visa" onClick={() => payOrder(selectedOrder.id, "VISA")}>Set Visa Paid</button>}
+              {!selectedOrder.isHistory && <button className="btn-deliver" onClick={() => runOrderAction(selectedOrder.id, "deliver")}>Mark Delivered</button>}
+              {!selectedOrder.isHistory && <button className="btn-exit" disabled={selectedOrder.customerLeft} onClick={() => runOrderAction(selectedOrder.id, "left")}>Mark Customer Left</button>}
               {!selectedOrder.isHistory && (
                 <button
-                  className="secondary"
+                  className="btn-system"
                   disabled={selectedOrder.kitchenStatus !== "DELIVERED" || selectedOrder.paymentStatus !== "PAID"}
                   onClick={() => runOrderAction(selectedOrder.id, "archive")}
                 >

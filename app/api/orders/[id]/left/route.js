@@ -9,25 +9,25 @@ export async function POST(_request, { params }) {
   const user = await getCurrentUser();
   await ensureBusinessDayState();
 
+  const current = await prisma.order.findUnique({ where: { id } });
+
+  if (!current) {
+    return NextResponse.json({ success: false, error: "Order not found" }, { status: 404 });
+  }
+
   const order = await prisma.order.update({
     where: { id },
     data: {
       customerLeft: true,
-      status: "ARCHIVED",
-      archivedAt: new Date(),
     },
-  }).catch(() => null);
-
-  if (!order) {
-    return NextResponse.json({ success: false, error: "Order not found" }, { status: 404 });
-  }
+  });
 
   await writeAudit({
     action: "CUSTOMER_LEFT",
     orderId: id,
     user,
-    summary: "Customer left and order archived",
-    metadata: { paymentStatus: order.paymentStatus, archivedAt: order.archivedAt },
+    summary: "Customer left",
+    metadata: { paymentStatus: order.paymentStatus, kitchenStatus: order.kitchenStatus },
   });
 
   return NextResponse.json({ success: true });

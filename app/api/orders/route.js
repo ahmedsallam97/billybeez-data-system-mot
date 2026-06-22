@@ -2,9 +2,12 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import { writeAudit } from "@/lib/audit";
+import { ensureBusinessDayState } from "@/lib/business-day";
 import { buildOrderId, includeOrderDetails, serializeOrder, validateBracelet } from "@/lib/orders";
 
 export async function GET(request) {
+  await ensureBusinessDayState();
+
   const { searchParams } = new URL(request.url);
   const paymentStatus = searchParams.get("paymentStatus");
   const archived = searchParams.get("archived");
@@ -27,6 +30,7 @@ export async function GET(request) {
 
 export async function POST(request) {
   const user = await getCurrentUser();
+  const businessState = await ensureBusinessDayState();
   const body = await request.json();
   const braceletNo = String(body.braceletNo || "").trim();
   const childNames = (body.childNames || []).map((name) => String(name || "").trim()).filter(Boolean);
@@ -34,6 +38,10 @@ export async function POST(request) {
 
   if (!user) {
     return NextResponse.json({ success: false, error: "Login required" }, { status: 401 });
+  }
+
+  if (!businessState.isOpen) {
+    return NextResponse.json({ success: false, error: businessState.message }, { status: 400 });
   }
 
   if (!validateBracelet(braceletNo)) {
@@ -78,6 +86,7 @@ export async function POST(request) {
   const order = await prisma.order.create({
     data: {
       id: buildOrderId(),
+      businessDate: businessState.businessDate,
       braceletNo,
       childNames: childNames.join(", "),
       childrenCount: childNames.length,

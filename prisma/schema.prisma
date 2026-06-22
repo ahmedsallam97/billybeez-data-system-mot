@@ -87,6 +87,7 @@ model Product {
 
 model Order {
   id             String        @id
+  businessDate   String?
   braceletNo    String
   childNames     String
   childrenCount  Int           @default(1)
@@ -133,4 +134,39 @@ model AuditLog {
 
   order Order? @relation(fields: [orderId], references: [id], onDelete: SetNull)
   user  User?  @relation(fields: [userId], references: [id], onDelete: SetNull)
+}
+
+model BusinessDay {
+  id               String    @id @default(cuid())
+  businessDate     String    @unique
+  openedAt         DateTime?
+  closedAt         DateTime?
+  closedOrderCount Int       @default(0)
+  closedTotal      Float     @default(0)
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+}
+
+model OrderHistory {
+  id               String   @id @default(cuid())
+  originalOrderId  String   @unique
+  businessDate     String
+  braceletNo       String
+  childNames       String
+  childrenCount    Int
+  total            Float
+  status           String
+  kitchenStatus    String
+  paymentStatus    String
+  paymentMethod    String
+  customerLeft     Boolean
+  cashierName      String?
+  dataEmployeeName String?
+  itemsJson        String
+  orderCreatedAt   DateTime
+  orderUpdatedAt   DateTime
+  archivedAt       DateTime?
+  closedAt         DateTime
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
 }

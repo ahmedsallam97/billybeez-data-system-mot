@@ -2,10 +2,12 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import { writeAudit } from "@/lib/audit";
+import { ensureBusinessDayState } from "@/lib/business-day";
 
 export async function POST(request, { params }) {
   const { id } = await params;
   const user = await getCurrentUser();
+  await ensureBusinessDayState();
   const body = await request.json();
   const items = Array.isArray(body.items) ? body.items : [];
 

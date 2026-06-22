@@ -2,10 +2,12 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import { writeAudit } from "@/lib/audit";
+import { ensureBusinessDayState } from "@/lib/business-day";
 
 export async function POST(_request, { params }) {
   const { id } = await params;
   const user = await getCurrentUser();
+  await ensureBusinessDayState();
 
   const order = await prisma.order.update({
     where: { id },

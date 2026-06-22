@@ -1,13 +1,24 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
+import { ensureBusinessDayState, serializeHistoryOrder } from "@/lib/business-day";
 import { includeOrderDetails, serializeOrder } from "@/lib/orders";
 
 export async function GET() {
-  const [orders, auditLogs] = await Promise.all([
+  const businessState = await ensureBusinessDayState();
+
+  const [orders, historyOrders, businessDays, auditLogs] = await Promise.all([
     prisma.order.findMany({
       include: includeOrderDetails(),
       orderBy: { createdAt: "desc" },
       take: 200,
+    }),
+    prisma.orderHistory.findMany({
+      orderBy: [{ businessDate: "desc" }, { orderCreatedAt: "desc" }],
+      take: 300,
+    }),
+    prisma.businessDay.findMany({
+      orderBy: { businessDate: "desc" },
+      take: 60,
     }),
     prisma.auditLog.findMany({
       include: {
@@ -19,6 +30,7 @@ export async function GET() {
   ]);
 
   const serialized = orders.map(serializeOrder);
+  const serializedHistory = historyOrders.map(serializeHistoryOrder);
   const paid = serialized.filter((order) => order.paymentStatus === "PAID");
   const unpaid = serialized.filter((order) => order.paymentStatus !== "PAID");
   const totalSales = paid.reduce((sum, order) => sum + order.total, 0);
@@ -36,7 +48,7 @@ export async function GET() {
     employeeMap.set(order.dataEmployee || "Unassigned", (employeeMap.get(order.dataEmployee || "Unassigned") || 0) + order.total);
     braceletMap.set(order.braceletNo, (braceletMap.get(order.braceletNo) || 0) + order.total);
     statusMap.set(order.status, (statusMap.get(order.status) || 0) + 1);
-    const day = new Date(order.createdAt).toISOString().slice(0, 10);
+    const day = order.businessDate || new Date(order.createdAt).toISOString().slice(0, 10);
     dailyMap.set(day, (dailyMap.get(day) || 0) + order.total);
 
     order.items.forEach((item) => {
@@ -48,6 +60,7 @@ export async function GET() {
   });
 
   return NextResponse.json({
+    businessState,
     totalSales,
     ordersCount: serialized.length,
     paidOrders: paid.length,
@@ -75,6 +88,14 @@ export async function GET() {
       summary: log.summary,
       createdAt: log.createdAt,
     })),
+    businessDays: businessDays.map((day) => ({
+      businessDate: day.businessDate,
+      openedAt: day.openedAt,
+      closedAt: day.closedAt,
+      closedOrderCount: day.closedOrderCount,
+      closedTotal: day.closedTotal,
+    })),
     orders: serialized,
+    orderHistory: serializedHistory,
   });
 }

@@ -6,6 +6,7 @@ import { useToast } from "../ToastProvider";
 export default function ManagerClient() {
   const toast = useToast();
   const [data, setData] = useState(null);
+  const [viewMode, setViewMode] = useState("TODAY");
   const [filter, setFilter] = useState("ALL");
   const [archiveFilter, setArchiveFilter] = useState("ALL");
   const [query, setQuery] = useState("");
@@ -22,18 +23,19 @@ export default function ManagerClient() {
     setData(await res.json());
   }
 
-  const orders = useMemo(() => {
-    let rows = data?.orders || [];
+  const visibleOrders = useMemo(() => {
+    let rows = viewMode === "HISTORY" ? data?.orderHistory || [] : data?.orders || [];
 
     if (filter === "UNPAID") rows = rows.filter((order) => order.paymentStatus !== "PAID");
     if (filter === "CASH" || filter === "VISA") rows = rows.filter((order) => order.paymentStatus === "PAID" && order.paymentMethod === filter);
-    if (archiveFilter === "ACTIVE") rows = rows.filter((order) => !order.archivedAt);
-    if (archiveFilter === "ARCHIVED") rows = rows.filter((order) => order.archivedAt);
+    if (viewMode === "TODAY" && archiveFilter === "ACTIVE") rows = rows.filter((order) => !order.archivedAt);
+    if (viewMode === "TODAY" && archiveFilter === "ARCHIVED") rows = rows.filter((order) => order.archivedAt);
 
     const search = query.trim().toLowerCase();
     if (search) {
       rows = rows.filter((order) => [
         order.id,
+        order.businessDate,
         order.braceletNo,
         order.childNames,
         order.cashier,
@@ -42,17 +44,17 @@ export default function ManagerClient() {
     }
 
     if (fromDate) {
-      rows = rows.filter((order) => new Date(order.createdAt) >= new Date(fromDate));
+      rows = rows.filter((order) => new Date(order.businessDate || order.createdAt) >= new Date(fromDate));
     }
 
     if (toDate) {
       const end = new Date(toDate);
       end.setHours(23, 59, 59, 999);
-      rows = rows.filter((order) => new Date(order.createdAt) <= end);
+      rows = rows.filter((order) => new Date(order.businessDate || order.createdAt) <= end);
     }
 
     return rows;
-  }, [data, filter, archiveFilter, query, fromDate, toDate]);
+  }, [data, viewMode, filter, archiveFilter, query, fromDate, toDate]);
 
   async function payOrder(orderId, paymentMethod) {
     const res = await fetch(`/api/orders/${orderId}/pay`, {
@@ -93,38 +95,53 @@ export default function ManagerClient() {
         <Metric label="Orders" value={data.ordersCount} />
         <Metric label="Unpaid" value={data.unpaidOrders} />
         <Metric label="Left Unpaid" value={data.leftUnpaid} />
-        <Metric label="Archived" value={data.archivedOrders} />
+        <Metric label="History" value={(data.orderHistory || []).length} />
       </section>
 
       <section className="panel">
+        <div className="row">
+          <div>
+            <h2>{viewMode === "HISTORY" ? "Order History" : "Today Orders"}</h2>
+            <div className="muted">
+              Business day: {data.businessState?.businessDate || "Closed"} · {data.businessState?.message}
+              {data.businessState?.closedOrderCount ? ` · Auto-closed ${data.businessState.closedOrderCount} orders` : ""}
+            </div>
+          </div>
+          <div className="actions">
+            <button className={viewMode === "TODAY" ? "secondary" : ""} onClick={() => setViewMode("TODAY")}>Today</button>
+            <button className={viewMode === "HISTORY" ? "secondary" : ""} onClick={() => setViewMode("HISTORY")}>Order History</button>
+          </div>
+        </div>
         <div className="tabs">
           {["ALL", "CASH", "VISA", "UNPAID"].map((item) => (
             <button key={item} className={filter === item ? "active" : ""} onClick={() => setFilter(item)}>{item}</button>
           ))}
         </div>
-        <div className="tabs">
+        {viewMode === "TODAY" && <div className="tabs">
           {["ALL", "ACTIVE", "ARCHIVED"].map((item) => (
             <button key={item} className={archiveFilter === item ? "active" : ""} onClick={() => setArchiveFilter(item)}>{item}</button>
           ))}
-        </div>
+        </div>}
         <div className="form-grid">
-          <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search order, bracelet, child, cashier" />
+          <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search order, bracelet, child, cashier, day" />
           <input type="date" value={fromDate} onChange={(event) => setFromDate(event.target.value)} />
           <input type="date" value={toDate} onChange={(event) => setToDate(event.target.value)} />
           <button className="secondary" onClick={() => { setQuery(""); setFromDate(""); setToDate(""); }}>Clear Filters</button>
         </div>
-        <div className="row"><span>Visible orders</span><b>{orders.length}</b></div>
+        <div className="row"><span>Visible orders</span><b>{visibleOrders.length}</b></div>
         <div className="grid three honey-grid">
-          {orders.map((order) => (
+          {visibleOrders.map((order) => (
             <div className="card order-cell" key={order.id}>
               <div className="row">
                 <b>{order.id}</b>
                 <span className={`badge ${order.paymentStatus === "PAID" ? "paid" : "unpaid"}`}>{order.paymentStatus}</span>
               </div>
+              {viewMode === "HISTORY" && <div className="meta-line"><span>Business Day</span><b>{order.businessDate}</b></div>}
               <div className="meta-line"><span>Bracelet</span><b>{order.braceletNo}</b></div>
               <div className="meta-line"><span>Children</span><b>{order.childNames}</b></div>
               <div className="meta-line"><span>Method</span><b>{order.paymentMethod}</b></div>
               <div className="meta-line"><span>Total</span><b>{order.total} EGP</b></div>
+              {viewMode === "HISTORY" && <div className="meta-line"><span>Closed</span><b>{new Date(order.closedAt).toLocaleString()}</b></div>}
               <div className="actions">
                 <button onClick={() => setSelectedOrder(order)}>Details</button>
                 <button className="secondary" onClick={() => window.open(`/invoice/${order.id}`, "_blank")}>Print</button>
@@ -194,6 +211,7 @@ export default function ManagerClient() {
             </div>
             <div className="grid two">
               <div className="meta-line"><span>Bracelet</span><b>{selectedOrder.braceletNo}</b></div>
+              {selectedOrder.isHistory && <div className="meta-line"><span>Business Day</span><b>{selectedOrder.businessDate}</b></div>}
               <div className="meta-line"><span>Children</span><b>{selectedOrder.childNames}</b></div>
               <div className="meta-line"><span>Cashier</span><b>{selectedOrder.cashier}</b></div>
               <div className="meta-line"><span>Employee</span><b>{selectedOrder.dataEmployee}</b></div>
@@ -201,6 +219,7 @@ export default function ManagerClient() {
               <div className="meta-line"><span>Payment</span><b>{selectedOrder.paymentStatus} / {selectedOrder.paymentMethod}</b></div>
               <div className="meta-line"><span>Status</span><b>{selectedOrder.status}</b></div>
               <div className="meta-line"><span>Archived</span><b>{selectedOrder.archivedAt ? "Yes" : "No"}</b></div>
+              {selectedOrder.isHistory && <div className="meta-line"><span>Closed At</span><b>{new Date(selectedOrder.closedAt).toLocaleString()}</b></div>}
             </div>
             <div className="detail-items">
               {selectedOrder.items.map((item) => (
@@ -209,17 +228,19 @@ export default function ManagerClient() {
               <div className="row"><span>Total</span><b>{selectedOrder.total} EGP</b></div>
             </div>
             <div className="actions">
-              <button onClick={() => payOrder(selectedOrder.id, "CASH")}>Set Cash Paid</button>
-              <button onClick={() => payOrder(selectedOrder.id, "VISA")}>Set Visa Paid</button>
-              <button className="secondary" onClick={() => runOrderAction(selectedOrder.id, "deliver")}>Mark Delivered</button>
-              <button className="danger" onClick={() => runOrderAction(selectedOrder.id, "left")}>Mark Customer Left</button>
-              <button
-                className="secondary"
-                disabled={selectedOrder.kitchenStatus !== "DELIVERED" || selectedOrder.paymentStatus !== "PAID"}
-                onClick={() => runOrderAction(selectedOrder.id, "archive")}
-              >
-                Archive
-              </button>
+              {!selectedOrder.isHistory && <button onClick={() => payOrder(selectedOrder.id, "CASH")}>Set Cash Paid</button>}
+              {!selectedOrder.isHistory && <button onClick={() => payOrder(selectedOrder.id, "VISA")}>Set Visa Paid</button>}
+              {!selectedOrder.isHistory && <button className="secondary" onClick={() => runOrderAction(selectedOrder.id, "deliver")}>Mark Delivered</button>}
+              {!selectedOrder.isHistory && <button className="danger" onClick={() => runOrderAction(selectedOrder.id, "left")}>Mark Customer Left</button>}
+              {!selectedOrder.isHistory && (
+                <button
+                  className="secondary"
+                  disabled={selectedOrder.kitchenStatus !== "DELIVERED" || selectedOrder.paymentStatus !== "PAID"}
+                  onClick={() => runOrderAction(selectedOrder.id, "archive")}
+                >
+                  Archive
+                </button>
+              )}
               <button className="secondary" onClick={() => window.open(`/invoice/${selectedOrder.id}`, "_blank")}>Print Invoice</button>
             </div>
           </div>

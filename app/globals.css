@@ -61,10 +61,10 @@ h1,h2,h3{color:var(--bb-purple);font-weight:900;margin-top:0}
   z-index:0;
   isolation:isolate;
   display:flex;
-  min-height:460px;
+  min-height:500px;
   flex-direction:column;
   justify-content:center;
-  padding:76px 56px;
+  padding:96px 56px 88px;
   border:0;
   border-radius:0;
   background:transparent;
@@ -76,7 +76,7 @@ h1,h2,h3{color:var(--bb-purple);font-weight:900;margin-top:0}
   position:absolute;
   inset:0;
   z-index:-1;
-  clip-path:polygon(50% 0,93% 24%,93% 76%,50% 100%,7% 76%,7% 24%);
+  clip-path:polygon(28% 0,72% 0,96% 28%,90% 76%,50% 100%,10% 76%,4% 28%);
   background:linear-gradient(135deg,rgba(48,24,72,.74),rgba(75,40,116,.42));
   opacity:1;
 }
@@ -85,10 +85,10 @@ h1,h2,h3{color:var(--bb-purple);font-weight:900;margin-top:0}
   position:absolute;
   inset:7px;
   z-index:-1;
-  clip-path:polygon(50% 0,93% 24%,93% 76%,50% 100%,7% 76%,7% 24%);
+  clip-path:polygon(28% 0,72% 0,96% 28%,90% 76%,50% 100%,10% 76%,4% 28%);
   background:linear-gradient(135deg,#fff 0%,#fffdf4 72%,#f4ecff 100%);
 }
-.order-cell .row:first-child{padding-top:0}
+.order-cell .row:first-child{align-items:center;justify-content:center;gap:12px;flex-wrap:wrap;padding-top:0;text-align:center}
 .order-cell .row,.order-cell .meta-line,.order-cell .summary{min-width:0}
 .order-cell .row span,.order-cell .row b,.order-cell .meta-line span,.order-cell .meta-line b{min-width:0;overflow-wrap:anywhere}
 .order-cell .actions{justify-content:center}
@@ -191,4 +191,4 @@ button.btn-unarchive{background:var(--bb-green);color:#fff}
 .invoice-title{text-align:left}
 .invoice-total{font-size:22px;color:var(--bb-red);font-weight:900}
 @media print{.topbar,.actions,.no-print{display:none}.invoice{box-shadow:none;border:0}}
-@media(max-width:900px){.grid,.grid.two,.grid.three,.grid.five,.form-grid,.products{grid-template-columns:1fr}.topbar{align-items:flex-start;flex-direction:column}.cashier-command{align-items:flex-start;flex-direction:column}.order-cell{min-height:430px;padding:70px 34px}.hex-action{width:172px}.modal-head{flex-direction:column}}
+@media(max-width:900px){.grid,.grid.two,.grid.three,.grid.five,.form-grid,.products{grid-template-columns:1fr}.topbar{align-items:flex-start;flex-direction:column}.cashier-command{align-items:flex-start;flex-direction:column}.order-cell{min-height:500px;padding:92px 34px 86px}.hex-action{width:172px}.modal-head{flex-direction:column}}

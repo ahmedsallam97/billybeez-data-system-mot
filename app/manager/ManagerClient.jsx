@@ -127,6 +127,9 @@ export default function ManagerClient() {
 
   if (!data) return <div className="panel">Loading...</div>;
 
+  const selectedIsActiveOrder = selectedOrder && !selectedOrder.isHistory && !selectedOrder.archivedAt;
+  const selectedIsArchivedOrder = selectedOrder && !selectedOrder.isHistory && selectedOrder.archivedAt;
+
   return (
     <>
       <section className="grid five">
@@ -187,6 +190,7 @@ export default function ManagerClient() {
               {viewMode === "HISTORY" && !order.closedAt && order.archivedAt && <div className="meta-line"><span>Archived</span><b>{new Date(order.archivedAt).toLocaleString()}</b></div>}
               <div className="actions">
                 <button onClick={() => setSelectedOrder(order)}>Details</button>
+                {order.archivedAt && !order.isHistory && <button className="btn-unarchive" onClick={() => runOrderAction(order.id, "unarchive")}>إلغاء الأرشفة</button>}
                 <button className="secondary" onClick={() => window.open(`/invoice/${order.id}`, "_blank")}>Print</button>
               </div>
             </div>
@@ -276,11 +280,11 @@ export default function ManagerClient() {
             {selectedOrder.customerLeft && selectedOrder.paymentStatus !== "PAID" && <div className="warning warning-orange">العميل خرج ولسه متعملش تم الدفع</div>}
             {selectedOrder.customerLeft && selectedOrder.paymentStatus === "PAID" && !selectedOrder.archivedAt && <div className="warning">العميل خرج ولسه متسجلش على السيستم</div>}
             <div className="actions">
-              {!selectedOrder.isHistory && <button className="btn-pay-cash" onClick={() => payOrder(selectedOrder.id, "CASH")}>Set Cash Paid</button>}
-              {!selectedOrder.isHistory && <button className="btn-pay-visa" onClick={() => payOrder(selectedOrder.id, "VISA")}>Set Visa Paid</button>}
-              {!selectedOrder.isHistory && <button className="btn-deliver" onClick={() => runOrderAction(selectedOrder.id, "deliver")}>Mark Delivered</button>}
-              {!selectedOrder.isHistory && <button className="btn-exit" disabled={selectedOrder.customerLeft} onClick={() => runOrderAction(selectedOrder.id, "left")}>Mark Customer Left</button>}
-              {!selectedOrder.isHistory && (
+              {selectedIsActiveOrder && <button className="btn-pay-cash" onClick={() => payOrder(selectedOrder.id, "CASH")}>Set Cash Paid</button>}
+              {selectedIsActiveOrder && <button className="btn-pay-visa" onClick={() => payOrder(selectedOrder.id, "VISA")}>Set Visa Paid</button>}
+              {selectedIsActiveOrder && <button className="btn-deliver" onClick={() => runOrderAction(selectedOrder.id, "deliver")}>Mark Delivered</button>}
+              {selectedIsActiveOrder && <button className="btn-exit" disabled={selectedOrder.customerLeft} onClick={() => runOrderAction(selectedOrder.id, "left")}>Mark Customer Left</button>}
+              {selectedIsActiveOrder && (
                 <button
                   className="btn-system"
                   disabled={selectedOrder.kitchenStatus !== "DELIVERED" || selectedOrder.paymentStatus !== "PAID"}
@@ -289,6 +293,7 @@ export default function ManagerClient() {
                   Archive
                 </button>
               )}
+              {selectedIsArchivedOrder && <button className="btn-unarchive" onClick={() => runOrderAction(selectedOrder.id, "unarchive")}>إلغاء الأرشفة</button>}
               <button className="secondary" onClick={() => window.open(`/invoice/${selectedOrder.id}`, "_blank")}>Print Invoice</button>
             </div>
           </div>

@@ -21,16 +21,17 @@ export default function CashierClient() {
   const [message, setMessage] = useState("");
   const [editingOrder, setEditingOrder] = useState(null);
   const [cashierView, setCashierView] = useState("orders");
+  const [showArchived, setShowArchived] = useState(false);
 
   useEffect(() => {
-    load();
-  }, []);
+    load(showArchived);
+  }, [showArchived]);
 
-  async function load() {
+  async function load(archived = showArchived) {
     const [productsRes, employeesRes, ordersRes] = await Promise.all([
       fetch("/api/products"),
       fetch("/api/employees"),
-      fetch("/api/orders?archived=false"),
+      fetch(`/api/orders?archived=${archived}`),
     ]);
     const [productsData, employeesData, ordersData] = await Promise.all([
       productsRes.json(),
@@ -61,14 +62,23 @@ export default function CashierClient() {
     setTimeout(() => ref.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 0);
   }
 
-  function showOrders() {
+  function showOrders(archived = showArchived) {
+    setShowArchived(archived);
     setCashierView("orders");
     window.history.replaceState(null, "", "#orders");
     scrollToSection(ordersRef);
   }
 
+  function showOrdersTab(archived) {
+    setShowArchived(archived);
+    setCashierView("orders");
+    window.history.replaceState(null, "", archived ? "#archived-orders" : "#orders");
+    scrollToSection(ordersRef);
+  }
+
   function showNewOrder() {
     setEditingOrder(null);
+    setShowArchived(false);
     setMessage("");
     setBraceletNo("");
     setCustomerPhone("");
@@ -149,8 +159,8 @@ export default function CashierClient() {
     setChildren(1);
     setPaymentMethod("CASH");
     setCart([]);
-    await load();
-    showOrders();
+    await load(false);
+    showOrders(false);
   }
 
   async function saveCart() {
@@ -176,7 +186,7 @@ export default function CashierClient() {
     toast("Items added to order");
     setEditingOrder(null);
     setCart([]);
-    await load();
+    await load(showArchived);
     showOrders();
   }
 
@@ -190,7 +200,7 @@ export default function CashierClient() {
     }
 
     toast("Customer marked as left", "info");
-    await load();
+    await load(showArchived);
   }
 
   async function archiveOrder(orderId) {
@@ -203,7 +213,7 @@ export default function CashierClient() {
     }
 
     toast("Order registered on system", "info");
-    await load();
+    await load(showArchived);
   }
 
   function renderCart() {
@@ -241,8 +251,8 @@ export default function CashierClient() {
           <span>إضافة طلب جديد</span>
         </button>
         <div className="command-copy">
-          <h2>الطلبات الحالية</h2>
-          <div className="muted">{orders.length} طلب حالي</div>
+          <h2>{showArchived ? "الطلبات المؤرشفة" : "الطلبات الحالية"}</h2>
+          <div className="muted">{orders.length} {showArchived ? "طلب مؤرشف" : "طلب حالي"}</div>
         </div>
       </section>
 
@@ -317,7 +327,13 @@ export default function CashierClient() {
       )}
 
       <section className="panel" id="orders" ref={ordersRef}>
-        <h2>الطلبات الحالية</h2>
+        <div className="row">
+          <h2>{showArchived ? "الطلبات المؤرشفة" : "الطلبات الحالية"}</h2>
+          <div className="tabs order-tabs">
+            <button className={!showArchived ? "active" : ""} onClick={() => showOrdersTab(false)}>الطلبات الحالية</button>
+            <button className={showArchived ? "active" : ""} onClick={() => showOrdersTab(true)}>الطلبات المؤرشفة</button>
+          </div>
+        </div>
         <div className="grid three honey-grid">
           {orders.map((order) => (
             <div className={`card order-cell ${orderAlertClass(order)}`} key={order.id}>
@@ -342,17 +358,21 @@ export default function CashierClient() {
               </div>
               {order.customerLeft && order.paymentStatus !== "PAID" && <div className="warning warning-orange">العميل خرج ولسه متعملش تم الدفع</div>}
               {order.customerLeft && order.paymentStatus === "PAID" && !order.archivedAt && <div className="warning">العميل خرج ولسه متسجلش على السيستم</div>}
-              <div className="actions">
-                <button className="btn-edit" onClick={() => startEdit(order)}>تعديل على الأوردر</button>
-                <button className="btn-exit" disabled={order.customerLeft} onClick={() => markCustomerLeft(order.id)}>تم الخروج</button>
-                <button
-                  className="btn-system"
-                  disabled={order.kitchenStatus !== "DELIVERED" || order.paymentStatus !== "PAID"}
-                  onClick={() => archiveOrder(order.id)}
-                >
-                  تم التسجيل على السيستم
-                </button>
-              </div>
+              {showArchived ? (
+                <div className="muted">Archived at: {order.archivedAt ? new Date(order.archivedAt).toLocaleString() : ""}</div>
+              ) : (
+                <div className="actions">
+                  <button className="btn-edit" onClick={() => startEdit(order)}>تعديل على الأوردر</button>
+                  <button className="btn-exit" disabled={order.customerLeft} onClick={() => markCustomerLeft(order.id)}>تم الخروج</button>
+                  <button
+                    className="btn-system"
+                    disabled={order.kitchenStatus !== "DELIVERED" || order.paymentStatus !== "PAID"}
+                    onClick={() => archiveOrder(order.id)}
+                  >
+                    تم التسجيل على السيستم
+                  </button>
+                </div>
+              )}
             </div>
           ))}
         </div>

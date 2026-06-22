@@ -265,11 +265,11 @@ export default function CashierClient() {
             <div className="meta-line"><span>Bracelet</span><b>{editingOrder.braceletNo}</b></div>
             <div className="meta-line"><span>Phone</span><b>{editingOrder.customerPhone || "-"}</b></div>
             <div className="meta-line"><span>Children</span><b>{editingOrder.childNames}</b></div>
-            <div className="meta-line"><span>Order Total</span><b>{editingOrder.total} EGP</b></div>
             <div className="panel">
               {editingOrder.items.map((item) => (
                 <div className="row" key={item.id}><span>{item.name} x {item.qty}</span><b>{item.total} EGP</b></div>
               ))}
+              <div className="row order-total-row"><span>Order Total</span><b>{editingOrder.total} EGP</b></div>
             </div>
           </div>
         ) : (
@@ -358,7 +358,6 @@ export default function CashierClient() {
               <div className="meta-line"><span>Employee</span><b>{order.dataEmployee || "-"}</b></div>
               <div className="meta-line"><span>Kitchen</span><b>{order.kitchenStatus}</b></div>
               <div className="meta-line"><span>Payment Method</span><b>{order.paymentMethod}</b></div>
-              <div className="meta-line"><span>Order Total</span><b>{order.total} EGP</b></div>
               <div className="summary">
                 {order.items.length === 0 ? (
                   <div className="muted">No items</div>
@@ -368,6 +367,7 @@ export default function CashierClient() {
                     <b>{item.total} EGP</b>
                   </div>
                 ))}
+                <div className="row order-total-row"><span>Order Total</span><b>{order.total} EGP</b></div>
               </div>
               {order.customerLeft && order.paymentStatus !== "PAID" && <div className="warning warning-orange">العميل خرج ولسه متعملش تم الدفع</div>}
               {order.customerLeft && order.paymentStatus === "PAID" && !order.archivedAt && <div className="warning">العميل خرج ولسه متسجلش على السيستم</div>}

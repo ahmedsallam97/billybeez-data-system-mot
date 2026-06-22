@@ -183,11 +183,21 @@ export default function ManagerClient() {
               <div className="meta-line"><span>Phone</span><b>{order.customerPhone || "-"}</b></div>
               <div className="meta-line"><span>Children</span><b>{order.childNames}</b></div>
               <div className="meta-line"><span>Method</span><b>{order.paymentMethod}</b></div>
-              <div className="meta-line"><span>Order Total</span><b>{order.total} EGP</b></div>
               {order.customerLeft && order.paymentStatus !== "PAID" && <div className="warning warning-orange">العميل خرج ولسه متعملش تم الدفع</div>}
               {order.customerLeft && order.paymentStatus === "PAID" && !order.archivedAt && <div className="warning">العميل خرج ولسه متسجلش على السيستم</div>}
               {viewMode === "HISTORY" && order.closedAt && <div className="meta-line"><span>Closed</span><b>{new Date(order.closedAt).toLocaleString()}</b></div>}
               {viewMode === "HISTORY" && !order.closedAt && order.archivedAt && <div className="meta-line"><span>Archived</span><b>{new Date(order.archivedAt).toLocaleString()}</b></div>}
+              <div className="summary">
+                {(order.items || []).length === 0 ? (
+                  <div className="muted">No items</div>
+                ) : order.items.map((item) => (
+                  <div className="row" key={item.id}>
+                    <span>{item.name} x {item.qty}</span>
+                    <b>{item.total} EGP</b>
+                  </div>
+                ))}
+                <div className="row order-total-row"><span>Order Total</span><b>{order.total} EGP</b></div>
+              </div>
               <div className="actions">
                 <button onClick={() => setSelectedOrder(order)}>Details</button>
                 {order.archivedAt && !order.isHistory && <button className="btn-unarchive" onClick={() => runOrderAction(order.id, "unarchive")}>إلغاء الأرشفة</button>}
@@ -266,7 +276,6 @@ export default function ManagerClient() {
               <div className="meta-line"><span>Kitchen</span><b>{selectedOrder.kitchenStatus}</b></div>
               <div className="meta-line"><span>Payment</span><b>{selectedOrder.paymentStatus} / {selectedOrder.paymentMethod}</b></div>
               <div className="meta-line"><span>Status</span><b>{selectedOrder.status}</b></div>
-              <div className="meta-line"><span>Order Total</span><b>{selectedOrder.total} EGP</b></div>
               <div className="meta-line"><span>Archived</span><b>{selectedOrder.archivedAt ? "Yes" : "No"}</b></div>
               {selectedOrder.closedAt && <div className="meta-line"><span>Closed At</span><b>{new Date(selectedOrder.closedAt).toLocaleString()}</b></div>}
               {selectedOrder.archivedAt && <div className="meta-line"><span>Archived At</span><b>{new Date(selectedOrder.archivedAt).toLocaleString()}</b></div>}

@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import BusinessDayControl from "./BusinessDayControl";
 
 export default function AppShell({ title, user, children }) {
   const router = useRouter();
@@ -28,7 +29,10 @@ export default function AppShell({ title, user, children }) {
           <button className="danger" onClick={logout}>Logout</button>
         </nav>
       </header>
-      <main className="container">{children}</main>
+      <main className="container">
+        <BusinessDayControl />
+        {children}
+      </main>
     </div>
   );
 }

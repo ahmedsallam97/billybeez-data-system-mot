@@ -53,6 +53,10 @@ export default function ManagerClient() {
     return "needs-system";
   }
 
+  function orderUrlId(orderId) {
+    return encodeURIComponent(orderId);
+  }
+
   const currentArchivedOrders = useMemo(
     () => (data?.orders || []).filter((order) => order.archivedAt).map((order) => ({ ...order, isCurrentArchive: true })),
     [data],
@@ -96,7 +100,7 @@ export default function ManagerClient() {
   }, [data, viewMode, historyRows, filter, archiveFilter, query, fromDate, toDate]);
 
   async function payOrder(orderId, paymentMethod) {
-    const res = await fetch(`/api/orders/${orderId}/pay`, {
+    const res = await fetch(`/api/orders/${orderUrlId(orderId)}/pay`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ paymentMethod }),
@@ -112,7 +116,7 @@ export default function ManagerClient() {
   }
 
   async function runOrderAction(orderId, action) {
-    const res = await fetch(`/api/orders/${orderId}/${action}`, { method: "POST" });
+    const res = await fetch(`/api/orders/${orderUrlId(orderId)}/${action}`, { method: "POST" });
     const result = await res.json();
 
     if (!result.success) {
@@ -199,9 +203,9 @@ export default function ManagerClient() {
                 <div className="row order-total-row"><span>Order Total</span><b>{order.total} EGP</b></div>
               </div>
               <div className="actions">
-                <button onClick={() => setSelectedOrder(order)}>Details</button>
+                <button className="btn-details" onClick={() => setSelectedOrder(order)}>Details</button>
                 {order.archivedAt && !order.isHistory && <button className="btn-unarchive" onClick={() => runOrderAction(order.id, "unarchive")}>إلغاء الأرشفة</button>}
-                <button className="secondary" onClick={() => window.open(`/invoice/${order.id}`, "_blank")}>Print</button>
+                <button className="btn-print" onClick={() => window.open(`/invoice/${orderUrlId(order.id)}`, "_blank")}>Print</button>
               </div>
             </div>
           ))}
@@ -303,7 +307,7 @@ export default function ManagerClient() {
                 </button>
               )}
               {selectedIsArchivedOrder && <button className="btn-unarchive" onClick={() => runOrderAction(selectedOrder.id, "unarchive")}>إلغاء الأرشفة</button>}
-              <button className="secondary" onClick={() => window.open(`/invoice/${selectedOrder.id}`, "_blank")}>Print Invoice</button>
+              <button className="btn-print" onClick={() => window.open(`/invoice/${orderUrlId(selectedOrder.id)}`, "_blank")}>Print Invoice</button>
             </div>
           </div>
         </div>

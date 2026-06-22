@@ -14,6 +14,10 @@ export default function KitchenClient() {
     return "needs-system";
   }
 
+  function orderUrlId(orderId) {
+    return encodeURIComponent(orderId);
+  }
+
   useEffect(() => {
     load();
     const timer = setInterval(load, 8000);
@@ -26,7 +30,7 @@ export default function KitchenClient() {
   }
 
   async function deliver(orderId) {
-    const res = await fetch(`/api/orders/${orderId}/deliver`, { method: "POST" });
+    const res = await fetch(`/api/orders/${orderUrlId(orderId)}/deliver`, { method: "POST" });
     const data = await res.json();
 
     if (!data.success) {
@@ -40,7 +44,7 @@ export default function KitchenClient() {
 
   async function pay(orderId, paymentMethod) {
     const invoiceWindow = window.open("about:blank", "_blank");
-    const res = await fetch(`/api/orders/${orderId}/pay`, {
+    const res = await fetch(`/api/orders/${orderUrlId(orderId)}/pay`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ paymentMethod }),
@@ -48,7 +52,7 @@ export default function KitchenClient() {
     const data = await res.json();
 
     if (data.success) {
-      if (invoiceWindow) invoiceWindow.location.href = `/invoice/${orderId}`;
+      if (invoiceWindow) invoiceWindow.location.href = `/invoice/${orderUrlId(orderId)}`;
       toast(`Payment saved as ${paymentMethod}`);
       await load();
     } else if (invoiceWindow) {
@@ -58,7 +62,7 @@ export default function KitchenClient() {
   }
 
   async function archive(orderId) {
-    const res = await fetch(`/api/orders/${orderId}/archive`, { method: "POST" });
+    const res = await fetch(`/api/orders/${orderUrlId(orderId)}/archive`, { method: "POST" });
     const data = await res.json();
 
     if (!data.success) {

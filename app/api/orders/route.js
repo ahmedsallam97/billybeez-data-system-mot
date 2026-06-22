@@ -84,9 +84,10 @@ export async function POST(request) {
     });
   });
 
+  const orderId = await buildOrderId();
   const order = await prisma.order.create({
     data: {
-      id: buildOrderId(),
+      id: orderId,
       businessDate: businessState.businessDate,
       braceletNo,
       customerPhone: customerPhone || null,

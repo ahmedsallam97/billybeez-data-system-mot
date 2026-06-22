@@ -58,6 +58,10 @@ export default function CashierClient() {
     return "needs-system";
   }
 
+  function orderUrlId(orderId) {
+    return encodeURIComponent(orderId);
+  }
+
   function scrollToSection(ref) {
     setTimeout(() => ref.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 0);
   }
@@ -170,7 +174,7 @@ export default function CashierClient() {
     }
 
     setMessage("");
-    const res = await fetch(`/api/orders/${editingOrder.id}/items`, {
+    const res = await fetch(`/api/orders/${orderUrlId(editingOrder.id)}/items`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ items: cart }),
@@ -191,7 +195,7 @@ export default function CashierClient() {
   }
 
   async function markCustomerLeft(orderId) {
-    const res = await fetch(`/api/orders/${orderId}/left`, { method: "POST" });
+    const res = await fetch(`/api/orders/${orderUrlId(orderId)}/left`, { method: "POST" });
     const data = await res.json();
 
     if (!data.success) {
@@ -204,7 +208,7 @@ export default function CashierClient() {
   }
 
   async function archiveOrder(orderId) {
-    const res = await fetch(`/api/orders/${orderId}/archive`, { method: "POST" });
+    const res = await fetch(`/api/orders/${orderUrlId(orderId)}/archive`, { method: "POST" });
     const data = await res.json();
 
     if (!data.success) {
@@ -224,7 +228,7 @@ export default function CashierClient() {
           <div className="row" key={item.productId}>
             <span>{item.name} x {item.qty}</span>
             <span className="actions">
-              <button onClick={() => changeQty(item.productId, 1)}>+</button>
+              <button className="btn-confirm" onClick={() => changeQty(item.productId, 1)}>+</button>
               <button className="secondary" onClick={() => changeQty(item.productId, -1)}>-</button>
               <b>{item.price * item.qty} EGP</b>
             </span>
@@ -233,9 +237,9 @@ export default function CashierClient() {
         <div className="row"><span>{editingOrder ? "New Items Total" : "Order Total"}</span><b>{total} EGP</b></div>
         {editingOrder && <div className="row"><span>Order Total After Add</span><b>{orderTotalPreview} EGP</b></div>}
         <div className="actions">
-          <button onClick={saveCart}>{editingOrder ? "Add Items" : "Save Order"}</button>
+          <button className="btn-confirm" onClick={saveCart}>{editingOrder ? "Add Items" : "Save Order"}</button>
           <button className="secondary" onClick={() => setCart([])}>Clear Cart</button>
-          {!editingOrder && <button className="secondary" onClick={showOrders}>رجوع للطلبات</button>}
+          {!editingOrder && <button className="danger" onClick={showOrders}>رجوع للطلبات</button>}
           {editingOrder && <button className="danger" onClick={cancelEdit}>Cancel</button>}
         </div>
         <div className="message">{message}</div>

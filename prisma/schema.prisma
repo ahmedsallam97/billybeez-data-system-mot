@@ -89,6 +89,7 @@ model Order {
   id             String        @id
   businessDate   String?
   braceletNo    String
+  customerPhone  String?
   childNames     String
   childrenCount  Int           @default(1)
   total          Float         @default(0)
@@ -152,6 +153,7 @@ model OrderHistory {
   originalOrderId  String   @unique
   businessDate     String
   braceletNo       String
+  customerPhone    String?
   childNames       String
   childrenCount    Int
   total            Float

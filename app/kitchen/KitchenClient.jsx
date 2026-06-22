@@ -81,8 +81,9 @@ export default function KitchenClient() {
               <span className={`badge ${order.paymentStatus === "PAID" ? "paid" : "unpaid"}`}>{order.paymentStatus}</span>
             </div>
             <div className="meta-line"><span>Bracelet</span><b>{order.braceletNo}</b></div>
+            <div className="meta-line"><span>Phone</span><b>{order.customerPhone || "-"}</b></div>
             <div className="meta-line"><span>Children</span><b>{order.childNames}</b></div>
-            <div className="meta-line"><span>Total</span><b>{order.total} EGP</b></div>
+            <div className="meta-line"><span>Order Total</span><b>{order.total} EGP</b></div>
             <div className="meta-line"><span>Kitchen</span><b>{order.kitchenStatus}</b></div>
             {order.customerLeft && order.paymentStatus !== "PAID" && <div className="warning">العميل خرج ولسه متعملش تم الدفع</div>}
             <div className="panel">

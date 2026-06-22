@@ -20,9 +20,11 @@ export default function InvoicePrint({ order }) {
       <div className="panel">
         <div>Order ID: <b>{order.id}</b></div>
         <div>Bracelet: <b>{order.braceletNo}</b></div>
+        <div>Phone: <b>{order.customerPhone || "-"}</b></div>
         <div>Children: <b>{order.childNames}</b></div>
         <div>Cashier: <b>{order.cashier}</b></div>
         <div>Payment: <b>{order.paymentMethod}</b></div>
+        <div>Order Total: <b>{order.total} EGP</b></div>
       </div>
       <div className="panel">
         {order.items.map((item) => (
@@ -31,7 +33,7 @@ export default function InvoicePrint({ order }) {
             <b>{item.total} EGP</b>
           </div>
         ))}
-        <div className="row invoice-total"><span>Total</span><b>{order.total} EGP</b></div>
+        <div className="row invoice-total"><span>Order Total</span><b>{order.total} EGP</b></div>
       </div>
       <button className="no-print" onClick={() => window.print()}>Print</button>
     </div>

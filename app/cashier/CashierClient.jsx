@@ -13,6 +13,7 @@ export default function CashierClient() {
   const [orders, setOrders] = useState([]);
   const [cart, setCart] = useState([]);
   const [braceletNo, setBraceletNo] = useState("");
+  const [customerPhone, setCustomerPhone] = useState("");
   const [childCount, setChildCount] = useState(1);
   const [childNames, setChildNames] = useState([""]);
   const [dataEmployeeId, setDataEmployeeId] = useState("");
@@ -48,6 +49,7 @@ export default function CashierClient() {
   const [category, setCategory] = useState("All");
   const visibleProducts = products.filter((product) => category === "All" || product.categoryName === category);
   const total = cart.reduce((sum, item) => sum + item.price * item.qty, 0);
+  const orderTotalPreview = editingOrder ? Number(editingOrder.total || 0) + total : total;
 
   function scrollToSection(ref) {
     setTimeout(() => ref.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 0);
@@ -63,6 +65,7 @@ export default function CashierClient() {
     setEditingOrder(null);
     setMessage("");
     setBraceletNo("");
+    setCustomerPhone("");
     setChildNames([""]);
     setChildren(1);
     setPaymentMethod("CASH");
@@ -116,6 +119,7 @@ export default function CashierClient() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         braceletNo,
+        customerPhone,
         childNames,
         dataEmployeeId,
         paymentMethod,
@@ -134,6 +138,7 @@ export default function CashierClient() {
     localStorage.setItem("lastDataEmployeeId", dataEmployeeId);
     setEditingOrder(null);
     setBraceletNo("");
+    setCustomerPhone("");
     setChildNames([""]);
     setChildren(1);
     setPaymentMethod("CASH");
@@ -196,7 +201,8 @@ export default function CashierClient() {
             </span>
           </div>
         ))}
-        <div className="row"><span>Total</span><b>{total} EGP</b></div>
+        <div className="row"><span>{editingOrder ? "New Items Total" : "Order Total"}</span><b>{total} EGP</b></div>
+        {editingOrder && <div className="row"><span>Order Total After Add</span><b>{orderTotalPreview} EGP</b></div>}
         <div className="actions">
           <button onClick={saveCart}>{editingOrder ? "Add Items" : "Save Order"}</button>
           <button className="secondary" onClick={() => setCart([])}>Clear Cart</button>
@@ -228,8 +234,9 @@ export default function CashierClient() {
           <div className="summary">
             <div className="meta-line"><span>Order</span><b>{editingOrder.id}</b></div>
             <div className="meta-line"><span>Bracelet</span><b>{editingOrder.braceletNo}</b></div>
+            <div className="meta-line"><span>Phone</span><b>{editingOrder.customerPhone || "-"}</b></div>
             <div className="meta-line"><span>Children</span><b>{editingOrder.childNames}</b></div>
-            <div className="meta-line"><span>Current Total</span><b>{editingOrder.total} EGP</b></div>
+            <div className="meta-line"><span>Order Total</span><b>{editingOrder.total} EGP</b></div>
             <div className="panel">
               {editingOrder.items.map((item) => (
                 <div className="row" key={item.id}><span>{item.name} x {item.qty}</span><b>{item.total} EGP</b></div>
@@ -240,6 +247,7 @@ export default function CashierClient() {
           <>
             <div className="form-grid">
               <input value={braceletNo} onChange={(event) => setBraceletNo(event.target.value)} placeholder="Bracelet number" />
+              <input value={customerPhone} onChange={(event) => setCustomerPhone(event.target.value)} placeholder="Customer phone (optional)" />
               <select value={childCount} onChange={(event) => setChildren(Number(event.target.value))}>
                 {[1, 2, 3, 4, 5, 6].map((count) => <option key={count} value={count}>{count} child</option>)}
               </select>
@@ -296,12 +304,13 @@ export default function CashierClient() {
             <div className="card order-cell" key={order.id}>
               <div className="row"><b>{order.id}</b><span className={`badge ${order.paymentStatus === "PAID" ? "paid" : "unpaid"}`}>{order.paymentStatus}</span></div>
               <div className="meta-line"><span>Bracelet</span><b>{order.braceletNo}</b></div>
+              <div className="meta-line"><span>Phone</span><b>{order.customerPhone || "-"}</b></div>
               <div className="meta-line"><span>Children</span><b>{order.childNames}</b></div>
               <div className="meta-line"><span>Cashier</span><b>{order.cashier || "-"}</b></div>
               <div className="meta-line"><span>Employee</span><b>{order.dataEmployee || "-"}</b></div>
               <div className="meta-line"><span>Kitchen</span><b>{order.kitchenStatus}</b></div>
               <div className="meta-line"><span>Payment Method</span><b>{order.paymentMethod}</b></div>
-              <div className="meta-line"><span>Total</span><b>{order.total} EGP</b></div>
+              <div className="meta-line"><span>Order Total</span><b>{order.total} EGP</b></div>
               <div className="summary">
                 {order.items.length === 0 ? (
                   <div className="muted">No items</div>

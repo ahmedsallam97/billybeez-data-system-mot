@@ -80,6 +80,10 @@ function parseBoolean(value) {
   return value === true || String(value).toLowerCase() === "true";
 }
 
+function customerPhoneFor(order) {
+  return textValue(order.customerPhone || order.phone || order.mobile || order.customerMobile, null) || null;
+}
+
 async function ensureImportedCashier(name) {
   const cashierName = String(name || "Imported Cashier").trim() || "Imported Cashier";
   const username = `cashier_${Buffer.from(cashierName).toString("base64url").slice(0, 24)}`;
@@ -205,6 +209,7 @@ async function importOrders(apiUrl) {
       create: {
         id: orderId,
         braceletNo: String(order.bracelet || order.braceletNo || ""),
+        customerPhone: customerPhoneFor(order),
         childNames: order.childName || order.child || "",
         childrenCount: Number(order.childrenCount) || 1,
         total: Number(order.total) || 0,
@@ -220,6 +225,7 @@ async function importOrders(apiUrl) {
       },
       update: {
         braceletNo: String(order.bracelet || order.braceletNo || ""),
+        customerPhone: customerPhoneFor(order),
         childNames: order.childName || order.child || "",
         childrenCount: Number(order.childrenCount) || 1,
         total: Number(order.total) || 0,

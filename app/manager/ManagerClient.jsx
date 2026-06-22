@@ -37,6 +37,7 @@ export default function ManagerClient() {
         order.id,
         order.businessDate,
         order.braceletNo,
+        order.customerPhone,
         order.childNames,
         order.cashier,
         order.dataEmployee,
@@ -123,7 +124,7 @@ export default function ManagerClient() {
           ))}
         </div>}
         <div className="form-grid">
-          <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search order, bracelet, child, cashier, day" />
+          <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search order, bracelet, phone, child, cashier, day" />
           <input type="date" value={fromDate} onChange={(event) => setFromDate(event.target.value)} />
           <input type="date" value={toDate} onChange={(event) => setToDate(event.target.value)} />
           <button className="secondary" onClick={() => { setQuery(""); setFromDate(""); setToDate(""); }}>Clear Filters</button>
@@ -138,9 +139,10 @@ export default function ManagerClient() {
               </div>
               {viewMode === "HISTORY" && <div className="meta-line"><span>Business Day</span><b>{order.businessDate}</b></div>}
               <div className="meta-line"><span>Bracelet</span><b>{order.braceletNo}</b></div>
+              <div className="meta-line"><span>Phone</span><b>{order.customerPhone || "-"}</b></div>
               <div className="meta-line"><span>Children</span><b>{order.childNames}</b></div>
               <div className="meta-line"><span>Method</span><b>{order.paymentMethod}</b></div>
-              <div className="meta-line"><span>Total</span><b>{order.total} EGP</b></div>
+              <div className="meta-line"><span>Order Total</span><b>{order.total} EGP</b></div>
               {viewMode === "HISTORY" && <div className="meta-line"><span>Closed</span><b>{new Date(order.closedAt).toLocaleString()}</b></div>}
               <div className="actions">
                 <button onClick={() => setSelectedOrder(order)}>Details</button>
@@ -212,12 +214,14 @@ export default function ManagerClient() {
             <div className="grid two">
               <div className="meta-line"><span>Bracelet</span><b>{selectedOrder.braceletNo}</b></div>
               {selectedOrder.isHistory && <div className="meta-line"><span>Business Day</span><b>{selectedOrder.businessDate}</b></div>}
+              <div className="meta-line"><span>Phone</span><b>{selectedOrder.customerPhone || "-"}</b></div>
               <div className="meta-line"><span>Children</span><b>{selectedOrder.childNames}</b></div>
               <div className="meta-line"><span>Cashier</span><b>{selectedOrder.cashier}</b></div>
               <div className="meta-line"><span>Employee</span><b>{selectedOrder.dataEmployee}</b></div>
               <div className="meta-line"><span>Kitchen</span><b>{selectedOrder.kitchenStatus}</b></div>
               <div className="meta-line"><span>Payment</span><b>{selectedOrder.paymentStatus} / {selectedOrder.paymentMethod}</b></div>
               <div className="meta-line"><span>Status</span><b>{selectedOrder.status}</b></div>
+              <div className="meta-line"><span>Order Total</span><b>{selectedOrder.total} EGP</b></div>
               <div className="meta-line"><span>Archived</span><b>{selectedOrder.archivedAt ? "Yes" : "No"}</b></div>
               {selectedOrder.isHistory && <div className="meta-line"><span>Closed At</span><b>{new Date(selectedOrder.closedAt).toLocaleString()}</b></div>}
             </div>
@@ -225,7 +229,7 @@ export default function ManagerClient() {
               {selectedOrder.items.map((item) => (
                 <div className="row" key={item.id}><span>{item.name} x {item.qty}</span><b>{item.total} EGP</b></div>
               ))}
-              <div className="row"><span>Total</span><b>{selectedOrder.total} EGP</b></div>
+              <div className="row"><span>Order Total</span><b>{selectedOrder.total} EGP</b></div>
             </div>
             <div className="actions">
               {!selectedOrder.isHistory && <button onClick={() => payOrder(selectedOrder.id, "CASH")}>Set Cash Paid</button>}

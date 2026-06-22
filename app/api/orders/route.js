@@ -33,6 +33,7 @@ export async function POST(request) {
   const businessState = await ensureBusinessDayState();
   const body = await request.json();
   const braceletNo = String(body.braceletNo || "").trim();
+  const customerPhone = String(body.customerPhone || "").trim();
   const childNames = (body.childNames || []).map((name) => String(name || "").trim()).filter(Boolean);
   const items = Array.isArray(body.items) ? body.items : [];
 
@@ -88,6 +89,7 @@ export async function POST(request) {
       id: buildOrderId(),
       businessDate: businessState.businessDate,
       braceletNo,
+      customerPhone: customerPhone || null,
       childNames: childNames.join(", "),
       childrenCount: childNames.length,
       total,

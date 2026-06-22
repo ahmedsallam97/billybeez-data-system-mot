@@ -6,6 +6,7 @@
     "lint": "next lint",
     "db:push": "prisma db push",
     "db:seed": "node scripts/seed.js",
+    "products:images": "node scripts/sync-product-images.js",
     "db:import:apps-script": "node scripts/import-apps-script.js",
     "clasp:push": "clasp push --force"
   },

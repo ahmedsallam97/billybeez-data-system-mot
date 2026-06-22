@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="320" height="240" viewBox="0 0 320 240" role="img" aria-label="Caesar Salad">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#e7f7fb"/>
+      <stop offset="1" stop-color="#36acd4"/>
+    </linearGradient>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="8" stdDeviation="7" flood-color="#301848" flood-opacity=".18"/>
+    </filter>
+  </defs>
+  <rect width="320" height="240" rx="0" fill="url(#bg)"/>
+  <g opacity=".16" fill="none" stroke="#301848" stroke-width="4">
+    <path d="M20 54l24-14 24 14v28L44 96 20 82z"/>
+    <path d="M252 36l24-14 24 14v28l-24 14-24-14z"/>
+    <path d="M232 156l28-16 28 16v32l-28 16-28-16z"/>
+  </g>
+  <g filter="url(#shadow)">
+    <path d="M72 36h176l40 70-40 70H72l-40-70z" fill="#ffffff" opacity=".94"/>
+    <ellipse cx="160" cy="143" rx="76" ry="28" fill="#301848"/><path d="M94 128h132c-12 40-120 40-132 0z" fill="#e7f7fb"/><circle cx="133" cy="120" r="18" fill="#31aa2f"/><circle cx="164" cy="112" r="20" fill="#36acd4"/><circle cx="191" cy="123" r="16" fill="#ff671f"/>
+  </g>
+  <rect x="24" y="188" width="272" height="35" rx="17" fill="#ffffff" opacity=".92"/>
+  <text x="160" y="205" text-anchor="middle" font-family="Avenir Next, Segoe UI, Arial, sans-serif" font-size="16" font-weight="800" fill="#301848">Caesar Salad</text>
+  <text x="160" y="28" text-anchor="middle" font-family="Avenir Next, Segoe UI, Arial, sans-serif" font-size="12" font-weight="800" fill="#301848" opacity=".75">SA001</text>
+</svg>

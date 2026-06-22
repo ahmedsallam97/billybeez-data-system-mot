@@ -100,6 +100,10 @@ h1,h2,h3{color:var(--bb-purple);font-weight:900;margin-top:0}
 .hex-action span:last-child{font-size:15px;font-weight:900}
 .command-copy{display:grid;gap:4px}
 .command-copy h2{margin:0}
+.cart-panel{background:#fff;border:1px solid var(--bb-line);border-radius:8px;padding:12px;margin:2px 0;box-shadow:0 6px 14px rgba(48,24,72,.05)}
+.cart-panel h3{text-align:right;margin:0 0 8px}
+.cart-panel .actions{justify-content:flex-end}
+.cart-panel .row b{color:var(--bb-purple)}
 .products{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}
 .product{overflow:hidden;padding:0;text-align:center;background:#fff;border-color:#eadcf8}
 .product img{width:100%;aspect-ratio:1.2/1;object-fit:cover;background:#eef0f3}

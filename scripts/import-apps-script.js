@@ -1,6 +1,7 @@
 const fs = require("fs");
 const path = require("path");
 const { PrismaClient } = require("@prisma/client");
+const { ensureFallbackImage, ensureProductImage, productImagePath } = require("./product-images");
 
 const prisma = new PrismaClient();
 
@@ -49,10 +50,6 @@ function textValue(value, fallback = "") {
   if (typeof value === "string" && value.trim()) return value.trim();
   if (typeof value === "number") return String(value);
   return fallback;
-}
-
-function imageUrl(name, category) {
-  return `https://loremflickr.com/320/240/${encodeURIComponent(`${name || "food"},${category || "food"}`)}`;
 }
 
 function mapPaymentMethod(value) {
@@ -108,7 +105,13 @@ async function ensureProduct(product) {
   const categoryName = textValue(product.categoryName, textValue(product.categoryId, "Imported"));
   const productName = textValue(product.productName, textValue(product.name, "Imported Product"));
   const productId = cleanId(product.productId || productName, `IMP_${Date.now()}`);
-  const productImageUrl = textValue(product.imageUrl, imageUrl(productName, categoryName));
+  const productImageUrl = productImagePath(productId);
+
+  ensureProductImage({
+    id: productId,
+    name: productName,
+    categoryName,
+  });
 
   await prisma.category.upsert({
     where: { id: categoryId },
@@ -256,6 +259,8 @@ async function importOrders(apiUrl) {
 }
 
 async function main() {
+  ensureFallbackImage();
+
   const apiUrl = readApiUrl();
   const products = await importProducts(apiUrl);
   const employees = await importEmployees(apiUrl);

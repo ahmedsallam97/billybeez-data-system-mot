@@ -11,7 +11,8 @@ export async function POST(_request, { params }) {
     where: { id },
     data: {
       customerLeft: true,
-      status: "OPEN",
+      status: "ARCHIVED",
+      archivedAt: new Date(),
     },
   }).catch(() => null);
 
@@ -23,8 +24,8 @@ export async function POST(_request, { params }) {
     action: "CUSTOMER_LEFT",
     orderId: id,
     user,
-    summary: "Customer marked as left",
-    metadata: { paymentStatus: order.paymentStatus },
+    summary: "Customer left and order archived",
+    metadata: { paymentStatus: order.paymentStatus, archivedAt: order.archivedAt },
   });
 
   return NextResponse.json({ success: true });

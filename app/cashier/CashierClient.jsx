@@ -5,6 +5,7 @@ import { useToast } from "../ToastProvider";
 
 export default function CashierClient() {
   const toast = useToast();
+  const fallbackImage = "/products/fallback.svg";
   const formRef = useRef(null);
   const ordersRef = useRef(null);
   const [products, setProducts] = useState([]);
@@ -177,8 +178,34 @@ export default function CashierClient() {
       return;
     }
 
-    toast("Customer marked as left", "info");
+    toast("Customer marked as left and archived", "info");
     await load();
+  }
+
+  function renderCart() {
+    return (
+      <div className="cart-panel">
+        <h3>Cart</h3>
+        {cart.length === 0 ? <div className="muted">No items selected</div> : cart.map((item) => (
+          <div className="row" key={item.productId}>
+            <span>{item.name} x {item.qty}</span>
+            <span className="actions">
+              <button onClick={() => changeQty(item.productId, 1)}>+</button>
+              <button className="secondary" onClick={() => changeQty(item.productId, -1)}>-</button>
+              <b>{item.price * item.qty} EGP</b>
+            </span>
+          </div>
+        ))}
+        <div className="row"><span>Total</span><b>{total} EGP</b></div>
+        <div className="actions">
+          <button onClick={saveCart}>{editingOrder ? "Add Items" : "Save Order"}</button>
+          <button className="secondary" onClick={() => setCart([])}>Clear Cart</button>
+          {!editingOrder && <button className="secondary" onClick={showOrders}>رجوع للطلبات</button>}
+          {editingOrder && <button className="danger" onClick={cancelEdit}>Cancel</button>}
+        </div>
+        <div className="message">{message}</div>
+      </div>
+    );
   }
 
   return (
@@ -237,6 +264,7 @@ export default function CashierClient() {
             </div>
           </>
         )}
+        {renderCart()}
         <div className="tabs">
           {categories.map((item) => (
             <button key={item} className={category === item ? "active" : ""} onClick={() => setCategory(item)}>{item}</button>
@@ -246,9 +274,9 @@ export default function CashierClient() {
           {visibleProducts.map((product) => (
             <button className="card product" key={product.id} onClick={() => addToCart(product)}>
               <img
-                src={product.imageUrl || "https://placehold.co/320x240?text=Product"}
+                src={product.imageUrl || fallbackImage}
                 alt={product.name}
-                onError={(event) => { event.currentTarget.src = "https://placehold.co/320x240?text=Product"; }}
+                onError={(event) => { event.currentTarget.src = fallbackImage; }}
               />
               <div className="product-body">
                 <div className="product-name">{product.name}</div>
@@ -257,27 +285,7 @@ export default function CashierClient() {
             </button>
           ))}
         </div>
-        <div className="panel">
-          <h3>Cart</h3>
-          {cart.length === 0 ? <div className="muted">No items selected</div> : cart.map((item) => (
-            <div className="row" key={item.productId}>
-              <span>{item.name} x {item.qty}</span>
-              <span className="actions">
-                <button onClick={() => changeQty(item.productId, 1)}>+</button>
-                <button className="secondary" onClick={() => changeQty(item.productId, -1)}>-</button>
-                <b>{item.price * item.qty} EGP</b>
-              </span>
-            </div>
-          ))}
-          <div className="row"><span>Total</span><b>{total} EGP</b></div>
-          <div className="actions">
-            <button onClick={saveCart}>{editingOrder ? "Add Items" : "Save Order"}</button>
-            <button className="secondary" onClick={() => setCart([])}>Clear Cart</button>
-            {!editingOrder && <button className="secondary" onClick={showOrders}>رجوع للطلبات</button>}
-            {editingOrder && <button className="danger" onClick={cancelEdit}>Cancel</button>}
-          </div>
-          <div className="message">{message}</div>
-        </div>
+        {renderCart()}
       </section>
       )}
 

@@ -284,10 +284,23 @@ export default function CashierClient() {
                 <option value="">Employee</option>
                 {employees.map((employee) => <option key={employee.id} value={employee.id}>{employee.name}</option>)}
               </select>
-              <select value={paymentMethod} onChange={(event) => setPaymentMethod(event.target.value)}>
-                <option value="CASH">Cash</option>
-                <option value="VISA">Visa</option>
-              </select>
+              <div className="payment-radios" role="radiogroup" aria-label="Payment method">
+                {[
+                  { value: "CASH", label: "كاش", tone: "cash" },
+                  { value: "VISA", label: "فيزا", tone: "visa" },
+                ].map((method) => (
+                  <label className={`payment-option ${method.tone} ${paymentMethod === method.value ? "active" : ""}`} key={method.value}>
+                    <input
+                      type="radio"
+                      name="paymentMethod"
+                      value={method.value}
+                      checked={paymentMethod === method.value}
+                      onChange={() => setPaymentMethod(method.value)}
+                    />
+                    <span>{method.label}</span>
+                  </label>
+                ))}
+              </div>
             </div>
             <div className="form-grid">
               {childNames.map((name, index) => (

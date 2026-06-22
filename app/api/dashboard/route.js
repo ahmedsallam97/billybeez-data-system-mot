@@ -3,11 +3,20 @@ import { prisma } from "@/lib/db";
 import { includeOrderDetails, serializeOrder } from "@/lib/orders";
 
 export async function GET() {
-  const orders = await prisma.order.findMany({
-    include: includeOrderDetails(),
-    orderBy: { createdAt: "desc" },
-    take: 200,
-  });
+  const [orders, auditLogs] = await Promise.all([
+    prisma.order.findMany({
+      include: includeOrderDetails(),
+      orderBy: { createdAt: "desc" },
+      take: 200,
+    }),
+    prisma.auditLog.findMany({
+      include: {
+        user: true,
+      },
+      orderBy: { createdAt: "desc" },
+      take: 12,
+    }),
+  ]);
 
   const serialized = orders.map(serializeOrder);
   const paid = serialized.filter((order) => order.paymentStatus === "PAID");
@@ -58,6 +67,14 @@ export async function GET() {
     cashierPerformance: Array.from(cashierMap.entries()).map(([name, total]) => ({ name, total })).sort((a, b) => b.total - a.total),
     dataEmployeePerformance: Array.from(employeeMap.entries()).map(([name, total]) => ({ name, total })).sort((a, b) => b.total - a.total),
     dailySales: Array.from(dailyMap.entries()).map(([date, total]) => ({ date, total })).sort((a, b) => a.date.localeCompare(b.date)),
+    auditLogs: auditLogs.map((log) => ({
+      id: log.id,
+      action: log.action,
+      orderId: log.orderId,
+      user: log.user?.name || "System",
+      summary: log.summary,
+      createdAt: log.createdAt,
+    })),
     orders: serialized,
   });
 }

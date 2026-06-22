@@ -1,8 +1,10 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { useToast } from "../ToastProvider";
 
 export default function CashierClient() {
+  const toast = useToast();
   const [products, setProducts] = useState([]);
   const [employees, setEmployees] = useState([]);
   const [orders, setOrders] = useState([]);
@@ -94,9 +96,11 @@ export default function CashierClient() {
 
     if (!data.success) {
       setMessage(data.error || "Order save failed");
+      toast(data.error || "Order save failed", "error");
       return;
     }
 
+    toast(`Order ${data.order.id} saved`);
     localStorage.setItem("lastDataEmployeeId", dataEmployeeId);
     setEditingOrder(null);
     setBraceletNo("");
@@ -123,16 +127,26 @@ export default function CashierClient() {
 
     if (!data.success) {
       setMessage(data.error || "Order update failed");
+      toast(data.error || "Order update failed", "error");
       return;
     }
 
+    toast("Items added to order");
     setEditingOrder(null);
     setCart([]);
     await load();
   }
 
   async function markCustomerLeft(orderId) {
-    await fetch(`/api/orders/${orderId}/left`, { method: "POST" });
+    const res = await fetch(`/api/orders/${orderId}/left`, { method: "POST" });
+    const data = await res.json();
+
+    if (!data.success) {
+      toast(data.error || "Update failed", "error");
+      return;
+    }
+
+    toast("Customer marked as left", "info");
     await load();
   }
 

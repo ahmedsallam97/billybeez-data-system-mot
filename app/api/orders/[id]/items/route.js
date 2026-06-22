@@ -1,8 +1,11 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
+import { getCurrentUser } from "@/lib/auth";
+import { writeAudit } from "@/lib/audit";
 
 export async function POST(request, { params }) {
   const { id } = await params;
+  const user = await getCurrentUser();
   const body = await request.json();
   const items = Array.isArray(body.items) ? body.items : [];
 
@@ -50,6 +53,14 @@ export async function POST(request, { params }) {
       },
     }),
   ]);
+
+  await writeAudit({
+    action: "ORDER_ITEMS_ADDED",
+    orderId: id,
+    user,
+    summary: `Added ${orderItems.length} item lines`,
+    metadata: { addedTotal, items: orderItems.map((item) => ({ name: item.name, qty: item.qty, total: item.total })) },
+  });
 
   return NextResponse.json({ success: true });
 }

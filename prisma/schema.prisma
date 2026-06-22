@@ -47,6 +47,7 @@ model User {
   updatedAt DateTime @updatedAt
 
   orders Order[] @relation("CashierOrders")
+  auditLogs AuditLog[]
 }
 
 model Employee {
@@ -104,6 +105,7 @@ model Order {
   cashier      User?       @relation("CashierOrders", fields: [cashierId], references: [id])
   dataEmployee Employee?   @relation(fields: [dataEmployeeId], references: [id])
   items        OrderItem[]
+  auditLogs    AuditLog[]
 }
 
 model OrderItem {
@@ -118,4 +120,17 @@ model OrderItem {
 
   order   Order   @relation(fields: [orderId], references: [id], onDelete: Cascade)
   product Product @relation(fields: [productId], references: [id])
+}
+
+model AuditLog {
+  id        String   @id @default(cuid())
+  orderId   String?
+  userId    String?
+  action    String
+  summary   String?
+  metadata  String?
+  createdAt DateTime @default(now())
+
+  order Order? @relation(fields: [orderId], references: [id], onDelete: SetNull)
+  user  User?  @relation(fields: [userId], references: [id], onDelete: SetNull)
 }

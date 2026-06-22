@@ -1,8 +1,10 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { useToast } from "../ToastProvider";
 
 export default function ManagerClient() {
+  const toast = useToast();
   const [data, setData] = useState(null);
   const [filter, setFilter] = useState("ALL");
   const [archiveFilter, setArchiveFilter] = useState("ALL");
@@ -60,8 +62,11 @@ export default function ManagerClient() {
     });
     const result = await res.json();
     if (result.success) {
+      toast(`Payment saved as ${paymentMethod}`);
       setSelectedOrder(null);
       await load();
+    } else {
+      toast(result.error || "Payment update failed", "error");
     }
   }
 
@@ -70,10 +75,11 @@ export default function ManagerClient() {
     const result = await res.json();
 
     if (!result.success) {
-      alert(result.error || "Order update failed");
+      toast(result.error || "Order update failed", "error");
       return;
     }
 
+    toast("Order updated");
     setSelectedOrder(null);
     await load();
   }
@@ -159,6 +165,21 @@ export default function ManagerClient() {
       <section className="panel">
         <h3>Daily Sales</h3>
         <MiniBars rows={data.dailySales} labelKey="date" valueKey="total" />
+      </section>
+
+      <section className="panel">
+        <h3>Recent Activity</h3>
+        {(data.auditLogs || []).length === 0 ? (
+          <div className="muted">No activity yet</div>
+        ) : data.auditLogs.map((log) => (
+          <div className="activity-row" key={log.id}>
+            <span className="activity-dot" />
+            <div>
+              <b>{log.summary || log.action}</b>
+              <div className="muted">{log.user} · {log.orderId || "No order"} · {new Date(log.createdAt).toLocaleString()}</div>
+            </div>
+          </div>
+        ))}
       </section>
 
       {selectedOrder && (

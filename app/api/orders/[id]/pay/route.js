@@ -1,8 +1,11 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
+import { getCurrentUser } from "@/lib/auth";
+import { writeAudit } from "@/lib/audit";
 
 export async function POST(request, { params }) {
   const { id } = await params;
+  const user = await getCurrentUser();
   const body = await request.json();
   const paymentMethod = body.paymentMethod === "VISA" ? "VISA" : "CASH";
 
@@ -18,6 +21,14 @@ export async function POST(request, { params }) {
   if (!order) {
     return NextResponse.json({ success: false, error: "Order not found" }, { status: 404 });
   }
+
+  await writeAudit({
+    action: "ORDER_PAID",
+    orderId: id,
+    user,
+    summary: `Marked paid by ${paymentMethod}`,
+    metadata: { paymentMethod, total: order.total },
+  });
 
   return NextResponse.json({ success: true });
 }

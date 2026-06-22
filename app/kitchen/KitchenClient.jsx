@@ -1,8 +1,10 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useToast } from "../ToastProvider";
 
 export default function KitchenClient() {
+  const toast = useToast();
   const [orders, setOrders] = useState([]);
   const [showArchive, setShowArchive] = useState(false);
 
@@ -18,7 +20,15 @@ export default function KitchenClient() {
   }
 
   async function deliver(orderId) {
-    await fetch(`/api/orders/${orderId}/deliver`, { method: "POST" });
+    const res = await fetch(`/api/orders/${orderId}/deliver`, { method: "POST" });
+    const data = await res.json();
+
+    if (!data.success) {
+      toast(data.error || "Delivery update failed", "error");
+      return;
+    }
+
+    toast("Order marked delivered");
     await load();
   }
 
@@ -33,9 +43,11 @@ export default function KitchenClient() {
 
     if (data.success) {
       if (invoiceWindow) invoiceWindow.location.href = `/invoice/${orderId}`;
+      toast(`Payment saved as ${paymentMethod}`);
       await load();
     } else if (invoiceWindow) {
       invoiceWindow.close();
+      toast(data.error || "Payment failed", "error");
     }
   }
 
@@ -44,10 +56,11 @@ export default function KitchenClient() {
     const data = await res.json();
 
     if (!data.success) {
-      alert(data.error || "Archive failed");
+      toast(data.error || "Archive failed", "error");
       return;
     }
 
+    toast("Order archived");
     await load();
   }
 

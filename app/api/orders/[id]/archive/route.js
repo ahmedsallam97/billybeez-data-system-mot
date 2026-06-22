@@ -1,8 +1,11 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
+import { getCurrentUser } from "@/lib/auth";
+import { writeAudit } from "@/lib/audit";
 
 export async function POST(_request, { params }) {
   const { id } = await params;
+  const user = await getCurrentUser();
 
   const current = await prisma.order.findUnique({ where: { id } });
 
@@ -20,6 +23,14 @@ export async function POST(_request, { params }) {
       status: "ARCHIVED",
       archivedAt: new Date(),
     },
+  });
+
+  await writeAudit({
+    action: "ORDER_ARCHIVED",
+    orderId: id,
+    user,
+    summary: "Archived order",
+    metadata: { total: current.total, paymentMethod: current.paymentMethod },
   });
 
   return NextResponse.json({ success: true });

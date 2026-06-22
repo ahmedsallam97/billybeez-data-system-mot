@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
+import { writeAudit } from "@/lib/audit";
 import { buildOrderId, includeOrderDetails, serializeOrder, validateBracelet } from "@/lib/orders";
 
 export async function GET(request) {
@@ -87,6 +88,14 @@ export async function POST(request) {
       items: { create: orderItems },
     },
     include: includeOrderDetails(),
+  });
+
+  await writeAudit({
+    action: "ORDER_CREATED",
+    orderId: order.id,
+    user,
+    summary: `Created order ${order.id}`,
+    metadata: { total, items: orderItems.length, paymentMethod: order.paymentMethod },
   });
 
   return NextResponse.json({ success: true, order: serializeOrder(order) });

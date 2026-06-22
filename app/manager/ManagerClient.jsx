@@ -183,38 +183,45 @@ export default function ManagerClient() {
       </section>
 
       {selectedOrder && (
-        <div className="panel">
-          <h2>{selectedOrder.id}</h2>
-          <div className="grid two">
-            <div className="meta-line"><span>Bracelet</span><b>{selectedOrder.braceletNo}</b></div>
-            <div className="meta-line"><span>Children</span><b>{selectedOrder.childNames}</b></div>
-            <div className="meta-line"><span>Cashier</span><b>{selectedOrder.cashier}</b></div>
-            <div className="meta-line"><span>Employee</span><b>{selectedOrder.dataEmployee}</b></div>
-            <div className="meta-line"><span>Kitchen</span><b>{selectedOrder.kitchenStatus}</b></div>
-            <div className="meta-line"><span>Payment</span><b>{selectedOrder.paymentStatus} / {selectedOrder.paymentMethod}</b></div>
-            <div className="meta-line"><span>Status</span><b>{selectedOrder.status}</b></div>
-            <div className="meta-line"><span>Archived</span><b>{selectedOrder.archivedAt ? "Yes" : "No"}</b></div>
-          </div>
-          <div className="panel">
-            {selectedOrder.items.map((item) => (
-              <div className="row" key={item.id}><span>{item.name} x {item.qty}</span><b>{item.total} EGP</b></div>
-            ))}
-            <div className="row"><span>Total</span><b>{selectedOrder.total} EGP</b></div>
-          </div>
-          <div className="actions">
-            <button onClick={() => payOrder(selectedOrder.id, "CASH")}>Set Cash Paid</button>
-            <button onClick={() => payOrder(selectedOrder.id, "VISA")}>Set Visa Paid</button>
-            <button className="secondary" onClick={() => runOrderAction(selectedOrder.id, "deliver")}>Mark Delivered</button>
-            <button className="danger" onClick={() => runOrderAction(selectedOrder.id, "left")}>Mark Customer Left</button>
-            <button
-              className="secondary"
-              disabled={selectedOrder.kitchenStatus !== "DELIVERED" || selectedOrder.paymentStatus !== "PAID"}
-              onClick={() => runOrderAction(selectedOrder.id, "archive")}
-            >
-              Archive
-            </button>
-            <button className="secondary" onClick={() => window.open(`/invoice/${selectedOrder.id}`, "_blank")}>Print Invoice</button>
-            <button className="danger" onClick={() => setSelectedOrder(null)}>Close</button>
+        <div className="modal-backdrop" onClick={() => setSelectedOrder(null)}>
+          <div className="detail-modal" role="dialog" aria-modal="true" aria-label="Order details" onClick={(event) => event.stopPropagation()}>
+            <div className="modal-head">
+              <div>
+                <h2>{selectedOrder.id}</h2>
+                <div className="muted">{selectedOrder.braceletNo} · {selectedOrder.paymentStatus} / {selectedOrder.paymentMethod}</div>
+              </div>
+              <button className="secondary" onClick={() => setSelectedOrder(null)}>Close</button>
+            </div>
+            <div className="grid two">
+              <div className="meta-line"><span>Bracelet</span><b>{selectedOrder.braceletNo}</b></div>
+              <div className="meta-line"><span>Children</span><b>{selectedOrder.childNames}</b></div>
+              <div className="meta-line"><span>Cashier</span><b>{selectedOrder.cashier}</b></div>
+              <div className="meta-line"><span>Employee</span><b>{selectedOrder.dataEmployee}</b></div>
+              <div className="meta-line"><span>Kitchen</span><b>{selectedOrder.kitchenStatus}</b></div>
+              <div className="meta-line"><span>Payment</span><b>{selectedOrder.paymentStatus} / {selectedOrder.paymentMethod}</b></div>
+              <div className="meta-line"><span>Status</span><b>{selectedOrder.status}</b></div>
+              <div className="meta-line"><span>Archived</span><b>{selectedOrder.archivedAt ? "Yes" : "No"}</b></div>
+            </div>
+            <div className="detail-items">
+              {selectedOrder.items.map((item) => (
+                <div className="row" key={item.id}><span>{item.name} x {item.qty}</span><b>{item.total} EGP</b></div>
+              ))}
+              <div className="row"><span>Total</span><b>{selectedOrder.total} EGP</b></div>
+            </div>
+            <div className="actions">
+              <button onClick={() => payOrder(selectedOrder.id, "CASH")}>Set Cash Paid</button>
+              <button onClick={() => payOrder(selectedOrder.id, "VISA")}>Set Visa Paid</button>
+              <button className="secondary" onClick={() => runOrderAction(selectedOrder.id, "deliver")}>Mark Delivered</button>
+              <button className="danger" onClick={() => runOrderAction(selectedOrder.id, "left")}>Mark Customer Left</button>
+              <button
+                className="secondary"
+                disabled={selectedOrder.kitchenStatus !== "DELIVERED" || selectedOrder.paymentStatus !== "PAID"}
+                onClick={() => runOrderAction(selectedOrder.id, "archive")}
+              >
+                Archive
+              </button>
+              <button className="secondary" onClick={() => window.open(`/invoice/${selectedOrder.id}`, "_blank")}>Print Invoice</button>
+            </div>
           </div>
         </div>
       )}

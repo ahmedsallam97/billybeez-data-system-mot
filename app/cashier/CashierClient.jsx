@@ -1,10 +1,12 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useToast } from "../ToastProvider";
 
 export default function CashierClient() {
   const toast = useToast();
+  const formRef = useRef(null);
+  const ordersRef = useRef(null);
   const [products, setProducts] = useState([]);
   const [employees, setEmployees] = useState([]);
   const [orders, setOrders] = useState([]);
@@ -16,6 +18,7 @@ export default function CashierClient() {
   const [paymentMethod, setPaymentMethod] = useState("CASH");
   const [message, setMessage] = useState("");
   const [editingOrder, setEditingOrder] = useState(null);
+  const [cashierView, setCashierView] = useState("orders");
 
   useEffect(() => {
     load();
@@ -45,6 +48,29 @@ export default function CashierClient() {
   const visibleProducts = products.filter((product) => category === "All" || product.categoryName === category);
   const total = cart.reduce((sum, item) => sum + item.price * item.qty, 0);
 
+  function scrollToSection(ref) {
+    setTimeout(() => ref.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 0);
+  }
+
+  function showOrders() {
+    setCashierView("orders");
+    window.history.replaceState(null, "", "#orders");
+    scrollToSection(ordersRef);
+  }
+
+  function showNewOrder() {
+    setEditingOrder(null);
+    setMessage("");
+    setBraceletNo("");
+    setChildNames([""]);
+    setChildren(1);
+    setPaymentMethod("CASH");
+    setCart([]);
+    setCashierView("form");
+    window.history.replaceState(null, "", "#new-order");
+    scrollToSection(formRef);
+  }
+
   function setChildren(count) {
     setChildCount(count);
     setChildNames((current) => Array.from({ length: count }, (_, index) => current[index] || ""));
@@ -68,15 +94,18 @@ export default function CashierClient() {
 
   function startEdit(order) {
     setEditingOrder(order);
+    setCashierView("form");
     setCart([]);
     setMessage("");
-    window.scrollTo({ top: 0, behavior: "smooth" });
+    window.history.replaceState(null, "", "#edit-order");
+    scrollToSection(formRef);
   }
 
   function cancelEdit() {
     setEditingOrder(null);
     setCart([]);
     setMessage("");
+    showOrders();
   }
 
   async function saveOrder() {
@@ -109,6 +138,7 @@ export default function CashierClient() {
     setPaymentMethod("CASH");
     setCart([]);
     await load();
+    showOrders();
   }
 
   async function saveCart() {
@@ -135,6 +165,7 @@ export default function CashierClient() {
     setEditingOrder(null);
     setCart([]);
     await load();
+    showOrders();
   }
 
   async function markCustomerLeft(orderId) {
@@ -152,7 +183,19 @@ export default function CashierClient() {
 
   return (
     <>
-      <section className="panel stack">
+      <section className="cashier-command">
+        <button className="hex-action" onClick={showNewOrder}>
+          <span className="hex-plus">+</span>
+          <span>إضافة طلب جديد</span>
+        </button>
+        <div className="command-copy">
+          <h2>الطلبات الحالية</h2>
+          <div className="muted">{orders.length} طلب حالي</div>
+        </div>
+      </section>
+
+      {(cashierView === "form" || editingOrder) && (
+      <section className="panel stack" id="new-order" ref={formRef}>
         <h2>{editingOrder ? "تعديل الطلب" : "إضافة طلب جديد"}</h2>
         {editingOrder ? (
           <div className="summary">
@@ -230,13 +273,15 @@ export default function CashierClient() {
           <div className="actions">
             <button onClick={saveCart}>{editingOrder ? "Add Items" : "Save Order"}</button>
             <button className="secondary" onClick={() => setCart([])}>Clear Cart</button>
+            {!editingOrder && <button className="secondary" onClick={showOrders}>رجوع للطلبات</button>}
             {editingOrder && <button className="danger" onClick={cancelEdit}>Cancel</button>}
           </div>
           <div className="message">{message}</div>
         </div>
       </section>
+      )}
 
-      <section className="panel">
+      <section className="panel" id="orders" ref={ordersRef}>
         <h2>الطلبات الحالية</h2>
         <div className="grid three honey-grid">
           {orders.map((order) => (

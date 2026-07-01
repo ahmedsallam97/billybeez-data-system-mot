@@ -42,6 +42,8 @@ export default function LoginForm() {
         <img src="/bb-logo.png" alt="BillyBeez" className="logo" />
         <h1>{t("login.title")}</h1>
         <input
+          name="username"
+          aria-label={t("login.username")}
           value={username}
           onChange={(event) => setUsername(event.target.value)}
           placeholder={t("login.username")}
@@ -49,6 +51,8 @@ export default function LoginForm() {
           required
         />
         <input
+          name="password"
+          aria-label={t("login.password")}
           value={password}
           onChange={(event) => setPassword(event.target.value)}
           placeholder={t("login.password")}

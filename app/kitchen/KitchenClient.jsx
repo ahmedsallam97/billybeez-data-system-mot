@@ -306,7 +306,7 @@ export default function KitchenClient() {
         <Metric label={showArchive ? t("common.archived") : t("common.active")} value={formatNumber(orders.length)} />
       </div>
       <div className="form-grid manager-filter-grid">
-        <input value={ordersQuery} onChange={(event) => setOrdersQuery(event.target.value)} placeholder={t("cashier.searchOrdersPlaceholder")} />
+        <input name="kitchen-order-search" aria-label={t("cashier.searchOrdersPlaceholder")} value={ordersQuery} onChange={(event) => setOrdersQuery(event.target.value)} placeholder={t("cashier.searchOrdersPlaceholder")} />
         <button className="secondary" onClick={() => setOrdersQuery("")}>{t("common.clearFilters")}</button>
       </div>
       <div className="grid three honey-grid">
@@ -445,6 +445,8 @@ export default function KitchenClient() {
               <div className="meta-line exit-employee-line"><span>{t("common.paymentEmployee")}</span><b className={employeeGenderClass(selectedEditorEmployeeName())}>{selectedEditorEmployeeName()}</b></div>
             )}
             <select
+              name={`restaurant-employee-${employeeEditor.order.id}`}
+              aria-label={employeeEditorTitle()}
               className={`employee-select-line modal-select ${employeeGenderClass(selectedEditorEmployeeName())}`}
               value={selectedEditorEmployeeId()}
               disabled={restaurantEmployees.length === 0}

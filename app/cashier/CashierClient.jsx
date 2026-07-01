@@ -385,6 +385,7 @@ export default function CashierClient() {
                 value={item.qty}
                 onChange={(event) => setCartQty(item, event.target.value)}
                 aria-label={`${item.name} quantity`}
+                name={`cart-qty-${item.productId}`}
               />
               <button className="btn-confirm qty-button" onClick={() => changeQty(item.productId, 1)}>+</button>
               <b>{currency(item.price * item.qty)}</b>
@@ -426,9 +427,9 @@ export default function CashierClient() {
           <div className="summary edit-order-summary">
             <div className="meta-line"><span>{t("common.order")}</span><b>{editingOrder.id}</b></div>
             <div className="form-grid new-order-fields">
-              <input value={braceletNo} onChange={(event) => setBraceletNo(event.target.value)} placeholder={t("cashier.braceletPlaceholder")} />
-              <input value={customerPhone} onChange={(event) => setCustomerPhone(event.target.value)} placeholder={t("cashier.phonePlaceholder")} />
-              <select value={childCount} onChange={(event) => setChildren(Number(event.target.value))}>
+              <input name="edit-bracelet-no" aria-label={t("cashier.braceletPlaceholder")} value={braceletNo} onChange={(event) => setBraceletNo(event.target.value)} placeholder={t("cashier.braceletPlaceholder")} />
+              <input name="edit-customer-phone" aria-label={t("cashier.phonePlaceholder")} value={customerPhone} onChange={(event) => setCustomerPhone(event.target.value)} placeholder={t("cashier.phonePlaceholder")} />
+              <select name="edit-child-count" aria-label={t("cashier.childCount", { count: childCount })} value={childCount} onChange={(event) => setChildren(Number(event.target.value))}>
                 {[1, 2, 3, 4, 5, 6].map((count) => <option key={count} value={count}>{t("cashier.childCount", { count })}</option>)}
               </select>
             </div>
@@ -436,6 +437,8 @@ export default function CashierClient() {
               {childNames.map((name, index) => (
                 <input
                   key={index}
+                  name={`edit-child-name-${index + 1}`}
+                  aria-label={t("cashier.childName", { count: index + 1 })}
                   value={name}
                   onChange={(event) => setChildNames((current) => current.map((item, itemIndex) => itemIndex === index ? event.target.value : item))}
                   placeholder={t("cashier.childName", { count: index + 1 })}
@@ -452,8 +455,8 @@ export default function CashierClient() {
         ) : (
           <>
             <div className="form-grid new-order-fields">
-              <input value={braceletNo} onChange={(event) => setBraceletNo(event.target.value)} placeholder={t("cashier.braceletPlaceholder")} />
-              <input value={customerPhone} onChange={(event) => setCustomerPhone(event.target.value)} placeholder={t("cashier.phonePlaceholder")} />
+              <input name="new-bracelet-no" aria-label={t("cashier.braceletPlaceholder")} value={braceletNo} onChange={(event) => setBraceletNo(event.target.value)} placeholder={t("cashier.braceletPlaceholder")} />
+              <input name="new-customer-phone" aria-label={t("cashier.phonePlaceholder")} value={customerPhone} onChange={(event) => setCustomerPhone(event.target.value)} placeholder={t("cashier.phonePlaceholder")} />
               <div className="payment-radios" role="radiogroup" aria-label={t("common.paymentMethod")}>
                 {[
                   { value: "CASH", label: t("common.cash"), tone: "cash" },
@@ -463,6 +466,7 @@ export default function CashierClient() {
                     <input
                       type="radio"
                       name="paymentMethod"
+                      aria-label={method.label}
                       value={method.value}
                       checked={paymentMethod === method.value}
                       onChange={() => setPaymentMethod(method.value)}
@@ -471,10 +475,12 @@ export default function CashierClient() {
                   </label>
                 ))}
               </div>
-              <select value={childCount} onChange={(event) => setChildren(Number(event.target.value))}>
+              <select name="new-child-count" aria-label={t("cashier.childCount", { count: childCount })} value={childCount} onChange={(event) => setChildren(Number(event.target.value))}>
                 {[1, 2, 3, 4, 5, 6].map((count) => <option key={count} value={count}>{t("cashier.childCount", { count })}</option>)}
               </select>
               <select
+                name="data-employee-id"
+                aria-label={t("common.employee")}
                 className={employeeGenderClass(employees.find((employee) => employee.id === dataEmployeeId)?.name)}
                 value={dataEmployeeId}
                 onChange={(event) => setDataEmployeeId(event.target.value)}
@@ -487,6 +493,8 @@ export default function CashierClient() {
               {childNames.map((name, index) => (
                 <input
                   key={index}
+                  name={`new-child-name-${index + 1}`}
+                  aria-label={t("cashier.childName", { count: index + 1 })}
                   value={name}
                   onChange={(event) => setChildNames((current) => current.map((item, itemIndex) => itemIndex === index ? event.target.value : item))}
                   placeholder={t("cashier.childName", { count: index + 1 })}
@@ -525,6 +533,7 @@ export default function CashierClient() {
                       value={qty}
                       onChange={(event) => setCartQty(product, event.target.value)}
                       aria-label={`${product.name} quantity`}
+                      name={`product-qty-${product.id}`}
                     />
                     <button className="btn-confirm qty-button" onClick={() => addToCart(product)}>+</button>
                   </div>
@@ -556,6 +565,8 @@ export default function CashierClient() {
         </div>
         <div className="form-grid cashier-order-search">
           <input
+            name="cashier-order-search"
+            aria-label={t("cashier.searchOrdersPlaceholder")}
             value={ordersQuery}
             onChange={(event) => setOrdersQuery(event.target.value)}
             placeholder={t("cashier.searchOrdersPlaceholder")}
@@ -661,6 +672,7 @@ export default function CashierClient() {
                   placeholder={t("cashier.managerPasswordPrompt")}
                   type="password"
                   name="cashier-manager-action-code"
+                  aria-label={t("cashier.managerPasswordPrompt")}
                   inputMode="numeric"
                   autoComplete="new-password"
                   autoCorrect="off"
@@ -671,6 +683,8 @@ export default function CashierClient() {
                 />
               ) : (
                 <select
+                  name={`exit-employee-${employeeEditor.id}`}
+                  aria-label={t("cashier.selectExitEmployee")}
                   className={`employee-select-line modal-select ${employeeGenderClass(operationEmployees.find((employee) => employee.id === selectedExitEmployeeId(employeeEditor.id))?.name)}`}
                   value={selectedExitEmployeeId(employeeEditor.id)}
                   disabled={operationEmployees.length === 0}

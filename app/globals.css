@@ -553,6 +553,13 @@ html[data-theme="red"] .login-page .login-box button[type="submit"]:not(:disable
 .backup-empty{padding:18px}
 .employee-row:last-child{border-bottom:0}
 .employee-head{background:#f6effc;color:var(--bb-purple)}
+.role-matrix-panel{display:grid;gap:12px;background:#fffdf4;border:1px solid var(--bb-line);border-radius:8px;padding:12px}
+.role-matrix-table{overflow:auto;border:1px solid var(--bb-line);border-radius:8px;background:#fff}
+.role-matrix-row{min-width:760px;display:grid;grid-template-columns:minmax(260px,2fr) repeat(4,minmax(100px,.8fr));gap:10px;align-items:center;padding:9px 12px;border-bottom:1px solid var(--bb-line)}
+.role-matrix-row:last-child{border-bottom:0}
+.role-matrix-head{background:#f6effc;color:var(--bb-purple);font-weight:900}
+.role-check{min-height:34px;display:flex;align-items:center;justify-content:center;border:1px solid var(--bb-line);border-radius:8px;background:#fffdf4}
+.role-check input{width:18px;height:18px;accent-color:var(--bb-green-dark)}
 .employee-row .actions{justify-content:flex-start;margin:0}
 html[dir="rtl"] .employee-row .actions{justify-content:flex-start}
 .toast-stack{position:fixed;inset-inline-start:16px;bottom:16px;z-index:50;display:grid;gap:8px;width:min(360px,calc(100vw - 32px))}

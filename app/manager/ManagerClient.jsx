@@ -6,6 +6,49 @@ import { useI18n } from "../i18n";
 import { applyEmployeeNameStyles, employeeGenderClass, normalizeEmployeeNameStyles } from "../employeeDisplay";
 import { formatUiMessage, normalizeUiMessages, uiMessageKeys, uiMessageStyle } from "../uiMessages";
 
+const roles = ["ADMIN", "MANAGER", "CASHIER", "KITCHEN"];
+const permissionKeys = [
+  "BUSINESS_DAY_READ",
+  "BUSINESS_DAY_WRITE",
+  "DASHBOARD_READ",
+  "EMPLOYEE_READ",
+  "EMPLOYEE_MANAGE",
+  "ORDER_READ",
+  "ORDER_CREATE",
+  "ORDER_EDIT_ITEMS",
+  "ORDER_DELIVER",
+  "ORDER_PAY",
+  "ORDER_CUSTOMER_LEFT",
+  "ORDER_GEIDEA_REGISTER",
+  "ORDER_ARCHIVE",
+  "ORDER_UNARCHIVE",
+  "PRINT_JOB_READ",
+  "PRINT_JOB_CREATE",
+  "PRINT_JOB_UPDATE",
+  "SYSTEM_SETTING_READ",
+  "SYSTEM_SETTING_MANAGE",
+  "PRODUCT_READ",
+  "PRODUCT_MANAGE",
+  "USER_MANAGE",
+  "BACKUP_MANAGE",
+];
+
+function normalizeRolePermissions(value) {
+  let parsed = value;
+  if (typeof value === "string") {
+    try {
+      parsed = JSON.parse(value);
+    } catch {
+      parsed = {};
+    }
+  }
+
+  return Object.fromEntries(permissionKeys.map((permission) => {
+    const allowed = Array.isArray(parsed?.[permission]) ? parsed[permission] : [];
+    return [permission, allowed.map((role) => String(role).toUpperCase()).filter((role) => roles.includes(role))];
+  }));
+}
+
 const emptyEmployeeForm = {
   id: "",
   name: "",
@@ -63,6 +106,7 @@ export default function ManagerClient() {
   const [employeeNameStyles, setEmployeeNameStyles] = useState(normalizeEmployeeNameStyles());
   const [settingsMap, setSettingsMap] = useState({});
   const [backups, setBackups] = useState([]);
+  const [rolePermissions, setRolePermissions] = useState(normalizeRolePermissions());
 
   useEffect(() => {
     load();
@@ -101,6 +145,7 @@ export default function ManagerClient() {
     const nextSettingsMap = Object.fromEntries((settingsData.settings || []).map((setting) => [setting.key, setting.value]));
     setSettingsMap(nextSettingsMap);
     setUiMessages(normalizeUiMessages(nextSettingsMap.UI_MESSAGE_CONFIG));
+    setRolePermissions(normalizeRolePermissions(nextSettingsMap.ROLE_PERMISSION_CONFIG));
     const employeeStyleSetting = settingsData.settings?.find((item) => item.key === "EMPLOYEE_NAME_STYLE_CONFIG");
     const normalizedEmployeeStyles = normalizeEmployeeNameStyles(employeeStyleSetting?.value);
     setEmployeeNameStyles(normalizedEmployeeStyles);
@@ -646,6 +691,39 @@ export default function ManagerClient() {
 
     toast(t("manager.restoreBackupDone"), "info");
     await refreshBackups();
+  }
+
+  function toggleRolePermission(permission, role) {
+    setRolePermissions((current) => {
+      const selected = new Set(current[permission] || []);
+      if (selected.has(role)) {
+        selected.delete(role);
+      } else {
+        selected.add(role);
+      }
+
+      return { ...current, [permission]: [...selected] };
+    });
+  }
+
+  async function saveRolePermissions() {
+    const res = await fetch("/api/settings", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        key: "ROLE_PERMISSION_CONFIG",
+        value: JSON.stringify(rolePermissions),
+      }),
+    });
+    const result = await res.json();
+
+    if (!result.success) {
+      toast(result.error || t("manager.rolePermissionsSaveFailed"), "error");
+      return;
+    }
+
+    setRolePermissions(normalizeRolePermissions(result.setting?.value));
+    toast(t("manager.rolePermissionsSaved"));
   }
 
   function dailyReviewRows() {
@@ -1271,6 +1349,35 @@ export default function ManagerClient() {
               </span>
             </div>
           ))}
+        </div>
+        <div className="role-matrix-panel">
+          <div className="row">
+            <div>
+              <h3>{t("manager.roleMatrix")}</h3>
+              <div className="muted">{t("manager.roleMatrixHint")}</div>
+            </div>
+            <button className="btn-confirm" onClick={saveRolePermissions}>{t("common.save")}</button>
+          </div>
+          <div className="role-matrix-table">
+            <div className="role-matrix-row role-matrix-head">
+              <b>{t("manager.permission")}</b>
+              {roles.map((role) => <b key={role}>{t(`role.${role}`)}</b>)}
+            </div>
+            {permissionKeys.map((permission) => (
+              <div className="role-matrix-row" key={permission}>
+                <span>{t(`permission.${permission}`)}</span>
+                {roles.map((role) => (
+                  <label className="role-check" key={role}>
+                    <input
+                      type="checkbox"
+                      checked={(rolePermissions[permission] || []).includes(role)}
+                      onChange={() => toggleRolePermission(permission, role)}
+                    />
+                  </label>
+                ))}
+              </div>
+            ))}
+          </div>
         </div>
       </section>
 

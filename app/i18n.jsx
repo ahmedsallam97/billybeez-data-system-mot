@@ -290,6 +290,11 @@ const dictionaries = {
     "manager.restoreBackupConfirm": "Restore this backup? Current database will be saved first, but the app may need restart.",
     "manager.restoreBackupDone": "Backup restored. Restart the app if old data is still visible.",
     "manager.restoreBackupFailed": "Restore failed",
+    "manager.roleMatrix": "Role Matrix",
+    "manager.roleMatrixHint": "Control which roles can access each backend permission",
+    "manager.permission": "Permission",
+    "manager.rolePermissionsSaved": "Role permissions saved",
+    "manager.rolePermissionsSaveFailed": "Role permissions save failed",
     "manager.settingsSaved": "Settings saved",
     "manager.settingsSaveFailed": "Settings save failed",
     "settings.branchSettings": "Branch Settings",
@@ -675,6 +680,11 @@ const dictionaries = {
     "manager.restoreBackupConfirm": "تأكيد استرجاع النسخة؟ سيتم حفظ نسخة أمان من الداتابيز الحالية أولا، وقد تحتاج Restart للتطبيق.",
     "manager.restoreBackupDone": "تم استرجاع النسخة. اعمل Restart للتطبيق لو البيانات القديمة ما زالت ظاهرة.",
     "manager.restoreBackupFailed": "فشل استرجاع النسخة",
+    "manager.roleMatrix": "Role Matrix",
+    "manager.roleMatrixHint": "تحكم في صلاحيات كل دور على كل API في الباك إند",
+    "manager.permission": "الصلاحية",
+    "manager.rolePermissionsSaved": "تم حفظ صلاحيات الأدوار",
+    "manager.rolePermissionsSaveFailed": "فشل حفظ صلاحيات الأدوار",
     "manager.settingsSaved": "تم حفظ الإعدادات",
     "manager.settingsSaveFailed": "فشل حفظ الإعدادات",
     "settings.branchSettings": "إعدادات الفرع",
@@ -838,6 +848,37 @@ dictionaries.ar["category.snacks"] = "سناكس";
 dictionaries.ar["category.imported"] = "مستورد";
 dictionaries.ar["department.operation"] = "التشغيل";
 dictionaries.ar["department.restaurant"] = "المطعم";
+
+const permissionLabels = {
+  BUSINESS_DAY_READ: ["Read business day", "قراءة يوم التشغيل"],
+  BUSINESS_DAY_WRITE: ["Open / close business day", "فتح / قفل يوم التشغيل"],
+  DASHBOARD_READ: ["Read dashboard and reports", "قراءة الواجهة والتقارير"],
+  EMPLOYEE_READ: ["Read employees", "قراءة الموظفين"],
+  EMPLOYEE_MANAGE: ["Manage employees", "إدارة الموظفين"],
+  ORDER_READ: ["Read orders", "قراءة الطلبات"],
+  ORDER_CREATE: ["Create orders", "إنشاء طلبات"],
+  ORDER_EDIT_ITEMS: ["Edit orders and items", "تعديل الطلبات والمنتجات"],
+  ORDER_DELIVER: ["Mark delivered", "تسجيل تم التسليم"],
+  ORDER_PAY: ["Save payment", "تسجيل الدفع"],
+  ORDER_CUSTOMER_LEFT: ["Customer exit / return", "خروج / دخول العميل"],
+  ORDER_GEIDEA_REGISTER: ["Register Geidea", "تسجيل جيديا"],
+  ORDER_ARCHIVE: ["Archive orders", "أرشفة الطلبات"],
+  ORDER_UNARCHIVE: ["Unarchive orders", "إلغاء أرشفة الطلبات"],
+  PRINT_JOB_READ: ["Read print jobs", "قراءة أوامر الطباعة"],
+  PRINT_JOB_CREATE: ["Create print jobs", "إنشاء أوامر الطباعة"],
+  PRINT_JOB_UPDATE: ["Update print jobs", "تحديث أوامر الطباعة"],
+  SYSTEM_SETTING_READ: ["Read settings", "قراءة الإعدادات"],
+  SYSTEM_SETTING_MANAGE: ["Manage settings", "إدارة الإعدادات"],
+  PRODUCT_READ: ["Read products", "قراءة المنتجات"],
+  PRODUCT_MANAGE: ["Manage products", "إدارة المنتجات"],
+  USER_MANAGE: ["Manage users", "إدارة اليوزرز"],
+  BACKUP_MANAGE: ["Backup and restore", "Backup and Restore"],
+};
+
+Object.entries(permissionLabels).forEach(([permission, [en, ar]]) => {
+  dictionaries.en[`permission.${permission}`] = en;
+  dictionaries.ar[`permission.${permission}`] = ar;
+});
 
 const businessMessageKeys = {
   "Business day is open": "business.message.open",

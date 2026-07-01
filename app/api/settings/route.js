@@ -44,6 +44,7 @@ const editableKeys = new Set([
   "BACKUP_RETENTION_DAYS",
   "UI_MESSAGE_CONFIG",
   "EMPLOYEE_NAME_STYLE_CONFIG",
+  "ROLE_PERMISSION_CONFIG",
 ]);
 
 function serializeSetting(setting) {

@@ -377,7 +377,7 @@ export default function CashierClient() {
           <div className="row cart-item-row" key={item.productId}>
             <span>{item.name}</span>
             <span className="actions cart-qty-actions">
-              <button className="secondary qty-button" onClick={() => changeQty(item.productId, -1)}>-</button>
+              <button type="button" className="secondary qty-button" aria-label={`Decrease ${item.name}`} onClick={() => changeQty(item.productId, -1)}>-</button>
               <input
                 className="qty-input"
                 type="number"
@@ -387,7 +387,7 @@ export default function CashierClient() {
                 aria-label={`${item.name} quantity`}
                 name={`cart-qty-${item.productId}`}
               />
-              <button className="btn-confirm qty-button" onClick={() => changeQty(item.productId, 1)}>+</button>
+              <button type="button" className="btn-confirm qty-button" aria-label={`Increase ${item.name}`} onClick={() => changeQty(item.productId, 1)}>+</button>
               <b>{currency(item.price * item.qty)}</b>
             </span>
           </div>
@@ -395,10 +395,10 @@ export default function CashierClient() {
         <div className="row order-total-row"><span>{editingOrder ? t("cashier.newItemsTotal") : t("common.orderTotal")}</span><b>{currency(total)}</b></div>
         {editingOrder && <div className="row order-total-row"><span>{t("cashier.totalAfterAdd")}</span><b>{currency(orderTotalPreview)}</b></div>}
         <div className="actions">
-          <button className="btn-confirm" onClick={saveCart}>{editingOrder ? t("cashier.saveChanges") : t("cashier.saveOrder")}</button>
-          <button className="secondary" onClick={() => setCart([])}>{t("cashier.clearCart")}</button>
-          {!editingOrder && <button className="danger" onClick={() => showOrders(false)}>{t("cashier.backToOrders")}</button>}
-          {editingOrder && <button className="danger" onClick={cancelEdit}>{t("cashier.cancel")}</button>}
+          <button type="button" className="btn-confirm" onClick={saveCart}>{editingOrder ? t("cashier.saveChanges") : t("cashier.saveOrder")}</button>
+          <button type="button" className="secondary" onClick={() => setCart([])}>{t("cashier.clearCart")}</button>
+          {!editingOrder && <button type="button" className="danger" onClick={() => showOrders(false)}>{t("cashier.backToOrders")}</button>}
+          {editingOrder && <button type="button" className="danger" onClick={cancelEdit}>{t("cashier.cancel")}</button>}
         </div>
         <div className="message">{message}</div>
       </div>
@@ -408,8 +408,8 @@ export default function CashierClient() {
   return (
     <>
       <section className="cashier-command">
-        <button className="hex-action" onClick={showNewOrder}>
-          <span className="hex-plus">+</span>
+        <button type="button" className="hex-action" onClick={showNewOrder}>
+          <span className="hex-plus" aria-hidden="true">+</span>
           <span>{t("cashier.addNewOrder")}</span>
         </button>
         <div className="command-copy">
@@ -507,7 +507,7 @@ export default function CashierClient() {
           <div className="new-order-products">
         <div className="tabs">
           {categories.map((item) => (
-            <button key={item} className={category === item ? "active" : ""} onClick={() => setCategory(item)}>{labelCategory(item)}</button>
+            <button type="button" key={item} className={category === item ? "active" : ""} onClick={() => setCategory(item)}>{labelCategory(item)}</button>
           ))}
         </div>
         <div className="products">
@@ -515,7 +515,7 @@ export default function CashierClient() {
             const qty = cartQuantity(product.id);
             return (
               <div className={`card product ${qty ? "in-cart" : ""}`} key={product.id}>
-                <button className="product-main" onClick={() => addToCart(product)}>
+                <button type="button" className="product-main" onClick={() => addToCart(product)} aria-label={`${product.name} ${currency(product.price)}`}>
                   <img
                     src={product.imageUrl || fallbackImage}
                     alt={product.name}
@@ -525,7 +525,7 @@ export default function CashierClient() {
                 </button>
                 <div className="product-body">
                   <div className="product-qty-actions">
-                    <button className="secondary qty-button" onClick={() => changeQty(product.id, -1)} disabled={!qty}>-</button>
+                    <button type="button" className="secondary qty-button" aria-label={`Decrease ${product.name}`} onClick={() => changeQty(product.id, -1)} disabled={!qty}>-</button>
                     <input
                       className="qty-input"
                       type="number"
@@ -535,7 +535,7 @@ export default function CashierClient() {
                       aria-label={`${product.name} quantity`}
                       name={`product-qty-${product.id}`}
                     />
-                    <button className="btn-confirm qty-button" onClick={() => addToCart(product)}>+</button>
+                    <button type="button" className="btn-confirm qty-button" aria-label={`Increase ${product.name}`} onClick={() => addToCart(product)}>+</button>
                   </div>
                   <div className="product-price">{currency(product.price)}</div>
                 </div>
@@ -553,8 +553,8 @@ export default function CashierClient() {
         <div className="row">
           <h2>{showArchived ? t("common.archivedOrders") : t("common.currentOrders")}</h2>
           <div className="tabs order-tabs">
-            <button className={!showArchived ? "active" : ""} onClick={() => showOrdersTab(false)}>{t("common.currentOrders")}</button>
-            <button className={showArchived ? "active" : ""} onClick={() => showOrdersTab(true)}>{t("common.archivedOrders")}</button>
+            <button type="button" className={!showArchived ? "active" : ""} onClick={() => showOrdersTab(false)}>{t("common.currentOrders")}</button>
+            <button type="button" className={showArchived ? "active" : ""} onClick={() => showOrdersTab(true)}>{t("common.archivedOrders")}</button>
           </div>
         </div>
         <div className="grid four top-summary">

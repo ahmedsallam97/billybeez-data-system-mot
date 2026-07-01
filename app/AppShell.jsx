@@ -31,7 +31,7 @@ export default function AppShell({ title, user, children }) {
           {(user.role === "ADMIN" || user.role === "MANAGER") && <Link className="nav-manager" href="/manager">{t("nav.manager")}</Link>}
           {(user.role === "ADMIN" || user.role === "CASHIER") && <Link className="nav-cashier" href="/cashier">{t("nav.cashier")}</Link>}
           {(user.role === "ADMIN" || user.role === "KITCHEN") && <Link className="nav-kitchen" href="/kitchen">{t("nav.kitchen")}</Link>}
-          <button className="danger" onClick={logout}>{t("nav.logout")}</button>
+          <button type="button" className="danger" onClick={logout}>{t("nav.logout")}</button>
           <PreferenceIconButtons />
         </nav>
       </header>

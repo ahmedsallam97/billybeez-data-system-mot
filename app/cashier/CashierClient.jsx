@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useToast } from "../ToastProvider";
 import { useI18n } from "../i18n";
-import { employeeGenderClass } from "../employeeDisplay";
+import { applyEmployeeNameStyles, employeeGenderClass } from "../employeeDisplay";
 import { formatUiMessage, normalizeUiMessages, uiMessageStyle } from "../uiMessages";
 
 export default function CashierClient() {
@@ -43,7 +43,9 @@ export default function CashierClient() {
     if (!res?.ok) return;
     const data = await res.json();
     const setting = data.settings?.find((item) => item.key === "UI_MESSAGE_CONFIG");
+    const employeeStyleSetting = data.settings?.find((item) => item.key === "EMPLOYEE_NAME_STYLE_CONFIG");
     setUiMessages(normalizeUiMessages(setting?.value));
+    applyEmployeeNameStyles(employeeStyleSetting?.value);
   }
 
   async function load(archived = showArchived) {
@@ -472,7 +474,11 @@ export default function CashierClient() {
               <select value={childCount} onChange={(event) => setChildren(Number(event.target.value))}>
                 {[1, 2, 3, 4, 5, 6].map((count) => <option key={count} value={count}>{t("cashier.childCount", { count })}</option>)}
               </select>
-              <select value={dataEmployeeId} onChange={(event) => setDataEmployeeId(event.target.value)}>
+              <select
+                className={employeeGenderClass(employees.find((employee) => employee.id === dataEmployeeId)?.name)}
+                value={dataEmployeeId}
+                onChange={(event) => setDataEmployeeId(event.target.value)}
+              >
                 <option value="">{t("common.employee")}</option>
                 {employees.map((employee) => <option className={employeeGenderClass(employee.name)} key={employee.id} value={employee.id}>{employee.name}</option>)}
               </select>
@@ -665,7 +671,7 @@ export default function CashierClient() {
                 />
               ) : (
                 <select
-                  className="employee-select-line modal-select"
+                  className={`employee-select-line modal-select ${employeeGenderClass(operationEmployees.find((employee) => employee.id === selectedExitEmployeeId(employeeEditor.id))?.name)}`}
                   value={selectedExitEmployeeId(employeeEditor.id)}
                   disabled={operationEmployees.length === 0}
                   onChange={(event) => selectExitEmployee(employeeEditor.id, event.target.value)}

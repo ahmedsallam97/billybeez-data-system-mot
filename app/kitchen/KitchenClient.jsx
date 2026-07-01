@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useToast } from "../ToastProvider";
 import { useI18n } from "../i18n";
-import { employeeGenderClass } from "../employeeDisplay";
+import { applyEmployeeNameStyles, employeeGenderClass } from "../employeeDisplay";
 import { formatUiMessage, normalizeUiMessages, uiMessageStyle } from "../uiMessages";
 
 export default function KitchenClient() {
@@ -78,7 +78,9 @@ export default function KitchenClient() {
     if (!res?.ok) return;
     const data = await res.json();
     const setting = data.settings?.find((item) => item.key === "UI_MESSAGE_CONFIG");
+    const employeeStyleSetting = data.settings?.find((item) => item.key === "EMPLOYEE_NAME_STYLE_CONFIG");
     setUiMessages(normalizeUiMessages(setting?.value));
+    applyEmployeeNameStyles(employeeStyleSetting?.value);
   }
 
   async function load() {
@@ -443,7 +445,7 @@ export default function KitchenClient() {
               <div className="meta-line exit-employee-line"><span>{t("common.paymentEmployee")}</span><b className={employeeGenderClass(selectedEditorEmployeeName())}>{selectedEditorEmployeeName()}</b></div>
             )}
             <select
-              className="employee-select-line modal-select"
+              className={`employee-select-line modal-select ${employeeGenderClass(selectedEditorEmployeeName())}`}
               value={selectedEditorEmployeeId()}
               disabled={restaurantEmployees.length === 0}
               onChange={(event) => selectEditorEmployee(event.target.value)}

@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useToast } from "../ToastProvider";
 import { useI18n } from "../i18n";
-import { employeeGenderClass } from "../employeeDisplay";
+import { applyEmployeeNameStyles, employeeGenderClass, normalizeEmployeeNameStyles } from "../employeeDisplay";
 import { formatUiMessage, normalizeUiMessages, uiMessageKeys, uiMessageStyle } from "../uiMessages";
 
 const emptyEmployeeForm = {
@@ -60,6 +60,7 @@ export default function ManagerClient() {
   const [printFrameUrl, setPrintFrameUrl] = useState("");
   const [reportPrintHtml, setReportPrintHtml] = useState("");
   const [uiMessages, setUiMessages] = useState(normalizeUiMessages());
+  const [employeeNameStyles, setEmployeeNameStyles] = useState(normalizeEmployeeNameStyles());
 
   useEffect(() => {
     load();
@@ -94,6 +95,10 @@ export default function ManagerClient() {
     setProducts(productsData);
     setUsers(Array.isArray(usersData) ? usersData : []);
     setUiMessages(normalizeUiMessages(settingsData.settings?.find((item) => item.key === "UI_MESSAGE_CONFIG")?.value));
+    const employeeStyleSetting = settingsData.settings?.find((item) => item.key === "EMPLOYEE_NAME_STYLE_CONFIG");
+    const normalizedEmployeeStyles = normalizeEmployeeNameStyles(employeeStyleSetting?.value);
+    setEmployeeNameStyles(normalizedEmployeeStyles);
+    applyEmployeeNameStyles(normalizedEmployeeStyles);
   }
 
   function orderAlertClass(order) {
@@ -481,6 +486,42 @@ export default function ManagerClient() {
     toast(t("manager.uiMessagesSaved"));
   }
 
+  function updateEmployeeNameStyle(group, field, value) {
+    setEmployeeNameStyles((current) => {
+      const next = {
+        ...current,
+        [group]: {
+          ...current[group],
+          [field]: ["fontSize", "fontWeight"].includes(field) ? Number(value) : value,
+        },
+      };
+      applyEmployeeNameStyles(next);
+      return next;
+    });
+  }
+
+  async function saveEmployeeNameStyles() {
+    const res = await fetch("/api/settings", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        key: "EMPLOYEE_NAME_STYLE_CONFIG",
+        value: JSON.stringify(employeeNameStyles),
+      }),
+    });
+    const result = await res.json();
+
+    if (!result.success) {
+      toast(result.error || t("manager.employeeStyleSaveFailed"), "error");
+      return;
+    }
+
+    const normalized = normalizeEmployeeNameStyles(result.setting?.value);
+    setEmployeeNameStyles(normalized);
+    applyEmployeeNameStyles(normalized);
+    toast(t("manager.employeeStyleSaved"));
+  }
+
   function dailyReviewRows() {
     const orders = data?.orders || [];
     const currentDate = data?.reportBusinessDate;
@@ -822,6 +863,57 @@ export default function ManagerClient() {
           </label>
           <button className="btn-confirm" onClick={saveEmployee}>{employeeForm.id ? t("manager.updateEmployee") : t("manager.addEmployee")}</button>
         </div>
+        <div className="employee-style-panel">
+          <div className="row">
+            <div>
+              <h3>{t("manager.employeeNameStyle")}</h3>
+              <div className="muted">{t("manager.employeeNameStyleHint")}</div>
+            </div>
+            <button className="btn-confirm" onClick={saveEmployeeNameStyles}>{t("common.save")}</button>
+          </div>
+          <div className="employee-style-grid">
+            {[
+              ["male", t("manager.maleEmployeeStyle"), "محمد أمين"],
+              ["female", t("manager.femaleEmployeeStyle"), "سلمى سلطان"],
+            ].map(([group, label, preview]) => (
+              <div className="employee-style-card" key={group}>
+                <b>{label}</b>
+                <div className={`employee-style-preview employee-name-${group}`}>{preview}</div>
+                <div className="ui-message-fields">
+                  <label>
+                    <span>{t("manager.textColor")}</span>
+                    <input type="color" value={employeeNameStyles[group].color} onChange={(event) => updateEmployeeNameStyle(group, "color", event.target.value)} />
+                  </label>
+                  <label>
+                    <span>{t("manager.fontSize")}</span>
+                    <input type="number" min="10" max="28" value={employeeNameStyles[group].fontSize} onChange={(event) => updateEmployeeNameStyle(group, "fontSize", event.target.value)} />
+                  </label>
+                  <label>
+                    <span>{t("manager.fontWeight")}</span>
+                    <input type="number" min="400" max="950" step="50" value={employeeNameStyles[group].fontWeight} onChange={(event) => updateEmployeeNameStyle(group, "fontWeight", event.target.value)} />
+                  </label>
+                  <label>
+                    <span>{t("manager.fontStyle")}</span>
+                    <select value={employeeNameStyles[group].fontStyle} onChange={(event) => updateEmployeeNameStyle(group, "fontStyle", event.target.value)}>
+                      <option value="normal">{t("manager.fontStyleNormal")}</option>
+                      <option value="italic">{t("manager.fontStyleItalic")}</option>
+                    </select>
+                  </label>
+                  <label>
+                    <span>{t("manager.fontFamily")}</span>
+                    <select value={employeeNameStyles[group].fontFamily} onChange={(event) => updateEmployeeNameStyle(group, "fontFamily", event.target.value)}>
+                      <option value="">{t("manager.fontFamilyDefault")}</option>
+                      <option value="Tajawal">Tajawal</option>
+                      <option value="Arial">Arial</option>
+                      <option value="Tahoma">Tahoma</option>
+                      <option value="Cairo">Cairo</option>
+                    </select>
+                  </label>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
         <div className="form-grid settings-filter-grid">
           <input value={employeeFilter.query} onChange={(event) => setEmployeeFilter((current) => ({ ...current, query: event.target.value }))} placeholder={t("manager.employeeSearch")} />
           <select value={employeeFilter.department} onChange={(event) => setEmployeeFilter((current) => ({ ...current, department: event.target.value }))}>
@@ -1156,7 +1248,11 @@ export default function ManagerClient() {
                   <button className="btn-confirm" onClick={() => addOrderItem(selectedOrder.id)}>{t("manager.addItem")}</button>
                 </div>
                 <div className="form-grid manager-order-edit-grid">
-                  <select value={managerPaymentEmployeeId} onChange={(event) => setManagerPaymentEmployeeId(event.target.value)}>
+                  <select
+                    className={employeeGenderClass(restaurantEmployees().find((employee) => employee.id === managerPaymentEmployeeId)?.name)}
+                    value={managerPaymentEmployeeId}
+                    onChange={(event) => setManagerPaymentEmployeeId(event.target.value)}
+                  >
                     <option value="">{t("manager.selectReceiver")}</option>
                     {restaurantEmployees().map((employee) => <option className={employeeGenderClass(employee.name)} key={employee.id} value={employee.id}>{employee.name}</option>)}
                   </select>
@@ -1168,7 +1264,11 @@ export default function ManagerClient() {
                   </button>
                 </div>
                 <div className="form-grid manager-order-edit-grid">
-                  <select value={managerGeideaEmployeeId} onChange={(event) => setManagerGeideaEmployeeId(event.target.value)}>
+                  <select
+                    className={employeeGenderClass(restaurantEmployees().find((employee) => employee.id === managerGeideaEmployeeId)?.name)}
+                    value={managerGeideaEmployeeId}
+                    onChange={(event) => setManagerGeideaEmployeeId(event.target.value)}
+                  >
                     <option value="">{t("manager.selectGeideaEmployee")}</option>
                     {restaurantEmployees().map((employee) => <option className={employeeGenderClass(employee.name)} key={employee.id} value={employee.id}>{employee.name}</option>)}
                   </select>

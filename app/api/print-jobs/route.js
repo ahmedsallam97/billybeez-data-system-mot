@@ -3,6 +3,7 @@ import { prisma } from "@/lib/db";
 import { authorizeApi } from "@/lib/api-auth";
 import { writeAudit } from "@/lib/audit";
 import { includeOrderDetails, routeOrderId, serializeOrder } from "@/lib/orders";
+import { nextWorkflowState, orderAuditSnapshot } from "@/lib/order-workflow";
 
 function serializePrintJob(job) {
   return {
@@ -84,6 +85,13 @@ export async function POST(request) {
     },
   });
 
+  const updatedOrder = await prisma.order.update({
+    where: { id: orderId },
+    data: {
+      workflowState: nextWorkflowState(order, "PREPARING"),
+    },
+  });
+
   await writeAudit({
     action: "PRINT_JOB_CREATED",
     orderId,
@@ -94,6 +102,9 @@ export async function POST(request) {
       type,
       printerName,
     },
+    before: orderAuditSnapshot(order),
+    after: orderAuditSnapshot(updatedOrder),
+    reason: "Restaurant started preparation and queued kitchen ticket",
   });
 
   return NextResponse.json({ success: true, job: serializePrintJob(job) });

@@ -4,6 +4,7 @@ import { authorizeApi } from "@/lib/api-auth";
 import { writeAudit } from "@/lib/audit";
 import { ensureBusinessDayState } from "@/lib/business-day";
 import { routeOrderId } from "@/lib/orders";
+import { orderAuditSnapshot } from "@/lib/order-workflow";
 
 export async function POST(request, { params }) {
   const { user, error } = await authorizeApi("ORDER_CUSTOMER_LEFT");
@@ -53,6 +54,7 @@ export async function POST(request, { params }) {
       customerLeft: nextCustomerLeft,
       exitEmployeeId: nextCustomerLeft ? (exitEmployee?.id || current.exitEmployeeId) : null,
       status: shouldArchive ? "ARCHIVED" : restoredStatus,
+      workflowState: shouldArchive ? "ARCHIVED" : nextCustomerLeft ? "CUSTOMER_LEFT" : restoredStatus,
       archivedAt,
     },
   });
@@ -68,6 +70,9 @@ export async function POST(request, { params }) {
       exitEmployee: exitEmployee?.name || null,
       managerPasswordUsed: !nextCustomerLeft && user.role === "CASHIER",
     },
+    before: orderAuditSnapshot(current),
+    after: orderAuditSnapshot(order),
+    reason: nextCustomerLeft ? "Data team marked customer left" : "Customer returned with manager password",
   });
 
   if (shouldArchive && !current.archivedAt) {

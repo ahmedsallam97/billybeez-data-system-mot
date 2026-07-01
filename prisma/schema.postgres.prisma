@@ -21,6 +21,16 @@ enum OrderStatus {
   ARCHIVED
 }
 
+enum WorkflowState {
+  OPEN
+  PREPARING
+  DELIVERED
+  PAID
+  GEIDEA_REGISTERED
+  CUSTOMER_LEFT
+  ARCHIVED
+}
+
 enum KitchenStatus {
   PENDING
   DELIVERED
@@ -115,6 +125,7 @@ model Order {
   childrenCount      Int           @default(1)
   total              Float         @default(0)
   status             OrderStatus   @default(OPEN)
+  workflowState      WorkflowState @default(OPEN)
   kitchenStatus      KitchenStatus @default(PENDING)
   paymentStatus      PaymentStatus @default(UNPAID)
   paymentMethod      PaymentMethod @default(CASH)
@@ -141,6 +152,7 @@ model Order {
   printJobs       PrintJob[]
 
   @@index([businessDate])
+  @@index([workflowState])
   @@index([archivedAt])
   @@index([geideaRegisteredAt])
 }
@@ -204,6 +216,15 @@ model BusinessDay {
   closedTotal      Float     @default(0)
   createdAt        DateTime  @default(now())
   updatedAt        DateTime  @updatedAt
+}
+
+model SystemSetting {
+  key         String   @id
+  value       String
+  description String?
+  updatedBy   String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 }
 
 model OrderHistory {

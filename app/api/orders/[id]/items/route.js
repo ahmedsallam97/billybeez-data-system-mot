@@ -4,6 +4,7 @@ import { authorizeApi } from "@/lib/api-auth";
 import { writeAudit } from "@/lib/audit";
 import { ensureBusinessDayState } from "@/lib/business-day";
 import { routeOrderId } from "@/lib/orders";
+import { orderAuditSnapshot, restoredStatus } from "@/lib/order-workflow";
 
 export async function POST(request, { params }) {
   const { user, error } = await authorizeApi("ORDER_EDIT_ITEMS");
@@ -52,13 +53,14 @@ export async function POST(request, { params }) {
     });
   });
 
-  await prisma.$transaction([
+  const [, updatedOrder] = await prisma.$transaction([
     prisma.orderItem.createMany({ data: orderItems }),
     prisma.order.update({
       where: { id },
       data: {
         total: { increment: addedTotal },
-        status: order.paymentStatus === "PAID" ? "PAID" : "OPEN",
+        status: restoredStatus(order),
+        workflowState: restoredStatus(order),
         geideaRegisteredAt: null,
         geideaEmployeeId: null,
         archivedAt: null,
@@ -72,6 +74,9 @@ export async function POST(request, { params }) {
     user,
     summary: `Added ${orderItems.length} item lines`,
     metadata: { addedTotal, items: orderItems.map((item) => ({ name: item.name, qty: item.qty, total: item.total })) },
+    before: orderAuditSnapshot(order),
+    after: orderAuditSnapshot(updatedOrder),
+    reason: "Items added, Geidea/archive state reset",
   });
 
   return NextResponse.json({ success: true });
@@ -112,13 +117,14 @@ export async function DELETE(request, { params }) {
 
   const nextTotal = Math.max(0, Number(order.total || 0) - Number(item.total || 0));
 
-  await prisma.$transaction([
+  const [, updatedOrder] = await prisma.$transaction([
     prisma.orderItem.delete({ where: { id: itemId } }),
     prisma.order.update({
       where: { id },
       data: {
         total: nextTotal,
-        status: order.paymentStatus === "PAID" ? "PAID" : "OPEN",
+        status: restoredStatus(order),
+        workflowState: restoredStatus(order),
         geideaRegisteredAt: null,
         geideaEmployeeId: null,
         archivedAt: null,
@@ -132,6 +138,9 @@ export async function DELETE(request, { params }) {
     user,
     summary: "Removed item line",
     metadata: { name: item.name, qty: item.qty, total: item.total, nextTotal },
+    before: orderAuditSnapshot(order),
+    after: orderAuditSnapshot(updatedOrder),
+    reason: "Item removed, Geidea/archive state reset",
   });
 
   return NextResponse.json({ success: true });

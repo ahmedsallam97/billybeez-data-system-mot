@@ -107,6 +107,7 @@ export async function POST(request) {
       childNames: childNames.join(", "),
       childrenCount: childNames.length,
       total,
+      workflowState: "OPEN",
       paymentMethod: body.paymentMethod === "VISA" ? "VISA" : "CASH",
       cashierId: user.id,
       dataEmployeeId: body.dataEmployeeId,
@@ -121,6 +122,13 @@ export async function POST(request) {
     user,
     summary: `Created order ${order.id}`,
     metadata: { total, items: orderItems.length, paymentMethod: order.paymentMethod },
+    after: {
+      id: order.id,
+      workflowState: order.workflowState,
+      total: order.total,
+      paymentMethod: order.paymentMethod,
+    },
+    reason: "New order created by data team",
   });
 
   return NextResponse.json({ success: true, order: serializeOrder(order) });

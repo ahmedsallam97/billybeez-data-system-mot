@@ -4,7 +4,7 @@ import { authorizeApi } from "@/lib/api-auth";
 import { writeAudit } from "@/lib/audit";
 import { ensureBusinessDayState } from "@/lib/business-day";
 import { routeOrderId } from "@/lib/orders";
-import { restoredStatus } from "@/lib/order-workflow.mjs";
+import { orderAuditSnapshot, restoredStatus, workflowStateFromOrder } from "@/lib/order-workflow";
 
 export async function POST(_request, { params }) {
   const { user, error } = await authorizeApi("ORDER_UNARCHIVE");
@@ -28,6 +28,7 @@ export async function POST(_request, { params }) {
     where: { id },
     data: {
       status: restoredStatus(current),
+      workflowState: workflowStateFromOrder({ ...current, archivedAt: null, status: restoredStatus(current) }),
       archivedAt: null,
     },
   });
@@ -38,6 +39,9 @@ export async function POST(_request, { params }) {
     user,
     summary: "Unarchived order",
     metadata: { previousArchivedAt: current.archivedAt, restoredStatus: order.status },
+    before: orderAuditSnapshot(current),
+    after: orderAuditSnapshot(order),
+    reason: "Manager unarchived order",
   });
 
   return NextResponse.json({ success: true });

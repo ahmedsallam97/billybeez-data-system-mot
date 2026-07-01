@@ -4,6 +4,7 @@ import { authorizeApi } from "@/lib/api-auth";
 import { writeAudit } from "@/lib/audit";
 import { ensureBusinessDayState } from "@/lib/business-day";
 import { routeOrderId } from "@/lib/orders";
+import { orderAuditSnapshot } from "@/lib/order-workflow";
 
 export async function POST(_request, { params }) {
   const { user, error } = await authorizeApi("ORDER_ARCHIVE");
@@ -27,10 +28,11 @@ export async function POST(_request, { params }) {
     return NextResponse.json({ success: false, error: "Customer must be marked as left first" }, { status: 400 });
   }
 
-  await prisma.order.update({
+  const updatedOrder = await prisma.order.update({
     where: { id },
     data: {
       status: "ARCHIVED",
+      workflowState: "ARCHIVED",
       archivedAt: new Date(),
     },
   });
@@ -45,6 +47,9 @@ export async function POST(_request, { params }) {
       paymentMethod: current.paymentMethod,
       geideaRegisteredAt: current.geideaRegisteredAt,
     },
+    before: orderAuditSnapshot(current),
+    after: orderAuditSnapshot(updatedOrder),
+    reason: "Manual archive after Geidea and customer left",
   });
 
   return NextResponse.json({ success: true });

@@ -3,9 +3,10 @@ import { timingSafeEqual } from "crypto";
 import { authorizeApi } from "@/lib/api-auth";
 import { writeAudit } from "@/lib/audit";
 import { closeActiveBusinessDay, ensureBusinessDayState, openBusinessDay } from "@/lib/business-day";
+import { getSetting } from "@/lib/settings";
 
-function validBusinessDayPassword(value) {
-  const expected = Buffer.from(process.env.BUSINESS_DAY_PASSWORD || "");
+async function validBusinessDayPassword(value) {
+  const expected = Buffer.from(await getSetting("BUSINESS_DAY_PASSWORD", process.env.BUSINESS_DAY_PASSWORD || ""));
   const received = Buffer.from(String(value || ""));
 
   return expected.length > 0
@@ -28,7 +29,7 @@ export async function POST(request) {
   const action = String(body.action || "").toLowerCase();
   const requiresPassword = user.role === "CASHIER" || user.role === "KITCHEN";
 
-  if (requiresPassword && !validBusinessDayPassword(body.password)) {
+  if (requiresPassword && !(await validBusinessDayPassword(body.password))) {
     return NextResponse.json({ success: false, error: "Invalid business day password" }, { status: 403 });
   }
 
@@ -60,6 +61,9 @@ export async function POST(request) {
       authorizedRole: user.role,
       closedOrderCount: businessState.closedOrderCount || 0,
     },
+    before: currentState,
+    after: businessState,
+    reason: `Manual business day ${action}`,
   });
 
   return NextResponse.json({ success: true, businessState });

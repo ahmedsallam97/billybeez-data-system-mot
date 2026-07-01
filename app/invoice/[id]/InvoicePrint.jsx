@@ -3,7 +3,7 @@
 import { useEffect } from "react";
 import { useI18n } from "../../i18n";
 
-export default function InvoicePrint({ order }) {
+export default function InvoicePrint({ order, settings = {} }) {
   const { t, formatNumber, labelMethod, formatDateTime } = useI18n();
   const printedAt = formatDateTime(order.createdAt);
   const receiptAmount = (amount) => formatNumber(amount, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -20,8 +20,8 @@ export default function InvoicePrint({ order }) {
       </div>
       <div className="receipt-center">
         <b>{t("invoice.welcome")}</b>
-        <div>{t("invoice.company")}</div>
-        <div>{t("invoice.tin")}: 474-214-206</div>
+        <div>{settings.branchName || t("invoice.company")}</div>
+        <div>{t("invoice.tin")}: {settings.branchTin || "474-214-206"}</div>
       </div>
 
       <div className="receipt-rule" />

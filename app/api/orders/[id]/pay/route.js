@@ -4,6 +4,7 @@ import { authorizeApi } from "@/lib/api-auth";
 import { writeAudit } from "@/lib/audit";
 import { ensureBusinessDayState } from "@/lib/business-day";
 import { routeOrderId } from "@/lib/orders";
+import { orderAuditSnapshot } from "@/lib/order-workflow";
 
 export async function POST(request, { params }) {
   const { user, error } = await authorizeApi("ORDER_PAY");
@@ -45,6 +46,7 @@ export async function POST(request, { params }) {
           paymentStatus: "PAID",
           paymentMethod,
           status: "PAID",
+          workflowState: "PAID",
           paymentEmployeeId: paymentEmployee?.id || current.paymentEmployeeId,
         },
   });
@@ -60,6 +62,9 @@ export async function POST(request, { params }) {
       paymentEmployee: paymentEmployee?.name || null,
       employeeOnlyUpdate: current.paymentStatus === "PAID" && user.role === "KITCHEN",
     },
+    before: orderAuditSnapshot(current),
+    after: orderAuditSnapshot(order),
+    reason: current.paymentStatus === "PAID" && user.role === "KITCHEN" ? "Updated payment receiver" : `Marked order paid by ${paymentMethod}`,
   });
 
   return NextResponse.json({ success: true });

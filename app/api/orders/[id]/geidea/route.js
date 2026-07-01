@@ -4,6 +4,7 @@ import { authorizeApi } from "@/lib/api-auth";
 import { writeAudit } from "@/lib/audit";
 import { ensureBusinessDayState } from "@/lib/business-day";
 import { routeOrderId } from "@/lib/orders";
+import { orderAuditSnapshot } from "@/lib/order-workflow";
 
 export async function POST(request, { params }) {
   const { user, error } = await authorizeApi("ORDER_GEIDEA_REGISTER");
@@ -51,10 +52,11 @@ export async function POST(request, { params }) {
   const shouldArchive = current.customerLeft;
   const archivedAt = shouldArchive ? (current.archivedAt || registeredAt) : current.archivedAt;
 
-  await prisma.order.update({
+  const updatedOrder = await prisma.order.update({
     where: { id },
     data: {
       status: shouldArchive ? "ARCHIVED" : current.status,
+      workflowState: shouldArchive ? "ARCHIVED" : "GEIDEA_REGISTERED",
       geideaRegisteredAt: registeredAt,
       geideaEmployeeId: geideaEmployee?.id || current.geideaEmployeeId,
       archivedAt,
@@ -73,6 +75,9 @@ export async function POST(request, { params }) {
       geideaEmployee: geideaEmployee?.name || null,
       registeredAt,
     },
+    before: orderAuditSnapshot(current),
+    after: orderAuditSnapshot(updatedOrder),
+    reason: "Registered order on Geidea",
   });
 
   if (shouldArchive && !current.archivedAt) {

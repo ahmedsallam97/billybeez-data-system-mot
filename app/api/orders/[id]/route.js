@@ -4,6 +4,7 @@ import { authorizeApi } from "@/lib/api-auth";
 import { writeAudit } from "@/lib/audit";
 import { ensureBusinessDayState } from "@/lib/business-day";
 import { includeOrderDetails, routeOrderId, serializeOrder, validateBracelet } from "@/lib/orders";
+import { orderAuditSnapshot, restoredStatus } from "@/lib/order-workflow";
 
 export async function GET(_request, { params }) {
   const { error } = await authorizeApi("ORDER_READ");
@@ -63,7 +64,8 @@ export async function PATCH(request, { params }) {
       customerPhone: customerPhone || null,
       childNames: childNames.join(", "),
       childrenCount: childNames.length,
-      status: order.paymentStatus === "PAID" ? "PAID" : "OPEN",
+      status: restoredStatus(order),
+      workflowState: restoredStatus(order),
       geideaRegisteredAt: null,
       geideaEmployeeId: null,
       archivedAt: null,
@@ -81,6 +83,9 @@ export async function PATCH(request, { params }) {
       customerPhone,
       childNames,
     },
+    before: orderAuditSnapshot(order),
+    after: orderAuditSnapshot(updatedOrder),
+    reason: "Order details edited, Geidea/archive state reset",
   });
 
   return NextResponse.json({ success: true, order: serializeOrder(updatedOrder) });

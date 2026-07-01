@@ -62,6 +62,7 @@ export default function ManagerClient() {
   const [uiMessages, setUiMessages] = useState(normalizeUiMessages());
   const [employeeNameStyles, setEmployeeNameStyles] = useState(normalizeEmployeeNameStyles());
   const [settingsMap, setSettingsMap] = useState({});
+  const [backups, setBackups] = useState([]);
 
   useEffect(() => {
     load();
@@ -76,19 +77,21 @@ export default function ManagerClient() {
   }, [selectedOrder, employees, products]);
 
   async function load() {
-    const [dashboardRes, employeesRes, productsRes, usersRes, settingsRes] = await Promise.all([
+    const [dashboardRes, employeesRes, productsRes, usersRes, settingsRes, backupsRes] = await Promise.all([
       fetch("/api/dashboard"),
       fetch("/api/employees?department=ALL&includeInactive=true"),
       fetch("/api/products?includeInactive=true"),
       fetch("/api/users"),
       fetch("/api/settings"),
+      fetch("/api/backups"),
     ]);
-    const [dashboardData, employeesData, productsData, usersData, settingsData] = await Promise.all([
+    const [dashboardData, employeesData, productsData, usersData, settingsData, backupsData] = await Promise.all([
       dashboardRes.json(),
       employeesRes.json(),
       productsRes.json(),
       usersRes.json(),
       settingsRes.json(),
+      backupsRes.json(),
     ]);
 
     setData(dashboardData);
@@ -102,6 +105,7 @@ export default function ManagerClient() {
     const normalizedEmployeeStyles = normalizeEmployeeNameStyles(employeeStyleSetting?.value);
     setEmployeeNameStyles(normalizedEmployeeStyles);
     applyEmployeeNameStyles(normalizedEmployeeStyles);
+    setBackups(Array.isArray(backupsData.backups) ? backupsData.backups : []);
   }
 
   function orderAlertClass(order) {
@@ -599,6 +603,51 @@ export default function ManagerClient() {
     toast(t("manager.employeeStyleSaved"));
   }
 
+  async function refreshBackups() {
+    const res = await fetch("/api/backups");
+    const result = await res.json();
+    setBackups(Array.isArray(result.backups) ? result.backups : []);
+  }
+
+  async function createManualBackup() {
+    const res = await fetch("/api/backups", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "create" }),
+    });
+    const result = await res.json();
+
+    if (!result.success) {
+      toast(result.error || t("manager.backupFailed"), "error");
+      return;
+    }
+
+    toast(t("manager.backupCreated"), "info");
+    await refreshBackups();
+  }
+
+  function downloadBackup(name) {
+    window.location.href = `/api/backups/${encodeURIComponent(name)}`;
+  }
+
+  async function restoreDatabaseBackup(name) {
+    if (!confirm(t("manager.restoreBackupConfirm"))) return;
+    const res = await fetch("/api/backups", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "restore", name }),
+    });
+    const result = await res.json();
+
+    if (!result.success) {
+      toast(result.error || t("manager.restoreBackupFailed"), "error");
+      return;
+    }
+
+    toast(t("manager.restoreBackupDone"), "info");
+    await refreshBackups();
+  }
+
   function dailyReviewRows() {
     const orders = data?.orders || [];
     const currentDate = data?.reportBusinessDate;
@@ -963,6 +1012,7 @@ export default function ManagerClient() {
             ["workflow", t("settings.workflowSettings")],
             ["reports", t("settings.reportSettings")],
             ["auditBackup", t("settings.auditBackupSettings")],
+            ["backupRestore", t("manager.backupRestore")],
             ["messages", t("manager.uiMessages")],
           ].map(([tab, label]) => (
             <button key={tab} className={settingsTab === tab ? "active" : ""} onClick={() => setSettingsTab(tab)}>{label}</button>
@@ -1231,6 +1281,40 @@ export default function ManagerClient() {
       {settingsSection("workflow", t("settings.workflowSettings"), t("settings.workflowSettingsHint"), settingsGroups.workflow)}
       {settingsSection("reports", t("settings.reportSettings"), t("settings.reportSettingsHint"), settingsGroups.reports)}
       {settingsSection("auditBackup", t("settings.auditBackupSettings"), t("settings.auditBackupSettingsHint"), settingsGroups.auditBackup)}
+
+      <section className={`employee-manager ${settingsTab === "backupRestore" ? "" : "is-hidden"}`}>
+        <div className="row">
+          <div>
+            <h3>{t("manager.backupRestore")}</h3>
+            <div className="muted">{t("manager.backupRestoreHint")}</div>
+          </div>
+          <div className="actions">
+            <button className="btn-confirm" onClick={createManualBackup}>{t("manager.createBackup")}</button>
+            <button className="secondary" onClick={refreshBackups}>{t("common.refresh")}</button>
+          </div>
+        </div>
+        <div className="employee-table backup-table">
+          <div className="employee-row backup-row employee-head">
+            <b>{t("manager.backupFile")}</b>
+            <b>{t("manager.backupSize")}</b>
+            <b>{t("manager.backupDate")}</b>
+            <b>{t("common.actions")}</b>
+          </div>
+          {backups.length === 0 ? (
+            <div className="muted backup-empty">{t("manager.noBackups")}</div>
+          ) : backups.map((backup) => (
+            <div className="employee-row backup-row" key={backup.name}>
+              <span>{backup.name}</span>
+              <span>{formatNumber(Math.round((Number(backup.size) || 0) / 1024))} KB</span>
+              <span>{formatDateTime(backup.modifiedAt)}</span>
+              <span className="actions">
+                <button className="btn-print" onClick={() => downloadBackup(backup.name)}>{t("manager.downloadBackup")}</button>
+                <button className="danger" onClick={() => restoreDatabaseBackup(backup.name)}>{t("manager.restoreBackup")}</button>
+              </span>
+            </div>
+          ))}
+        </div>
+      </section>
 
       <section className={`employee-manager ${settingsTab === "messages" ? "" : "is-hidden"}`}>
         <div className="row">

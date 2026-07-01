@@ -9,6 +9,7 @@ function serializePrintJob(job) {
     orderId: job.orderId,
     type: job.type,
     status: job.status,
+    ticketNumber: job.ticketNumber || null,
     printerName: job.printerName || "",
     error: job.error || "",
     printedAt: job.printedAt,

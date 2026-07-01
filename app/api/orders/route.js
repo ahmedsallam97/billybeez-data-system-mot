@@ -4,6 +4,7 @@ import { authorizeApi } from "@/lib/api-auth";
 import { writeAudit } from "@/lib/audit";
 import { ensureBusinessDayState } from "@/lib/business-day";
 import { buildOrderId, includeOrderDetails, serializeOrder, validateBracelet } from "@/lib/orders";
+import { enumValue, jsonValidationResponse, optionalString, requireArray, requireString } from "@/lib/validation";
 
 export async function GET(request) {
   const { error } = await authorizeApi("ORDER_READ");
@@ -37,10 +38,19 @@ export async function POST(request) {
 
   const businessState = await ensureBusinessDayState();
   const body = await request.json();
-  const braceletNo = String(body.braceletNo || "").trim();
-  const customerPhone = String(body.customerPhone || "").trim();
-  const childNames = (body.childNames || []).map((name) => String(name || "").trim()).filter(Boolean);
-  const items = Array.isArray(body.items) ? body.items : [];
+  let braceletNo;
+  let customerPhone;
+  let childNames;
+  let items;
+
+  try {
+    braceletNo = requireString(body.braceletNo, "braceletNo");
+    customerPhone = optionalString(body.customerPhone);
+    childNames = requireArray(body.childNames, "childNames").map((name) => String(name || "").trim()).filter(Boolean);
+    items = requireArray(body.items, "items");
+  } catch (error) {
+    return jsonValidationResponse(NextResponse, error);
+  }
 
   if (!businessState.isOpen) {
     return NextResponse.json({ success: false, error: businessState.message }, { status: 400 });
@@ -108,7 +118,7 @@ export async function POST(request) {
       childrenCount: childNames.length,
       total,
       workflowState: "OPEN",
-      paymentMethod: body.paymentMethod === "VISA" ? "VISA" : "CASH",
+      paymentMethod: enumValue(body.paymentMethod, ["CASH", "VISA"], "CASH"),
       cashierId: user.id,
       dataEmployeeId: body.dataEmployeeId,
       items: { create: orderItems },

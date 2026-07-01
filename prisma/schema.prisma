@@ -193,6 +193,7 @@ model PrintJob {
   orderId     String
   type        PrintJobType
   status      PrintJobStatus @default(PENDING)
+  ticketNumber Int?
   printerName String?
   payload     String
   error       String?
@@ -204,6 +205,7 @@ model PrintJob {
 
   @@index([status])
   @@index([type])
+  @@index([ticketNumber])
   @@index([createdAt])
 }
 
@@ -225,6 +227,32 @@ model SystemSetting {
   updatedBy   String?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
+}
+
+model DailyClosingSnapshot {
+  id                    String   @id @default(cuid())
+  businessDate          String   @unique
+  ordersCount           Int      @default(0)
+  paidOrdersCount       Int      @default(0)
+  unpaidOrdersCount     Int      @default(0)
+  cashTotal             Float    @default(0)
+  visaTotal             Float    @default(0)
+  unpaidTotal           Float    @default(0)
+  notRegisteredGeidea   Int      @default(0)
+  leftUnpaid            Int      @default(0)
+  archivedOrdersCount   Int      @default(0)
+  topProductsJson       String   @default("[]")
+  paymentBreakdownJson  String   @default("[]")
+  statusBreakdownJson   String   @default("[]")
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+}
+
+model CounterSequence {
+  name      String   @id
+  value     Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
 
 model OrderHistory {

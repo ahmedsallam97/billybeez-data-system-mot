@@ -3,6 +3,7 @@ import { prisma } from "@/lib/db";
 import { authorizeApi } from "@/lib/api-auth";
 import { writeAudit } from "@/lib/audit";
 import { includeOrderDetails, routeOrderId, serializeOrder } from "@/lib/orders";
+import { nextSequence } from "@/lib/numbering";
 import { nextWorkflowState, orderAuditSnapshot } from "@/lib/order-workflow";
 
 function serializePrintJob(job) {
@@ -11,6 +12,7 @@ function serializePrintJob(job) {
     orderId: job.orderId,
     type: job.type,
     status: job.status,
+    ticketNumber: job.ticketNumber || null,
     printerName: job.printerName || "",
     error: job.error || "",
     printedAt: job.printedAt,
@@ -80,6 +82,7 @@ export async function POST(request) {
     data: {
       orderId,
       type,
+      ticketNumber: await nextSequence(type === "KITCHEN" ? "kitchenTicket" : "invoice"),
       printerName,
       payload: JSON.stringify(payload),
     },

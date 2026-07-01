@@ -5,6 +5,7 @@ const femaleNameTokens = [
   "سلمي",
   "سلمى",
   "شيماء",
+  "نبيلة",
   "mahra",
   "alaa nassar",
   "salma",

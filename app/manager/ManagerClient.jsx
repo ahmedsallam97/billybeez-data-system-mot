@@ -83,8 +83,11 @@ function emptyDashboardData() {
     reportBusinessDate: "",
     totalSales: 0,
     ordersCount: 0,
+    paidOrders: 0,
     unpaidOrders: 0,
     leftUnpaid: 0,
+    archivedOrders: 0,
+    geideaRegisteredOrders: 0,
     orders: [],
     orderHistory: [],
     paymentBreakdown: [],
@@ -101,7 +104,7 @@ function emptyDashboardData() {
 export default function ManagerClient() {
   const toast = useToast();
   const { t, formatNumber, currency, labelAudit, labelBusinessMessage, labelDepartment, labelMethod, labelOrderStage, labelStatus, formatDateTime } = useI18n();
-  const [data, setData] = useState(null);
+  const [data, setData] = useState(emptyDashboardData());
   const [employees, setEmployees] = useState([]);
   const [products, setProducts] = useState([]);
   const [users, setUsers] = useState([]);
@@ -145,37 +148,55 @@ export default function ManagerClient() {
   async function load() {
     setLoadError("");
 
-    try {
-      const [dashboardData, employeesData, productsData, usersData, settingsData, backupsData] = await Promise.all([
-        fetchJson("/api/dashboard", emptyDashboardData(), t("manager.tabOrders")),
-        fetchJson("/api/employees?department=ALL&includeInactive=true", [], t("settings.employeeManagement")),
-        fetchJson("/api/products?includeInactive=true", [], t("settings.productManagement")),
-        fetchJson("/api/users", [], t("settings.userPermissions")),
-        fetchJson("/api/settings", { settings: [] }, t("manager.tabSettings")),
-        fetchJson("/api/backups", { backups: [] }, t("settings.backupRestore")),
-      ]);
+    const results = await Promise.allSettled([
+      fetchJson("/api/dashboard", emptyDashboardData(), t("manager.tabOrders")),
+      fetchJson("/api/employees?department=ALL&includeInactive=true", [], t("settings.employeeManagement")),
+      fetchJson("/api/products?includeInactive=true", [], t("settings.productManagement")),
+      fetchJson("/api/users", [], t("settings.userPermissions")),
+      fetchJson("/api/settings", { settings: [] }, t("manager.tabSettings")),
+      fetchJson("/api/backups", { backups: [] }, t("settings.backupRestore")),
+    ]);
+    const [dashboardResult, employeesResult, productsResult, usersResult, settingsResult, backupsResult] = results;
+    const errors = results.filter((result) => result.status === "rejected").map((result) => result.reason?.message || t("manager.loadFailed"));
 
-      const settingsList = Array.isArray(settingsData.settings) ? settingsData.settings : [];
+    if (dashboardResult.status === "fulfilled") {
+      setData({ ...emptyDashboardData(), ...(dashboardResult.value || {}) });
+    }
+
+    if (employeesResult.status === "fulfilled") {
+      setEmployees(Array.isArray(employeesResult.value) ? employeesResult.value : []);
+    }
+
+    if (productsResult.status === "fulfilled") {
+      setProducts(Array.isArray(productsResult.value) ? productsResult.value : []);
+    }
+
+    if (usersResult.status === "fulfilled") {
+      setUsers(Array.isArray(usersResult.value) ? usersResult.value : []);
+    }
+
+    if (settingsResult.status === "fulfilled") {
+      const settingsList = Array.isArray(settingsResult.value.settings) ? settingsResult.value.settings : [];
       const nextSettingsMap = Object.fromEntries(settingsList.map((setting) => [setting.key, setting.value]));
       const employeeStyleSetting = settingsList.find((item) => item.key === "EMPLOYEE_NAME_STYLE_CONFIG");
       const normalizedEmployeeStyles = normalizeEmployeeNameStyles(employeeStyleSetting?.value);
 
-      setData({ ...emptyDashboardData(), ...(dashboardData || {}) });
-      setEmployees(Array.isArray(employeesData) ? employeesData : []);
-      setProducts(Array.isArray(productsData) ? productsData : []);
-      setUsers(Array.isArray(usersData) ? usersData : []);
       setSettingsMap(nextSettingsMap);
       setUiMessages(normalizeUiMessages(nextSettingsMap.UI_MESSAGE_CONFIG));
       setRolePermissions(normalizeRolePermissions(nextSettingsMap.ROLE_PERMISSION_CONFIG));
       setEmployeeNameStyles(normalizedEmployeeStyles);
       applyEmployeeNameStyles(normalizedEmployeeStyles);
-      setBackups(Array.isArray(backupsData.backups) ? backupsData.backups : []);
-    } catch (error) {
-      const message = error?.message || t("manager.loadFailed");
-      console.error("[manager-load]", error);
+    }
+
+    if (backupsResult.status === "fulfilled") {
+      setBackups(Array.isArray(backupsResult.value.backups) ? backupsResult.value.backups : []);
+    }
+
+    if (errors.length) {
+      const message = errors.join(" · ");
+      console.error("[manager-load]", errors);
       setLoadError(message);
       toast(message, "error");
-      setData((current) => current || emptyDashboardData());
     }
   }
 
@@ -947,8 +968,6 @@ export default function ManagerClient() {
     `);
     window.setTimeout(() => setReportPrintHtml(""), 5000);
   }
-
-  if (!data) return <div className="panel">{t("common.loading")}</div>;
 
   const selectedIsEditableOrder = selectedOrder && !selectedOrder.isHistory;
   const selectedIsActiveOrder = selectedIsEditableOrder;

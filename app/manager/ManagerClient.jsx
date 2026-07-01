@@ -61,6 +61,7 @@ export default function ManagerClient() {
   const [reportPrintHtml, setReportPrintHtml] = useState("");
   const [uiMessages, setUiMessages] = useState(normalizeUiMessages());
   const [employeeNameStyles, setEmployeeNameStyles] = useState(normalizeEmployeeNameStyles());
+  const [settingsMap, setSettingsMap] = useState({});
 
   useEffect(() => {
     load();
@@ -94,7 +95,9 @@ export default function ManagerClient() {
     setEmployees(employeesData);
     setProducts(productsData);
     setUsers(Array.isArray(usersData) ? usersData : []);
-    setUiMessages(normalizeUiMessages(settingsData.settings?.find((item) => item.key === "UI_MESSAGE_CONFIG")?.value));
+    const nextSettingsMap = Object.fromEntries((settingsData.settings || []).map((setting) => [setting.key, setting.value]));
+    setSettingsMap(nextSettingsMap);
+    setUiMessages(normalizeUiMessages(nextSettingsMap.UI_MESSAGE_CONFIG));
     const employeeStyleSetting = settingsData.settings?.find((item) => item.key === "EMPLOYEE_NAME_STYLE_CONFIG");
     const normalizedEmployeeStyles = normalizeEmployeeNameStyles(employeeStyleSetting?.value);
     setEmployeeNameStyles(normalizedEmployeeStyles);
@@ -124,6 +127,80 @@ export default function ManagerClient() {
       .replace(/>/g, "&gt;")
       .replace(/"/g, "&quot;")
       .replace(/'/g, "&#039;");
+  }
+
+  function updateSettingValue(key, value) {
+    setSettingsMap((current) => ({ ...current, [key]: value }));
+  }
+
+  async function saveSettingsGroup(fields) {
+    for (const field of fields) {
+      const res = await fetch("/api/settings", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          key: field.key,
+          value: String(settingsMap[field.key] ?? ""),
+        }),
+      });
+      const result = await res.json();
+
+      if (!result.success) {
+        toast(result.error || t("manager.settingsSaveFailed"), "error");
+        return;
+      }
+    }
+
+    toast(t("manager.settingsSaved"));
+    await load();
+  }
+
+  function renderSettingsFields(fields) {
+    return (
+      <div className="admin-settings-grid">
+        {fields.map((field) => (
+          <label className="admin-setting-field" key={field.key}>
+            <span>{field.label}</span>
+            {field.type === "select" ? (
+              <select value={settingsMap[field.key] ?? field.defaultValue ?? ""} onChange={(event) => updateSettingValue(field.key, event.target.value)}>
+                {field.options.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+              </select>
+            ) : field.type === "checkbox" ? (
+              <span className="toggle-row setting-toggle">
+                <input
+                  type="checkbox"
+                  checked={["1", "true", "yes", "on"].includes(String(settingsMap[field.key] ?? field.defaultValue ?? "").toLowerCase())}
+                  onChange={(event) => updateSettingValue(field.key, event.target.checked ? "true" : "false")}
+                />
+                <span>{["1", "true", "yes", "on"].includes(String(settingsMap[field.key] ?? field.defaultValue ?? "").toLowerCase()) ? t("common.yes") : t("common.no")}</span>
+              </span>
+            ) : (
+              <input
+                type={field.type || "text"}
+                min={field.min}
+                value={settingsMap[field.key] ?? field.defaultValue ?? ""}
+                onChange={(event) => updateSettingValue(field.key, event.target.value)}
+              />
+            )}
+          </label>
+        ))}
+      </div>
+    );
+  }
+
+  function settingsSection(tab, title, hint, fields) {
+    return (
+      <section className={`employee-manager ${settingsTab === tab ? "" : "is-hidden"}`}>
+        <div className="row">
+          <div>
+            <h3>{title}</h3>
+            <div className="muted">{hint}</div>
+          </div>
+          <button className="btn-confirm" onClick={() => saveSettingsGroup(fields)}>{t("common.save")}</button>
+        </div>
+        {renderSettingsFields(fields)}
+      </section>
+    );
   }
 
   function paymentButtonClass(order, method, baseClass) {
@@ -629,6 +706,59 @@ export default function ManagerClient() {
     if (!search) return true;
     return [user.name, user.username, user.role].some((value) => String(value || "").toLowerCase().includes(search));
   });
+  const settingsGroups = {
+    branch: [
+      { key: "COMPANY_NAME", label: t("settings.companyName") },
+      { key: "BRANCH_NAME", label: t("settings.branchName") },
+      { key: "BRANCH_ADDRESS", label: t("settings.branchAddress") },
+      { key: "BRANCH_PHONE", label: t("settings.branchPhone") },
+      { key: "BRANCH_TIN", label: t("settings.branchTin") },
+      { key: "POS_NAME", label: t("settings.posName") },
+    ],
+    invoice: [
+      { key: "INVOICE_LOGO_URL", label: t("settings.invoiceLogo") },
+      { key: "INVOICE_PAPER_SIZE", label: t("settings.paperSize"), type: "select", options: [{ value: "80mm", label: "80mm" }, { value: "58mm", label: "58mm" }, { value: "A4", label: "A4" }] },
+      { key: "INVOICE_FOOTER_MESSAGE", label: t("settings.footerMessage") },
+      { key: "INVOICE_SHOW_TAX", label: t("settings.showTax"), type: "checkbox" },
+      { key: "INVOICE_TAX_RATE", label: t("settings.taxRate"), type: "number", min: 0 },
+      { key: "INVOICE_CONTACT_NUMBER", label: t("settings.contactNumber") },
+      { key: "INVOICE_WEBSITE", label: t("settings.website") },
+    ],
+    printing: [
+      { key: "INVOICE_PRINTER_NAME", label: t("settings.invoicePrinter") },
+      { key: "KITCHEN_PRINTER_NAME", label: t("settings.kitchenPrinter") },
+      { key: "PRINT_COPIES_INVOICE", label: t("settings.invoiceCopies"), type: "number", min: 1 },
+      { key: "PRINT_COPIES_KITCHEN", label: t("settings.kitchenCopies"), type: "number", min: 1 },
+      { key: "PRINT_AUTO_INVOICE", label: t("settings.autoInvoicePrint"), type: "checkbox" },
+      { key: "PRINT_AUTO_KITCHEN", label: t("settings.autoKitchenPrint"), type: "checkbox" },
+      { key: "KITCHEN_TICKET_CATEGORIES", label: t("settings.kitchenTicketCategories") },
+    ],
+    business: [
+      { key: "BUSINESS_OPEN_HOUR", label: t("settings.openHour"), type: "number", min: 0 },
+      { key: "BUSINESS_CLOSE_HOUR", label: t("settings.closeHour"), type: "number", min: 0 },
+      { key: "BUSINESS_MANUAL_CLOSE_ONLY", label: t("settings.manualCloseOnly"), type: "checkbox" },
+      { key: "BUSINESS_DAY_PASSWORD", label: t("settings.businessPassword") },
+      { key: "ARCHIVE_REQUIRES_CUSTOMER_LEFT", label: t("settings.archiveRequiresExit"), type: "checkbox" },
+    ],
+    workflow: [
+      { key: "WORKFLOW_ALLOW_PAID_ORDER_EDIT_ROLES", label: t("settings.paidOrderEditRoles") },
+      { key: "WORKFLOW_ALLOW_PAYMENT_BEFORE_DELIVERY", label: t("settings.allowPaymentBeforeDelivery"), type: "checkbox" },
+      { key: "WORKFLOW_REQUIRE_GEIDEA_BEFORE_ARCHIVE", label: t("settings.requireGeideaBeforeArchive"), type: "checkbox" },
+      { key: "WORKFLOW_ALLOW_EXIT_BEFORE_PAYMENT", label: t("settings.allowExitBeforePayment"), type: "checkbox" },
+    ],
+    reports: [
+      { key: "REPORT_DEFAULT_TAB", label: t("settings.defaultReportTab"), type: "select", options: [{ value: "daily", label: t("manager.tabReview") }, { value: "payments", label: t("manager.paymentBreakdown") }, { value: "products", label: t("manager.topProducts") }] },
+      { key: "REPORT_SHOW_CASH_VISA_GEIDEA", label: t("settings.showCashVisaGeidea"), type: "checkbox" },
+      { key: "REPORT_ENABLE_EXCEL_EXPORT", label: t("settings.enableExcel"), type: "checkbox" },
+      { key: "REPORT_ENABLE_PDF_EXPORT", label: t("settings.enablePdf"), type: "checkbox" },
+    ],
+    auditBackup: [
+      { key: "AUDIT_RETENTION_DAYS", label: t("settings.auditRetention"), type: "number", min: 1 },
+      { key: "AUDIT_EXPORT_ENABLED", label: t("settings.auditExport"), type: "checkbox" },
+      { key: "BACKUP_AUTO_DAILY", label: t("settings.autoBackup"), type: "checkbox" },
+      { key: "BACKUP_RETENTION_DAYS", label: t("settings.backupRetention"), type: "number", min: 1 },
+    ],
+  };
 
   return (
     <>
@@ -826,6 +956,13 @@ export default function ManagerClient() {
             ["employees", t("manager.employeeManagement")],
             ["products", t("manager.productManagement")],
             ["users", t("manager.userManagement")],
+            ["branch", t("settings.branchSettings")],
+            ["invoice", t("settings.invoiceSettings")],
+            ["printing", t("settings.printSettings")],
+            ["business", t("settings.businessSettings")],
+            ["workflow", t("settings.workflowSettings")],
+            ["reports", t("settings.reportSettings")],
+            ["auditBackup", t("settings.auditBackupSettings")],
             ["messages", t("manager.uiMessages")],
           ].map(([tab, label]) => (
             <button key={tab} className={settingsTab === tab ? "active" : ""} onClick={() => setSettingsTab(tab)}>{label}</button>
@@ -1086,6 +1223,14 @@ export default function ManagerClient() {
           ))}
         </div>
       </section>
+
+      {settingsSection("branch", t("settings.branchSettings"), t("settings.branchSettingsHint"), settingsGroups.branch)}
+      {settingsSection("invoice", t("settings.invoiceSettings"), t("settings.invoiceSettingsHint"), settingsGroups.invoice)}
+      {settingsSection("printing", t("settings.printSettings"), t("settings.printSettingsHint"), settingsGroups.printing)}
+      {settingsSection("business", t("settings.businessSettings"), t("settings.businessSettingsHint"), settingsGroups.business)}
+      {settingsSection("workflow", t("settings.workflowSettings"), t("settings.workflowSettingsHint"), settingsGroups.workflow)}
+      {settingsSection("reports", t("settings.reportSettings"), t("settings.reportSettingsHint"), settingsGroups.reports)}
+      {settingsSection("auditBackup", t("settings.auditBackupSettings"), t("settings.auditBackupSettingsHint"), settingsGroups.auditBackup)}
 
       <section className={`employee-manager ${settingsTab === "messages" ? "" : "is-hidden"}`}>
         <div className="row">

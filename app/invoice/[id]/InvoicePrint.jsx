@@ -7,6 +7,9 @@ export default function InvoicePrint({ order, settings = {} }) {
   const { t, formatNumber, labelMethod, formatDateTime } = useI18n();
   const printedAt = formatDateTime(order.createdAt);
   const receiptAmount = (amount) => formatNumber(amount, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const showTax = ["1", "true", "yes", "on"].includes(String(settings.showTax || "").toLowerCase());
+  const taxRate = Number(settings.taxRate) || 0;
+  const taxAmount = showTax ? order.total * (taxRate / 100) : 0;
 
   useEffect(() => {
     const timer = setTimeout(() => window.print(), 700);
@@ -16,11 +19,14 @@ export default function InvoicePrint({ order, settings = {} }) {
   return (
     <div className="invoice">
       <div className="invoice-logo-wrap">
-        <img src="/bb-logo.png" alt="Billy Beez" className="invoice-logo" />
+        <img src={settings.logoUrl || "/bb-logo.png"} alt="Billy Beez" className="invoice-logo" />
       </div>
       <div className="receipt-center">
         <b>{t("invoice.welcome")}</b>
+        <div>{settings.companyName || t("invoice.company")}</div>
         <div>{settings.branchName || t("invoice.company")}</div>
+        {settings.branchAddress && <div>{settings.branchAddress}</div>}
+        {settings.posName && <div>{settings.posName}</div>}
         <div>{t("invoice.tin")}: {settings.branchTin || "474-214-206"}</div>
       </div>
 
@@ -68,6 +74,7 @@ export default function InvoicePrint({ order, settings = {} }) {
 
       <div className="receipt-totals">
         <span>{t("invoice.subtotal")}</span><b>{receiptAmount(order.total)}</b>
+        {showTax && <><span>VAT {receiptAmount(taxRate)}%</span><b>{receiptAmount(taxAmount)}</b></>}
         <span>{t("common.orderTotal")}</span><b>{receiptAmount(order.total)}</b>
       </div>
 
@@ -75,9 +82,9 @@ export default function InvoicePrint({ order, settings = {} }) {
 
       <div className="receipt-footer">
         <div>{t("invoice.points")}: Billy Beez</div>
-        <div>{t("invoice.thanks")}</div>
-        <div>{t("invoice.contact")}: 19881</div>
-        <div>www.billybeezeg.com</div>
+        <div>{settings.footerMessage || t("invoice.thanks")}</div>
+        <div>{t("invoice.contact")}: {settings.contactNumber || settings.branchPhone || "19881"}</div>
+        {settings.website && <div>{settings.website}</div>}
       </div>
       <button className="no-print" onClick={() => window.print()}>{t("common.print")}</button>
     </div>

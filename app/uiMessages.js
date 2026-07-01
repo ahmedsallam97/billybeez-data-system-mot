@@ -1,6 +1,6 @@
-const { prisma } = require("./db");
+"use client";
 
-const DEFAULT_UI_MESSAGE_CONFIG = {
+export const defaultUiMessages = {
   kitchenTicketQueued: {
     label: "Kitchen ticket queue message",
     text: "تيكت المطبخ موجود بالفعل في صف الطباعة",
@@ -124,77 +124,40 @@ const DEFAULT_UI_MESSAGE_CONFIG = {
   },
 };
 
-const DEFAULT_SETTINGS = Object.freeze({
-  BUSINESS_DAY_PASSWORD: {
-    value: process.env.BUSINESS_DAY_PASSWORD || "112411",
-    description: "Password required when cashier or restaurant controls the business day",
-  },
-  BUSINESS_OPEN_HOUR: {
-    value: "7",
-    description: "Business day opening hour in Africa/Cairo time",
-  },
-  BUSINESS_CLOSE_HOUR: {
-    value: "1",
-    description: "Business day closing hour in Africa/Cairo time",
-  },
-  BRANCH_NAME: {
-    value: "BillyBeez MOA",
-    description: "Printed branch name",
-  },
-  BRANCH_TIN: {
-    value: "474-214-206",
-    description: "Printed tax identification number",
-  },
-  KITCHEN_PRINTER_NAME: {
-    value: "",
-    description: "Default kitchen printer name for the local print agent",
-  },
-  ARCHIVE_REQUIRES_CUSTOMER_LEFT: {
-    value: "true",
-    description: "Orders can only archive after data team marks customer left",
-  },
-  UI_MESSAGE_CONFIG: {
-    value: JSON.stringify(DEFAULT_UI_MESSAGE_CONFIG),
-    description: "Editable UI messages, alert text, and visual styles",
-  },
-});
+export const uiMessageKeys = Object.keys(defaultUiMessages);
 
-async function ensureDefaultSettings(client = prisma) {
-  await Promise.all(Object.entries(DEFAULT_SETTINGS).map(([key, setting]) => client.systemSetting.upsert({
-    where: { key },
-    create: {
-      key,
-      value: setting.value,
-      description: setting.description,
-    },
-    update: {},
-  })));
-}
-
-async function getSetting(key, fallback = "") {
-  try {
-    const setting = await prisma.systemSetting.findUnique({ where: { key } });
-    return setting?.value ?? DEFAULT_SETTINGS[key]?.value ?? fallback;
-  } catch {
-    return DEFAULT_SETTINGS[key]?.value ?? fallback;
+export function normalizeUiMessages(value) {
+  let parsed = value;
+  if (typeof value === "string") {
+    try {
+      parsed = JSON.parse(value);
+    } catch {
+      parsed = {};
+    }
   }
+
+  return uiMessageKeys.reduce((messages, key) => {
+    messages[key] = { ...defaultUiMessages[key], ...(parsed?.[key] || {}) };
+    return messages;
+  }, {});
 }
 
-async function getNumberSetting(key, fallback) {
-  const value = Number(await getSetting(key, String(fallback)));
-  return Number.isFinite(value) ? value : fallback;
+export function uiMessageStyle(message) {
+  if (!message) return {};
+  return {
+    backgroundColor: message.backgroundColor,
+    color: message.textColor,
+    borderColor: message.borderColor,
+    borderLeftColor: message.borderColor,
+    borderInlineStartColor: message.borderColor,
+    borderInlineEndColor: message.borderColor,
+    borderRadius: `${Number(message.radius) || 8}px`,
+    fontSize: `${Number(message.fontSize) || 12}px`,
+    fontWeight: Number(message.fontWeight) || 900,
+    minHeight: `${Number(message.minHeight) || 34}px`,
+  };
 }
 
-async function getBooleanSetting(key, fallback = false) {
-  const value = String(await getSetting(key, fallback ? "true" : "false")).toLowerCase();
-  return ["1", "true", "yes", "on"].includes(value);
+export function formatUiMessage(message, values = {}) {
+  return String(message?.text || "").replace(/\{(\w+)\}/g, (_, key) => values[key] ?? "");
 }
-
-module.exports = {
-  DEFAULT_SETTINGS,
-  DEFAULT_UI_MESSAGE_CONFIG,
-  ensureDefaultSettings,
-  getBooleanSetting,
-  getNumberSetting,
-  getSetting,
-};

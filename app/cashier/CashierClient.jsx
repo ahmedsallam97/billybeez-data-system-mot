@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useToast } from "../ToastProvider";
 import { useI18n } from "../i18n";
 import { employeeGenderClass } from "../employeeDisplay";
+import { formatUiMessage, normalizeUiMessages, uiMessageStyle } from "../uiMessages";
 
 export default function CashierClient() {
   const toast = useToast();
@@ -30,10 +31,20 @@ export default function CashierClient() {
   const [defaultExitEmployeeId, setDefaultExitEmployeeId] = useState("");
   const [employeeEditor, setEmployeeEditor] = useState(null);
   const [entryPassword, setEntryPassword] = useState("");
+  const [uiMessages, setUiMessages] = useState(normalizeUiMessages());
 
   useEffect(() => {
     load(showArchived);
+    loadUiMessages();
   }, [showArchived]);
+
+  async function loadUiMessages() {
+    const res = await fetch("/api/settings").catch(() => null);
+    if (!res?.ok) return;
+    const data = await res.json();
+    const setting = data.settings?.find((item) => item.key === "UI_MESSAGE_CONFIG");
+    setUiMessages(normalizeUiMessages(setting?.value));
+  }
 
   async function load(archived = showArchived) {
     const [productsRes, employeesRes, ordersRes] = await Promise.all([
@@ -572,17 +583,37 @@ export default function CashierClient() {
                 <div className="row order-total-row"><span>{t("common.orderTotal")}</span><b>{currency(order.total)}</b></div>
               </div>
               <div className="order-alerts">
-                {order.customerLeft && order.paymentStatus !== "PAID" && <div className="warning">{t("alert.leftUnpaid")}</div>}
-                {order.customerLeft && order.paymentStatus === "PAID" && !order.geideaRegisteredAt && <div className="warning warning-orange">{t("alert.leftNeedsSystem")}</div>}
-                {order.geideaRegisteredAt && (
-                  <div className="geidea-alert-line">
-                    <span>{t("common.geideaRegisteredBy")}</span>
-                    <b><span className={employeeGenderClass(order.geideaEmployee)}>{order.geideaEmployee || "-"}</span> · {formatDateTime(order.geideaRegisteredAt)}</b>
+                {order.customerLeft && order.paymentStatus !== "PAID" && (
+                  <div className="warning" style={uiMessageStyle(uiMessages.leftUnpaid)}>
+                    {formatUiMessage(uiMessages.leftUnpaid)}
                   </div>
                 )}
-                {showArchived && <div className="archive-alert-line">{t("common.archivedAt")}: {formatDateTime(order.archivedAt)}</div>}
+                {order.customerLeft && order.paymentStatus === "PAID" && !order.geideaRegisteredAt && (
+                  <div className="warning warning-orange" style={uiMessageStyle(uiMessages.leftNeedsGeidea)}>
+                    {formatUiMessage(uiMessages.leftNeedsGeidea)}
+                  </div>
+                )}
+                {order.geideaRegisteredAt && (
+                  <div className="geidea-alert-line" style={uiMessageStyle(uiMessages.geideaRegistered)}>
+                    {formatUiMessage(uiMessages.geideaRegistered, {
+                      employee: order.geideaEmployee || "-",
+                      time: formatDateTime(order.geideaRegisteredAt),
+                    }).split("\n").map((line, index) => (
+                      <span className={index === 1 ? employeeGenderClass(order.geideaEmployee) : ""} key={index}>{line}</span>
+                    ))}
+                  </div>
+                )}
+                {showArchived && (
+                  <div className="archive-alert-line" style={uiMessageStyle(uiMessages.archivedAt)}>
+                    {formatUiMessage(uiMessages.archivedAt, { time: formatDateTime(order.archivedAt) })}
+                  </div>
+                )}
                 {!showArchived && order.customerLeft && (
-                  <div className="meta-line exit-employee-line"><span>{t("common.exitEmployee")}</span><b className={employeeGenderClass(exitEmployeeName(order))}>{exitEmployeeName(order) || "-"}</b></div>
+                  <div className="meta-line exit-employee-line" style={uiMessageStyle(uiMessages.exitEmployee)}>
+                    {formatUiMessage(uiMessages.exitEmployee, { employee: exitEmployeeName(order) || "-" }).split("\n").map((line, index) => (
+                      <span className={index === 1 ? employeeGenderClass(exitEmployeeName(order)) : ""} key={index}>{line}</span>
+                    ))}
+                  </div>
                 )}
               </div>
               {!showArchived && (

@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useToast } from "../ToastProvider";
 import { useI18n } from "../i18n";
 import { employeeGenderClass } from "../employeeDisplay";
+import { formatUiMessage, normalizeUiMessages, uiMessageKeys, uiMessageStyle } from "../uiMessages";
 
 const emptyEmployeeForm = {
   id: "",
@@ -58,6 +59,7 @@ export default function ManagerClient() {
   const [managerGeideaEmployeeId, setManagerGeideaEmployeeId] = useState("");
   const [printFrameUrl, setPrintFrameUrl] = useState("");
   const [reportPrintHtml, setReportPrintHtml] = useState("");
+  const [uiMessages, setUiMessages] = useState(normalizeUiMessages());
 
   useEffect(() => {
     load();
@@ -72,23 +74,26 @@ export default function ManagerClient() {
   }, [selectedOrder, employees, products]);
 
   async function load() {
-    const [dashboardRes, employeesRes, productsRes, usersRes] = await Promise.all([
+    const [dashboardRes, employeesRes, productsRes, usersRes, settingsRes] = await Promise.all([
       fetch("/api/dashboard"),
       fetch("/api/employees?department=ALL&includeInactive=true"),
       fetch("/api/products?includeInactive=true"),
       fetch("/api/users"),
+      fetch("/api/settings"),
     ]);
-    const [dashboardData, employeesData, productsData, usersData] = await Promise.all([
+    const [dashboardData, employeesData, productsData, usersData, settingsData] = await Promise.all([
       dashboardRes.json(),
       employeesRes.json(),
       productsRes.json(),
       usersRes.json(),
+      settingsRes.json(),
     ]);
 
     setData(dashboardData);
     setEmployees(employeesData);
     setProducts(productsData);
     setUsers(Array.isArray(usersData) ? usersData : []);
+    setUiMessages(normalizeUiMessages(settingsData.settings?.find((item) => item.key === "UI_MESSAGE_CONFIG")?.value));
   }
 
   function orderAlertClass(order) {
@@ -210,7 +215,11 @@ export default function ManagerClient() {
     });
     const result = await res.json();
     if (result.success) {
-      toast(t("manager.paymentToast", { method: labelMethod(paymentMethod) }));
+      toast(
+        formatUiMessage(uiMessages.paymentSaved, { method: labelMethod(paymentMethod) }),
+        "info",
+        uiMessageStyle(uiMessages.paymentSaved)
+      );
       await refreshAfterOrderChange(orderId);
     } else {
       toast(result.error || t("manager.paymentUpdateFailed"), "error");
@@ -442,6 +451,36 @@ export default function ManagerClient() {
     await load();
   }
 
+  function updateUiMessage(key, field, value) {
+    setUiMessages((current) => ({
+      ...current,
+      [key]: {
+        ...current[key],
+        [field]: ["fontSize", "fontWeight", "minHeight", "radius"].includes(field) ? Number(value) : value,
+      },
+    }));
+  }
+
+  async function saveUiMessages() {
+    const res = await fetch("/api/settings", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        key: "UI_MESSAGE_CONFIG",
+        value: JSON.stringify(uiMessages),
+      }),
+    });
+    const result = await res.json();
+
+    if (!result.success) {
+      toast(result.error || t("manager.uiMessagesSaveFailed"), "error");
+      return;
+    }
+
+    setUiMessages(normalizeUiMessages(result.setting?.value));
+    toast(t("manager.uiMessagesSaved"));
+  }
+
   function dailyReviewRows() {
     const orders = data?.orders || [];
     const currentDate = data?.reportBusinessDate;
@@ -652,18 +691,48 @@ export default function ManagerClient() {
                 <div className="row order-total-row"><span>{t("common.orderTotal")}</span><b>{currency(order.total)}</b></div>
               </div>
               <div className="order-alerts">
-                {order.customerLeft && order.paymentStatus !== "PAID" && <div className="warning">{t("alert.leftUnpaid")}</div>}
-                {order.customerLeft && order.paymentStatus === "PAID" && !order.geideaRegisteredAt && <div className="warning warning-orange">{t("alert.leftNeedsSystem")}</div>}
-                {order.geideaRegisteredAt && (
-                  <div className="geidea-alert-line">
-                    <span>{t("common.geideaRegisteredBy")}</span>
-                    <b><span className={employeeGenderClass(order.geideaEmployee)}>{order.geideaEmployee || "-"}</span> · {formatDateTime(order.geideaRegisteredAt)}</b>
+                {order.customerLeft && order.paymentStatus !== "PAID" && (
+                  <div className="warning" style={uiMessageStyle(uiMessages.leftUnpaid)}>
+                    {formatUiMessage(uiMessages.leftUnpaid)}
                   </div>
                 )}
-                {order.exitEmployee && !order.archivedAt && <div className="meta-line exit-employee-line"><span>{t("common.exitEmployee")}</span><b className={employeeGenderClass(order.exitEmployee)}>{order.exitEmployee}</b></div>}
-                {order.archivedAt && !order.isHistory && <div className="archive-alert-line">{t("common.archivedAt")}: {formatDateTime(order.archivedAt)}</div>}
-                {viewMode === "HISTORY" && order.isHistory && order.closedAt && <div className="archive-alert-line">{t("common.closed")}: {formatDateTime(order.closedAt)}</div>}
-                {viewMode === "HISTORY" && order.isHistory && !order.closedAt && order.archivedAt && <div className="archive-alert-line">{t("common.archived")}: {formatDateTime(order.archivedAt)}</div>}
+                {order.customerLeft && order.paymentStatus === "PAID" && !order.geideaRegisteredAt && (
+                  <div className="warning warning-orange" style={uiMessageStyle(uiMessages.leftNeedsGeidea)}>
+                    {formatUiMessage(uiMessages.leftNeedsGeidea)}
+                  </div>
+                )}
+                {order.geideaRegisteredAt && (
+                  <div className="geidea-alert-line" style={uiMessageStyle(uiMessages.geideaRegistered)}>
+                    {formatUiMessage(uiMessages.geideaRegistered, {
+                      employee: order.geideaEmployee || "-",
+                      time: formatDateTime(order.geideaRegisteredAt),
+                    }).split("\n").map((line, index) => (
+                      <span className={index === 1 ? employeeGenderClass(order.geideaEmployee) : ""} key={index}>{line}</span>
+                    ))}
+                  </div>
+                )}
+                {order.exitEmployee && !order.archivedAt && (
+                  <div className="meta-line exit-employee-line" style={uiMessageStyle(uiMessages.exitEmployee)}>
+                    {formatUiMessage(uiMessages.exitEmployee, { employee: order.exitEmployee }).split("\n").map((line, index) => (
+                      <span className={index === 1 ? employeeGenderClass(order.exitEmployee) : ""} key={index}>{line}</span>
+                    ))}
+                  </div>
+                )}
+                {order.archivedAt && !order.isHistory && (
+                  <div className="archive-alert-line" style={uiMessageStyle(uiMessages.archivedAt)}>
+                    {formatUiMessage(uiMessages.archivedAt, { time: formatDateTime(order.archivedAt) })}
+                  </div>
+                )}
+                {viewMode === "HISTORY" && order.isHistory && order.closedAt && (
+                  <div className="archive-alert-line" style={uiMessageStyle(uiMessages.closedAt)}>
+                    {formatUiMessage(uiMessages.closedAt, { time: formatDateTime(order.closedAt) })}
+                  </div>
+                )}
+                {viewMode === "HISTORY" && order.isHistory && !order.closedAt && order.archivedAt && (
+                  <div className="archive-alert-line" style={uiMessageStyle(uiMessages.archivedAt)}>
+                    {formatUiMessage(uiMessages.archivedAt, { time: formatDateTime(order.archivedAt) })}
+                  </div>
+                )}
               </div>
               <div className="actions">
                 <button className="btn-details" onClick={() => setSelectedOrder(order)}>{t("manager.details")}</button>
@@ -716,6 +785,7 @@ export default function ManagerClient() {
             ["employees", t("manager.employeeManagement")],
             ["products", t("manager.productManagement")],
             ["users", t("manager.userManagement")],
+            ["messages", t("manager.uiMessages")],
           ].map(([tab, label]) => (
             <button key={tab} className={settingsTab === tab ? "active" : ""} onClick={() => setSettingsTab(tab)}>{label}</button>
           ))}
@@ -924,6 +994,72 @@ export default function ManagerClient() {
           ))}
         </div>
       </section>
+
+      <section className={`employee-manager ${settingsTab === "messages" ? "" : "is-hidden"}`}>
+        <div className="row">
+          <div>
+            <h3>{t("manager.uiMessages")}</h3>
+            <div className="muted">{t("manager.uiMessagesHint")}</div>
+          </div>
+          <button className="btn-confirm" onClick={saveUiMessages}>{t("common.save")}</button>
+        </div>
+        <div className="ui-message-grid">
+          {uiMessageKeys.map((key) => {
+            const message = uiMessages[key];
+            return (
+              <div className="ui-message-editor" key={key}>
+                <div className="row">
+                  <b>{t(`uiMessage.${key}`)}</b>
+                  <span className="muted">{key}</span>
+                </div>
+                <textarea
+                  value={message.text}
+                  onChange={(event) => updateUiMessage(key, "text", event.target.value)}
+                  rows={3}
+                  placeholder={t("manager.messageText")}
+                />
+                <div className="ui-message-fields">
+                  <label>
+                    <span>{t("manager.backgroundColor")}</span>
+                    <input type="color" value={message.backgroundColor} onChange={(event) => updateUiMessage(key, "backgroundColor", event.target.value)} />
+                  </label>
+                  <label>
+                    <span>{t("manager.textColor")}</span>
+                    <input type="color" value={message.textColor} onChange={(event) => updateUiMessage(key, "textColor", event.target.value)} />
+                  </label>
+                  <label>
+                    <span>{t("manager.borderColor")}</span>
+                    <input type="color" value={message.borderColor} onChange={(event) => updateUiMessage(key, "borderColor", event.target.value)} />
+                  </label>
+                  <label>
+                    <span>{t("manager.fontSize")}</span>
+                    <input type="number" min="10" max="28" value={message.fontSize} onChange={(event) => updateUiMessage(key, "fontSize", event.target.value)} />
+                  </label>
+                  <label>
+                    <span>{t("manager.fontWeight")}</span>
+                    <input type="number" min="400" max="950" step="50" value={message.fontWeight} onChange={(event) => updateUiMessage(key, "fontWeight", event.target.value)} />
+                  </label>
+                  <label>
+                    <span>{t("manager.minHeight")}</span>
+                    <input type="number" min="24" max="90" value={message.minHeight} onChange={(event) => updateUiMessage(key, "minHeight", event.target.value)} />
+                  </label>
+                  <label>
+                    <span>{t("manager.radius")}</span>
+                    <input type="number" min="0" max="24" value={message.radius} onChange={(event) => updateUiMessage(key, "radius", event.target.value)} />
+                  </label>
+                </div>
+                <div className="ui-message-preview" style={uiMessageStyle(message)}>
+                  {formatUiMessage(message, {
+                    employee: "محمد أمين",
+                    time: "01:38:25 PM",
+                    method: labelMethod("CASH"),
+                  }).split("\n").map((line, index) => <span key={index}>{line}</span>)}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </section>
         </div>
       </section>
 
@@ -959,15 +1095,38 @@ export default function ManagerClient() {
               <div className="meta-line"><span>{t("common.children")}</span><b>{selectedOrder.childNames}</b></div>
               <div className="meta-line"><span>{t("common.cashier")}</span><b className="meta-value meta-user">{selectedOrder.cashier}</b></div>
               <div className="meta-line"><span>{t("common.employee")}</span><b className={`meta-value meta-data-employee ${employeeGenderClass(selectedOrder.dataEmployee)}`}>{selectedOrder.dataEmployee}</b></div>
-              {selectedOrder.exitEmployee && <div className="meta-line exit-employee-line"><span>{t("common.exitEmployee")}</span><b className={employeeGenderClass(selectedOrder.exitEmployee)}>{selectedOrder.exitEmployee}</b></div>}
+              {selectedOrder.exitEmployee && (
+                <div className="meta-line exit-employee-line" style={uiMessageStyle(uiMessages.exitEmployee)}>
+                  {formatUiMessage(uiMessages.exitEmployee, { employee: selectedOrder.exitEmployee }).split("\n").map((line, index) => (
+                    <span className={index === 1 ? employeeGenderClass(selectedOrder.exitEmployee) : ""} key={index}>{line}</span>
+                  ))}
+                </div>
+              )}
               {selectedOrder.paymentEmployee && <div className="meta-line"><span>{t("common.paymentEmployee")}</span><b className={`meta-value meta-payment-employee ${employeeGenderClass(selectedOrder.paymentEmployee)}`}>{selectedOrder.paymentEmployee}</b></div>}
-              {selectedOrder.geideaRegisteredAt && <div className="meta-line"><span>{t("common.geideaRegisteredBy")}</span><b className="meta-value meta-system"><span className={employeeGenderClass(selectedOrder.geideaEmployee)}>{selectedOrder.geideaEmployee || "-"}</span> · {formatDateTime(selectedOrder.geideaRegisteredAt)}</b></div>}
+              {selectedOrder.geideaRegisteredAt && (
+                <div className="geidea-alert-line" style={uiMessageStyle(uiMessages.geideaRegistered)}>
+                  {formatUiMessage(uiMessages.geideaRegistered, {
+                    employee: selectedOrder.geideaEmployee || "-",
+                    time: formatDateTime(selectedOrder.geideaRegisteredAt),
+                  }).split("\n").map((line, index) => (
+                    <span className={index === 1 ? employeeGenderClass(selectedOrder.geideaEmployee) : ""} key={index}>{line}</span>
+                  ))}
+                </div>
+              )}
               {!selectedOrder.geideaRegisteredAt && <div className="meta-line"><span>{t("common.systemRegistered")}</span><b className="meta-value meta-pending">{t("common.no")}</b></div>}
               <div className="meta-line"><span>{t("common.status")}</span><b className={`meta-value ${orderStageClass(selectedOrder)}`}>{labelOrderStage(selectedOrder)}</b></div>
               <div className="meta-line"><span>{t("common.payment")}</span><b className={`meta-value ${selectedOrder.paymentMethod === "VISA" ? "meta-visa" : "meta-cash"}`}>{labelStatus(selectedOrder.paymentStatus)} / {labelMethod(selectedOrder.paymentMethod)}</b></div>
               <div className="meta-line"><span>{t("common.archived")}</span><b className={`meta-value ${selectedOrder.archivedAt ? "meta-system" : "meta-pending"}`}>{selectedOrder.archivedAt ? t("common.yes") : t("common.no")}</b></div>
-              {selectedOrder.closedAt && <div className="meta-line"><span>{t("common.closedAt")}</span><b>{formatDateTime(selectedOrder.closedAt)}</b></div>}
-              {selectedOrder.archivedAt && <div className="meta-line"><span>{t("common.archivedAt")}</span><b>{formatDateTime(selectedOrder.archivedAt)}</b></div>}
+              {selectedOrder.closedAt && (
+                <div className="archive-alert-line" style={uiMessageStyle(uiMessages.closedAt)}>
+                  {formatUiMessage(uiMessages.closedAt, { time: formatDateTime(selectedOrder.closedAt) })}
+                </div>
+              )}
+              {selectedOrder.archivedAt && (
+                <div className="archive-alert-line" style={uiMessageStyle(uiMessages.archivedAt)}>
+                  {formatUiMessage(uiMessages.archivedAt, { time: formatDateTime(selectedOrder.archivedAt) })}
+                </div>
+              )}
             </div>
             <div className="detail-items">
               {selectedOrder.items.map((item) => (
@@ -1017,8 +1176,16 @@ export default function ManagerClient() {
                 </div>
               </div>
             )}
-            {selectedOrder.customerLeft && selectedOrder.paymentStatus !== "PAID" && <div className="warning">{t("alert.leftUnpaid")}</div>}
-            {selectedOrder.customerLeft && selectedOrder.paymentStatus === "PAID" && !selectedOrder.geideaRegisteredAt && <div className="warning warning-orange">{t("alert.leftNeedsSystem")}</div>}
+            {selectedOrder.customerLeft && selectedOrder.paymentStatus !== "PAID" && (
+              <div className="warning" style={uiMessageStyle(uiMessages.leftUnpaid)}>
+                {formatUiMessage(uiMessages.leftUnpaid)}
+              </div>
+            )}
+            {selectedOrder.customerLeft && selectedOrder.paymentStatus === "PAID" && !selectedOrder.geideaRegisteredAt && (
+              <div className="warning warning-orange" style={uiMessageStyle(uiMessages.leftNeedsGeidea)}>
+                {formatUiMessage(uiMessages.leftNeedsGeidea)}
+              </div>
+            )}
             <div className="actions">
               {selectedIsActiveOrder && <button className="btn-deliver" onClick={() => runOrderAction(selectedOrder.id, "deliver")}>{t("manager.markDelivered")}</button>}
               {selectedIsActiveOrder && <button className="btn-exit" disabled={selectedOrder.customerLeft} onClick={() => runOrderAction(selectedOrder.id, "left")}>{t("manager.markCustomerLeft")}</button>}

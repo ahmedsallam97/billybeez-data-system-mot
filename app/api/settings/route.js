@@ -12,6 +12,7 @@ const editableKeys = new Set([
   "BRANCH_TIN",
   "KITCHEN_PRINTER_NAME",
   "ARCHIVE_REQUIRES_CUSTOMER_LEFT",
+  "UI_MESSAGE_CONFIG",
 ]);
 
 function serializeSetting(setting) {

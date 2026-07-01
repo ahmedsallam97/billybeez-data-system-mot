@@ -17,9 +17,9 @@ export function useToast() {
 export default function ToastProvider({ children }) {
   const [toasts, setToasts] = useState([]);
 
-  const showToast = useMemo(() => (message, type = "success") => {
+  const showToast = useMemo(() => (message, type = "success", style = null) => {
     const id = Date.now() + Math.random();
-    setToasts((current) => [...current, { id, message, type }]);
+    setToasts((current) => [...current, { id, message, type, style }]);
     setTimeout(() => {
       setToasts((current) => current.filter((toast) => toast.id !== id));
     }, 3500);
@@ -30,7 +30,7 @@ export default function ToastProvider({ children }) {
       {children}
       <div className="toast-stack">
         {toasts.map((toast) => (
-          <div className={`toast ${toast.type}`} key={toast.id}>
+          <div className={`toast ${toast.type}`} style={toast.style || undefined} key={toast.id}>
             {toast.message}
           </div>
         ))}

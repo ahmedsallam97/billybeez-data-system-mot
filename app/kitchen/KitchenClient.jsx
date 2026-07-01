@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useToast } from "../ToastProvider";
 import { useI18n } from "../i18n";
 import { employeeGenderClass } from "../employeeDisplay";
+import { formatUiMessage, normalizeUiMessages, uiMessageStyle } from "../uiMessages";
 
 export default function KitchenClient() {
   const toast = useToast();
@@ -18,6 +19,7 @@ export default function KitchenClient() {
   const [defaultPaymentEmployeeId, setDefaultPaymentEmployeeId] = useState("");
   const [employeeEditor, setEmployeeEditor] = useState(null);
   const [printFrameUrl, setPrintFrameUrl] = useState("");
+  const [uiMessages, setUiMessages] = useState(normalizeUiMessages());
 
   function orderAlertClass(order) {
     if (order.archivedAt) return "archived-order";
@@ -68,7 +70,16 @@ export default function KitchenClient() {
 
   useEffect(() => {
     loadRestaurantEmployees();
+    loadUiMessages();
   }, []);
+
+  async function loadUiMessages() {
+    const res = await fetch("/api/settings").catch(() => null);
+    if (!res?.ok) return;
+    const data = await res.json();
+    const setting = data.settings?.find((item) => item.key === "UI_MESSAGE_CONFIG");
+    setUiMessages(normalizeUiMessages(setting?.value));
+  }
 
   async function load() {
     const res = await fetch(`/api/orders?archived=${showArchive}`);
@@ -158,7 +169,11 @@ export default function KitchenClient() {
 
     setPrintFrameUrl(`/kitchen-ticket/${orderUrlId(orderId)}?print=${Date.now()}`);
     window.setTimeout(() => setPrintFrameUrl(""), 5000);
-    toast(data.reused ? t("kitchen.printJobAlreadyQueued") : t("kitchen.printJobQueued"), "info");
+    toast(
+      data.reused ? formatUiMessage(uiMessages.kitchenTicketQueued) : t("kitchen.printJobQueued"),
+      "info",
+      data.reused ? uiMessageStyle(uiMessages.kitchenTicketQueued) : null
+    );
     await load();
   }
 
@@ -184,7 +199,11 @@ export default function KitchenClient() {
       }
       localStorage.setItem("lastPaymentEmployeeId", paymentEmployeeId);
       setEmployeeEditor(null);
-      toast(t("kitchen.paymentToast", { method: labelMethod(paymentMethod) }));
+      toast(
+        formatUiMessage(uiMessages.paymentSaved, { method: labelMethod(paymentMethod) }),
+        "info",
+        uiMessageStyle(uiMessages.paymentSaved)
+      );
       await load();
     } else {
       toast(data.error || t("kitchen.paymentFailed"), "error");
@@ -317,18 +336,49 @@ export default function KitchenClient() {
               <div className="row order-total-row"><span>{t("common.orderTotal")}</span><b>{currency(order.total)}</b></div>
             </div>
             <div className="order-alerts">
-              {order.customerLeft && order.paymentStatus !== "PAID" && <div className="warning">{t("alert.leftUnpaid")}</div>}
-              {order.customerLeft && order.paymentStatus === "PAID" && !order.geideaRegisteredAt && <div className="warning warning-orange">{t("alert.leftNeedsSystem")}</div>}
-              {order.geideaRegisteredAt && (
-                <div className="geidea-alert-line">
-                  <span>{t("common.geideaRegisteredBy")}</span>
-                  <b><span className={employeeGenderClass(order.geideaEmployee)}>{order.geideaEmployee || "-"}</span> · {formatDateTime(order.geideaRegisteredAt)}</b>
+              {order.customerLeft && order.paymentStatus !== "PAID" && (
+                <div className="warning" style={uiMessageStyle(uiMessages.leftUnpaid)}>
+                  {formatUiMessage(uiMessages.leftUnpaid)}
                 </div>
               )}
-              {showArchive && <div className="archive-alert-line">{t("common.archivedAt")}: {formatDateTime(order.archivedAt)}</div>}
+              {order.customerLeft && order.paymentStatus === "PAID" && !order.geideaRegisteredAt && (
+                <div className="warning warning-orange" style={uiMessageStyle(uiMessages.leftNeedsGeidea)}>
+                  {formatUiMessage(uiMessages.leftNeedsGeidea)}
+                </div>
+              )}
+              {order.geideaRegisteredAt && (
+                <div className="geidea-alert-line" style={uiMessageStyle(uiMessages.geideaRegistered)}>
+                  {formatUiMessage(uiMessages.geideaRegistered, {
+                    employee: order.geideaEmployee || "-",
+                    time: formatDateTime(order.geideaRegisteredAt),
+                  }).split("\n").map((line, index) => (
+                    <span className={index === 1 ? employeeGenderClass(order.geideaEmployee) : ""} key={index}>{line}</span>
+                  ))}
+                </div>
+              )}
+              {showArchive && (
+                <div className="archive-alert-line" style={uiMessageStyle(uiMessages.archivedAt)}>
+                  {formatUiMessage(uiMessages.archivedAt, { time: formatDateTime(order.archivedAt) })}
+                </div>
+              )}
               {order.kitchenPrintJob && (
-                <div className={`print-job-alert print-job-${String(order.kitchenPrintJob.status).toLowerCase()}`}>
-                  {t(`printJob.${order.kitchenPrintJob.status}`)}
+                <div
+                  className={`print-job-alert print-job-${String(order.kitchenPrintJob.status).toLowerCase()}`}
+                  style={uiMessageStyle(
+                    order.kitchenPrintJob.status === "PENDING"
+                      ? uiMessages.printJobPending
+                      : order.kitchenPrintJob.status === "PRINTED"
+                        ? uiMessages.printJobPrinted
+                        : uiMessages.printJobFailed
+                  )}
+                >
+                  {formatUiMessage(
+                    order.kitchenPrintJob.status === "PENDING"
+                      ? uiMessages.printJobPending
+                      : order.kitchenPrintJob.status === "PRINTED"
+                        ? uiMessages.printJobPrinted
+                        : uiMessages.printJobFailed
+                  )}
                 </div>
               )}
             </div>
@@ -337,7 +387,7 @@ export default function KitchenClient() {
                 <button
                   className="btn-start-prep"
                   disabled={Boolean(order.kitchenPrintJob)}
-                  title={order.kitchenPrintJob ? t("printJob.PENDING") : ""}
+                  title={order.kitchenPrintJob ? formatUiMessage(uiMessages.printJobPending) : ""}
                   onClick={() => startPreparation(order.id)}
                 >
                   {t("kitchen.startPreparation")}

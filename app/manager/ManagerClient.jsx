@@ -801,6 +801,91 @@ export default function ManagerClient() {
     window.setTimeout(() => setReportPrintHtml(""), 5000);
   }
 
+  function reportSections() {
+    return [
+      {
+        title: t("manager.paymentBreakdown"),
+        rows: data.paymentBreakdown.map((row) => [labelMethod(row.method), `${currency(row.total)} (${formatNumber(row.count)})`]),
+      },
+      {
+        title: t("manager.topProducts"),
+        rows: data.topProducts.map((product) => [product.name, currency(product.total)]),
+      },
+      {
+        title: t("manager.statusBreakdown"),
+        rows: data.statusBreakdown.map((row) => [labelStatus(row.status), formatNumber(row.count)]),
+      },
+      {
+        title: t("manager.cashierPerformance"),
+        rows: data.cashierPerformance.map((row) => [row.name, currency(row.total)]),
+      },
+      {
+        title: t("manager.employees"),
+        rows: data.dataEmployeePerformance.map((row) => [row.name, currency(row.total)]),
+      },
+      {
+        title: t("manager.topBracelets"),
+        rows: data.topBracelets.map((row) => [row.bracelet, currency(row.total)]),
+      },
+      {
+        title: t("manager.dailySales"),
+        rows: data.dailySales.map((row) => [row.date, currency(row.total)]),
+      },
+    ];
+  }
+
+  function exportReportsCsv() {
+    const rows = [
+      [t("manager.tabReports"), data?.reportBusinessDate || ""],
+      [],
+      ...reportSections().flatMap((section) => [
+        [section.title],
+        ...section.rows,
+        [],
+      ]),
+    ];
+    const csv = rows.map((row) => row.map((cell) => `"${String(cell ?? "").replace(/"/g, '""')}"`).join(",")).join("\n");
+    const blob = new Blob([`\uFEFF${csv}`], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `billybeez-reports-${data?.reportBusinessDate || "today"}.csv`;
+    link.click();
+    URL.revokeObjectURL(url);
+  }
+
+  function printReportsPdf() {
+    const dir = document.documentElement.dir || "rtl";
+    const sections = reportSections().map((section) => `
+      <section>
+        <h2>${escapeHtml(section.title)}</h2>
+        <table>
+          <tbody>
+            ${section.rows.map(([label, value]) => `<tr><td>${escapeHtml(label)}</td><th>${escapeHtml(value)}</th></tr>`).join("")}
+          </tbody>
+        </table>
+      </section>
+    `).join("");
+    setReportPrintHtml(`
+      <html dir="${escapeHtml(dir)}"><head><title>${escapeHtml(t("manager.tabReports"))}</title>
+      <style>
+        body{font-family:Arial,Tahoma,sans-serif;padding:24px;color:#210037}
+        h1{margin:0 0 16px;font-size:24px}
+        h2{margin:18px 0 8px;font-size:18px}
+        table{width:100%;border-collapse:collapse;margin-bottom:8px}
+        td,th{border:1px solid #ddd;padding:8px;text-align:start}
+        th{font-weight:900}
+        section{break-inside:avoid}
+      </style>
+      </head><body>
+      <h1>${escapeHtml(t("manager.tabReports"))} - ${escapeHtml(data?.reportBusinessDate || "")}</h1>
+      ${sections}
+      <script>window.print()</script>
+      </body></html>
+    `);
+    window.setTimeout(() => setReportPrintHtml(""), 5000);
+  }
+
   if (!data) return <div className="panel">{t("common.loading")}</div>;
 
   const selectedIsEditableOrder = selectedOrder && !selectedOrder.isHistory;
@@ -1041,6 +1126,19 @@ export default function ManagerClient() {
               </div>
             </div>
           ))}
+        </div>
+      </section>
+
+      <section className={`panel ${managerTab === "reports" ? "" : "is-hidden"}`}>
+        <div className="row">
+          <div>
+            <h2>{t("manager.tabReports")}</h2>
+            <div className="muted">{t("manager.reportsExportHint")}</div>
+          </div>
+          <div className="actions">
+            <button className="btn-print" onClick={exportReportsCsv}>{t("manager.exportExcel")}</button>
+            <button className="btn-details" onClick={printReportsPdf}>{t("manager.exportPdf")}</button>
+          </div>
         </div>
       </section>
 

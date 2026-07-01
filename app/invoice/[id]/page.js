@@ -1,10 +1,14 @@
 import { prisma } from "@/lib/db";
+import { requireUser } from "@/lib/auth";
 import { serializeHistoryOrder } from "@/lib/business-day";
-import { includeOrderDetails, serializeOrder } from "@/lib/orders";
+import { includeOrderDetails, routeOrderId, serializeOrder } from "@/lib/orders";
 import InvoicePrint from "./InvoicePrint";
 
 export default async function InvoicePage({ params }) {
-  const { id } = await params;
+  await requireUser(["ADMIN", "MANAGER", "CASHIER", "KITCHEN"]);
+
+  const { id: rawId } = await params;
+  const id = routeOrderId(rawId);
   const order = await prisma.order.findUnique({
     where: { id },
     include: includeOrderDetails(),

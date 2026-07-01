@@ -1,9 +1,14 @@
 import "./globals.css";
+import "@fontsource/tajawal/400.css";
+import "@fontsource/tajawal/500.css";
+import "@fontsource/tajawal/700.css";
+import "@fontsource/tajawal/800.css";
 import ToastProvider from "./ToastProvider";
+import { UiPreferencesProvider } from "./i18n";
 
 export const metadata = {
   title: "BillyBeez Data System",
-  description: "BillyBeez cashier, kitchen, and manager system",
+  description: "BillyBeez data, restaurant, and manager interface system",
   icons: {
     icon: [{ url: "/billy-favicon.png", type: "image/png" }],
     shortcut: "/billy-favicon.png",
@@ -14,7 +19,11 @@ export const metadata = {
 export default function RootLayout({ children }) {
   return (
     <html lang="ar" dir="rtl">
-      <body><ToastProvider>{children}</ToastProvider></body>
+      <body>
+        <UiPreferencesProvider>
+          <ToastProvider>{children}</ToastProvider>
+        </UiPreferencesProvider>
+      </body>
     </html>
   );
 }

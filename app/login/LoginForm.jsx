@@ -2,11 +2,14 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import PreferenceIconButtons from "../PreferenceIconButtons";
+import { useI18n } from "../i18n";
 
 export default function LoginForm() {
   const router = useRouter();
-  const [username, setUsername] = useState("manager");
-  const [password, setPassword] = useState("manager123");
+  const { t } = useI18n();
+  const [username, setUsername] = useState("");
+  const [password, setPassword] = useState("");
   const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(false);
 
@@ -25,7 +28,7 @@ export default function LoginForm() {
     setLoading(false);
 
     if (!data.success) {
-      setMessage(data.error || "Login failed");
+      setMessage(data.error || t("login.failed"));
       return;
     }
 
@@ -34,12 +37,26 @@ export default function LoginForm() {
 
   return (
     <div className="login-page">
+      <PreferenceIconButtons className="login-tools" />
       <form className="login-box stack" onSubmit={submit}>
         <img src="/bb-logo.png" alt="BillyBeez" className="logo" />
-        <h1>BDS MOT</h1>
-        <input value={username} onChange={(event) => setUsername(event.target.value)} placeholder="Username" />
-        <input value={password} onChange={(event) => setPassword(event.target.value)} placeholder="Password" type="password" />
-        <button disabled={loading}>{loading ? "Loading..." : "Login"}</button>
+        <h1>{t("login.title")}</h1>
+        <input
+          value={username}
+          onChange={(event) => setUsername(event.target.value)}
+          placeholder={t("login.username")}
+          autoComplete="username"
+          required
+        />
+        <input
+          value={password}
+          onChange={(event) => setPassword(event.target.value)}
+          placeholder={t("login.password")}
+          type="password"
+          autoComplete="current-password"
+          required
+        />
+        <button type="submit" disabled={loading}>{loading ? t("common.loading") : t("login.submit")}</button>
         <div className="message">{message}</div>
       </form>
     </div>

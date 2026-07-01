@@ -1,12 +1,16 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
-import { getCurrentUser } from "@/lib/auth";
+import { authorizeApi } from "@/lib/api-auth";
 import { writeAudit } from "@/lib/audit";
 import { ensureBusinessDayState } from "@/lib/business-day";
+import { routeOrderId } from "@/lib/orders";
 
 export async function POST(request, { params }) {
-  const { id } = await params;
-  const user = await getCurrentUser();
+  const { user, error } = await authorizeApi("ORDER_EDIT_ITEMS");
+  if (error) return error;
+
+  const { id: rawId } = await params;
+  const id = routeOrderId(rawId);
   await ensureBusinessDayState();
   const body = await request.json();
   const items = Array.isArray(body.items) ? body.items : [];
@@ -18,6 +22,10 @@ export async function POST(request, { params }) {
   const order = await prisma.order.findUnique({ where: { id }, include: { items: true } });
   if (!order) {
     return NextResponse.json({ success: false, error: "Order not found" }, { status: 404 });
+  }
+
+  if (order.paymentStatus === "PAID" && !["ADMIN", "MANAGER"].includes(user.role)) {
+    return NextResponse.json({ success: false, error: "Paid orders can only be edited by manager" }, { status: 403 });
   }
 
   const products = await prisma.product.findMany({
@@ -51,6 +59,8 @@ export async function POST(request, { params }) {
       data: {
         total: { increment: addedTotal },
         status: order.paymentStatus === "PAID" ? "PAID" : "OPEN",
+        geideaRegisteredAt: null,
+        geideaEmployeeId: null,
         archivedAt: null,
       },
     }),
@@ -62,6 +72,66 @@ export async function POST(request, { params }) {
     user,
     summary: `Added ${orderItems.length} item lines`,
     metadata: { addedTotal, items: orderItems.map((item) => ({ name: item.name, qty: item.qty, total: item.total })) },
+  });
+
+  return NextResponse.json({ success: true });
+}
+
+export async function DELETE(request, { params }) {
+  const { user, error } = await authorizeApi("ORDER_EDIT_ITEMS");
+  if (error) return error;
+
+  if (!["ADMIN", "MANAGER"].includes(user.role)) {
+    return NextResponse.json({ success: false, error: "Only manager can remove items" }, { status: 403 });
+  }
+
+  const { id: rawId } = await params;
+  const id = routeOrderId(rawId);
+  await ensureBusinessDayState();
+  const body = await request.json().catch(() => ({}));
+  const itemId = String(body.itemId || "");
+
+  if (!itemId) {
+    return NextResponse.json({ success: false, error: "Item is required" }, { status: 400 });
+  }
+
+  const order = await prisma.order.findUnique({
+    where: { id },
+    include: { items: true },
+  });
+
+  if (!order) {
+    return NextResponse.json({ success: false, error: "Order not found" }, { status: 404 });
+  }
+
+  const item = order.items.find((line) => line.id === itemId);
+
+  if (!item) {
+    return NextResponse.json({ success: false, error: "Item not found" }, { status: 404 });
+  }
+
+  const nextTotal = Math.max(0, Number(order.total || 0) - Number(item.total || 0));
+
+  await prisma.$transaction([
+    prisma.orderItem.delete({ where: { id: itemId } }),
+    prisma.order.update({
+      where: { id },
+      data: {
+        total: nextTotal,
+        status: order.paymentStatus === "PAID" ? "PAID" : "OPEN",
+        geideaRegisteredAt: null,
+        geideaEmployeeId: null,
+        archivedAt: null,
+      },
+    }),
+  ]);
+
+  await writeAudit({
+    action: "ORDER_ITEM_REMOVED",
+    orderId: id,
+    user,
+    summary: "Removed item line",
+    metadata: { name: item.name, qty: item.qty, total: item.total, nextTotal },
   });
 
   return NextResponse.json({ success: true });

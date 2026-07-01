@@ -2,59 +2,152 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useToast } from "../ToastProvider";
+import { useI18n } from "../i18n";
+import { employeeGenderClass } from "../employeeDisplay";
+
+const emptyEmployeeForm = {
+  id: "",
+  name: "",
+  department: "OPERATION",
+  active: true,
+};
+
+const emptyProductForm = {
+  id: "",
+  name: "",
+  price: "",
+  categoryId: "",
+  categoryName: "",
+  imageUrl: "",
+  popular: false,
+  active: true,
+  sortOrder: 100,
+};
+
+const emptyUserForm = {
+  id: "",
+  name: "",
+  username: "",
+  password: "",
+  role: "CASHIER",
+  active: true,
+};
 
 export default function ManagerClient() {
   const toast = useToast();
+  const { t, formatNumber, currency, labelAudit, labelBusinessMessage, labelDepartment, labelMethod, labelOrderStage, labelStatus, formatDateTime } = useI18n();
   const [data, setData] = useState(null);
+  const [employees, setEmployees] = useState([]);
+  const [products, setProducts] = useState([]);
+  const [users, setUsers] = useState([]);
+  const [employeeForm, setEmployeeForm] = useState(emptyEmployeeForm);
+  const [productForm, setProductForm] = useState(emptyProductForm);
+  const [userForm, setUserForm] = useState(emptyUserForm);
   const [viewMode, setViewMode] = useState("TODAY");
   const [filter, setFilter] = useState("ALL");
   const [archiveFilter, setArchiveFilter] = useState("ALL");
+  const [managerTab, setManagerTab] = useState("orders");
+  const [settingsTab, setSettingsTab] = useState("employees");
+  const [employeeFilter, setEmployeeFilter] = useState({ query: "", department: "ALL", status: "ALL" });
+  const [productFilter, setProductFilter] = useState({ query: "", category: "ALL", status: "ALL", popular: "ALL" });
+  const [userFilter, setUserFilter] = useState({ query: "", role: "ALL", status: "ALL" });
   const [query, setQuery] = useState("");
-  const [fromDate, setFromDate] = useState("");
-  const [toDate, setToDate] = useState("");
   const [selectedOrder, setSelectedOrder] = useState(null);
+  const [orderItemForm, setOrderItemForm] = useState({ productId: "", qty: 1 });
+  const [managerPaymentEmployeeId, setManagerPaymentEmployeeId] = useState("");
+  const [managerGeideaEmployeeId, setManagerGeideaEmployeeId] = useState("");
 
   useEffect(() => {
     load();
   }, []);
 
+  useEffect(() => {
+    if (!selectedOrder) return;
+    const restaurantEmployees = employees.filter((employee) => employee.department === "RESTAURANT" && employee.active);
+    setManagerPaymentEmployeeId(selectedOrder.paymentEmployeeId || restaurantEmployees[0]?.id || "");
+    setManagerGeideaEmployeeId(selectedOrder.geideaEmployeeId || restaurantEmployees[0]?.id || "");
+    setOrderItemForm((current) => ({ productId: current.productId || products[0]?.id || "", qty: current.qty || 1 }));
+  }, [selectedOrder, employees, products]);
+
   async function load() {
-    const res = await fetch("/api/dashboard");
-    setData(await res.json());
-  }
+    const [dashboardRes, employeesRes, productsRes, usersRes] = await Promise.all([
+      fetch("/api/dashboard"),
+      fetch("/api/employees?department=ALL&includeInactive=true"),
+      fetch("/api/products?includeInactive=true"),
+      fetch("/api/users"),
+    ]);
+    const [dashboardData, employeesData, productsData, usersData] = await Promise.all([
+      dashboardRes.json(),
+      employeesRes.json(),
+      productsRes.json(),
+      usersRes.json(),
+    ]);
 
-  function localDateKey(value) {
-    if (!value) return "";
-
-    if (typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value)) {
-      return value.slice(0, 10);
-    }
-
-    const date = new Date(value);
-    if (Number.isNaN(date.getTime())) return "";
-
-    const year = date.getFullYear();
-    const month = String(date.getMonth() + 1).padStart(2, "0");
-    const day = String(date.getDate()).padStart(2, "0");
-    return `${year}-${month}-${day}`;
-  }
-
-  function filterDateFor(order) {
-    if (viewMode === "HISTORY") {
-      return localDateKey(order.closedAt || order.archivedAt || order.businessDate || order.createdAt);
-    }
-
-    return localDateKey(order.businessDate || order.createdAt);
+    setData(dashboardData);
+    setEmployees(employeesData);
+    setProducts(productsData);
+    setUsers(Array.isArray(usersData) ? usersData : []);
   }
 
   function orderAlertClass(order) {
+    if (order.archivedAt) return "archived-order";
     if (!order.customerLeft || order.archivedAt) return "";
     if (order.paymentStatus !== "PAID") return "left-unpaid";
-    return "needs-system";
+    return order.geideaRegisteredAt ? "" : "needs-system";
   }
 
   function orderUrlId(orderId) {
     return encodeURIComponent(orderId);
+  }
+
+  function paymentButtonClass(order, method, baseClass) {
+    return `${baseClass} ${order.paymentStatus === "PAID" && order.paymentMethod === method ? "payment-selected" : ""}`;
+  }
+
+  function orderStageClass(order) {
+    if (order.geideaRegisteredAt) return "meta-system";
+    if (order.paymentStatus === "PAID") return order.paymentMethod === "VISA" ? "meta-visa" : "meta-cash";
+    if (order.kitchenStatus === "DELIVERED") return "meta-delivered";
+    return "meta-pending";
+  }
+
+  function filterLabel(item) {
+    if (item === "ALL") return t("common.all");
+    if (item === "UNPAID") return t("common.unpaid");
+    return labelMethod(item);
+  }
+
+  function archiveLabel(item) {
+    if (item === "ALL") return t("common.all");
+    if (item === "ACTIVE") return t("common.active");
+    if (item === "UNREGISTERED") return t("manager.notRegisteredGeidea");
+    return t("common.archived");
+  }
+
+  function restaurantEmployees() {
+    return employees.filter((employee) => employee.department === "RESTAURANT" && employee.active);
+  }
+
+  function confirmDanger(message = t("manager.confirmDanger")) {
+    return window.confirm(message);
+  }
+
+  async function refreshAfterOrderChange(orderId, closeModal = false) {
+    await load();
+
+    if (closeModal) {
+      setSelectedOrder(null);
+      return;
+    }
+
+    const res = await fetch(`/api/orders/${orderUrlId(orderId)}`);
+    const result = await res.json();
+    if (result.success) setSelectedOrder(result.order);
+  }
+
+  function isUnclosedOrder(order) {
+    const currentBusinessDate = data?.businessState?.businessDate;
+    return Boolean(currentBusinessDate && order.businessDate && order.businessDate !== currentBusinessDate);
   }
 
   const currentArchivedOrders = useMemo(
@@ -72,8 +165,10 @@ export default function ManagerClient() {
 
     if (filter === "UNPAID") rows = rows.filter((order) => order.paymentStatus !== "PAID");
     if (filter === "CASH" || filter === "VISA") rows = rows.filter((order) => order.paymentStatus === "PAID" && order.paymentMethod === filter);
-    if (viewMode === "TODAY" && archiveFilter === "ACTIVE") rows = rows.filter((order) => !order.archivedAt);
-    if (viewMode === "TODAY" && archiveFilter === "ARCHIVED") rows = rows.filter((order) => order.archivedAt);
+    if (viewMode === "TODAY" && archiveFilter === "ALL") rows = rows.filter((order) => !isUnclosedOrder(order));
+    if (viewMode === "TODAY" && archiveFilter === "ACTIVE") rows = rows.filter((order) => !order.archivedAt && !isUnclosedOrder(order));
+    if (viewMode === "TODAY" && archiveFilter === "ARCHIVED") rows = rows.filter((order) => order.archivedAt && !isUnclosedOrder(order));
+    if (viewMode === "TODAY" && archiveFilter === "UNREGISTERED") rows = rows.filter((order) => !order.geideaRegisteredAt);
 
     const search = query.trim().toLowerCase();
     if (search) {
@@ -88,173 +183,745 @@ export default function ManagerClient() {
       ].some((value) => String(value || "").toLowerCase().includes(search)));
     }
 
-    if (fromDate) {
-      rows = rows.filter((order) => filterDateFor(order) >= fromDate);
-    }
-
-    if (toDate) {
-      rows = rows.filter((order) => filterDateFor(order) <= toDate);
-    }
-
     return rows;
-  }, [data, viewMode, historyRows, filter, archiveFilter, query, fromDate, toDate]);
+  }, [data, viewMode, historyRows, filter, archiveFilter, query]);
 
-  async function payOrder(orderId, paymentMethod) {
+  async function payOrder(orderId, paymentMethod, paymentEmployeeId = managerPaymentEmployeeId) {
     const res = await fetch(`/api/orders/${orderUrlId(orderId)}/pay`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ paymentMethod }),
+      body: JSON.stringify({ paymentMethod, paymentEmployeeId }),
     });
     const result = await res.json();
     if (result.success) {
-      toast(`Payment saved as ${paymentMethod}`);
-      setSelectedOrder(null);
-      await load();
+      toast(t("manager.paymentToast", { method: labelMethod(paymentMethod) }));
+      await refreshAfterOrderChange(orderId);
     } else {
-      toast(result.error || "Payment update failed", "error");
+      toast(result.error || t("manager.paymentUpdateFailed"), "error");
     }
   }
 
-  async function runOrderAction(orderId, action) {
-    const res = await fetch(`/api/orders/${orderUrlId(orderId)}/${action}`, { method: "POST" });
+  async function runOrderAction(orderId, action, body = null, closeModal = false) {
+    if (["archive", "unarchive"].includes(action) && !confirmDanger()) return;
+
+    const res = await fetch(`/api/orders/${orderUrlId(orderId)}/${action}`, {
+      method: "POST",
+      headers: body ? { "Content-Type": "application/json" } : undefined,
+      body: body ? JSON.stringify(body) : undefined,
+    });
     const result = await res.json();
 
     if (!result.success) {
-      toast(result.error || "Order update failed", "error");
+      toast(result.error || t("manager.orderUpdateFailed"), "error");
       return;
     }
 
-    toast("Order updated");
-    setSelectedOrder(null);
+    toast(t("manager.orderUpdated"));
+    await refreshAfterOrderChange(orderId, closeModal);
+  }
+
+  async function addOrderItem(orderId) {
+    if (!orderItemForm.productId) {
+      toast(t("manager.selectProductFirst"), "error");
+      return;
+    }
+
+    const res = await fetch(`/api/orders/${orderUrlId(orderId)}/items`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ items: [{ productId: orderItemForm.productId, qty: orderItemForm.qty }] }),
+    });
+    const result = await res.json();
+
+    if (!result.success) {
+      toast(result.error || t("manager.orderUpdateFailed"), "error");
+      return;
+    }
+
+    toast(t("manager.itemAdded"));
+    await refreshAfterOrderChange(orderId);
+  }
+
+  async function removeOrderItem(orderId, itemId) {
+    if (!confirmDanger()) return;
+
+    const res = await fetch(`/api/orders/${orderUrlId(orderId)}/items`, {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ itemId }),
+    });
+    const result = await res.json();
+
+    if (!result.success) {
+      toast(result.error || t("manager.orderUpdateFailed"), "error");
+      return;
+    }
+
+    toast(t("manager.itemRemoved"));
+    await refreshAfterOrderChange(orderId);
+  }
+
+  function resetEmployeeForm() {
+    setEmployeeForm(emptyEmployeeForm);
+  }
+
+  function resetProductForm() {
+    setProductForm(emptyProductForm);
+  }
+
+  function resetUserForm() {
+    setUserForm(emptyUserForm);
+  }
+
+  function editEmployee(employee) {
+    setEmployeeForm({
+      id: employee.id,
+      name: employee.name,
+      department: employee.department,
+      active: employee.active,
+    });
+  }
+
+  function editProduct(product) {
+    setProductForm({
+      id: product.id,
+      name: product.name,
+      price: product.price,
+      categoryId: product.categoryId,
+      categoryName: product.categoryName,
+      imageUrl: product.imageUrl || "",
+      popular: product.popular,
+      active: product.active,
+      sortOrder: product.sortOrder || 100,
+    });
+  }
+
+  function editUser(user) {
+    setUserForm({
+      id: user.id,
+      name: user.name,
+      username: user.username,
+      password: "",
+      role: user.role,
+      active: user.active,
+    });
+  }
+
+  async function saveEmployee() {
+    const method = employeeForm.id ? "PATCH" : "POST";
+    const res = await fetch("/api/employees", {
+      method,
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(employeeForm),
+    });
+    const result = await res.json();
+
+    if (!result.success) {
+      toast(result.error || t("manager.employeeSaveFailed"), "error");
+      return;
+    }
+
+    toast(t("manager.employeeSaved"));
+    resetEmployeeForm();
     await load();
   }
 
-  if (!data) return <div className="panel">Loading...</div>;
+  async function toggleEmployee(employee) {
+    if (!confirmDanger()) return;
 
-  const selectedIsActiveOrder = selectedOrder && !selectedOrder.isHistory && !selectedOrder.archivedAt;
+    const res = await fetch("/api/employees", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        id: employee.id,
+        name: employee.name,
+        department: employee.department,
+        active: !employee.active,
+      }),
+    });
+    const result = await res.json();
+
+    if (!result.success) {
+      toast(result.error || t("manager.employeeSaveFailed"), "error");
+      return;
+    }
+
+    toast(t("manager.employeeSaved"));
+    await load();
+  }
+
+  async function saveProduct() {
+    const method = productForm.id ? "PATCH" : "POST";
+    const res = await fetch("/api/products", {
+      method,
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(productForm),
+    });
+    const result = await res.json();
+
+    if (!result.success) {
+      toast(result.error || t("manager.productSaveFailed"), "error");
+      return;
+    }
+
+    toast(t("manager.productSaved"));
+    resetProductForm();
+    await load();
+  }
+
+  async function toggleProduct(product) {
+    if (!confirmDanger()) return;
+
+    const res = await fetch("/api/products", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ...product, active: !product.active }),
+    });
+    const result = await res.json();
+
+    if (!result.success) {
+      toast(result.error || t("manager.productSaveFailed"), "error");
+      return;
+    }
+
+    toast(t("manager.productSaved"));
+    await load();
+  }
+
+  async function saveUser() {
+    const method = userForm.id ? "PATCH" : "POST";
+    const res = await fetch("/api/users", {
+      method,
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(userForm),
+    });
+    const result = await res.json();
+
+    if (!result.success) {
+      toast(result.error || t("manager.userSaveFailed"), "error");
+      return;
+    }
+
+    toast(t("manager.userSaved"));
+    resetUserForm();
+    await load();
+  }
+
+  async function toggleUser(user) {
+    if (!confirmDanger()) return;
+
+    const res = await fetch("/api/users", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ...user, password: "", active: !user.active }),
+    });
+    const result = await res.json();
+
+    if (!result.success) {
+      toast(result.error || t("manager.userSaveFailed"), "error");
+      return;
+    }
+
+    toast(t("manager.userSaved"));
+    await load();
+  }
+
+  function dailyReviewRows() {
+    const orders = data?.orders || [];
+    const currentDate = data?.reportBusinessDate;
+    const dayOrders = currentDate ? orders.filter((order) => order.businessDate === currentDate) : orders;
+    return {
+      orders: dayOrders,
+      cash: dayOrders.filter((order) => order.paymentStatus === "PAID" && order.paymentMethod === "CASH").reduce((sum, order) => sum + order.total, 0),
+      visa: dayOrders.filter((order) => order.paymentStatus === "PAID" && order.paymentMethod === "VISA").reduce((sum, order) => sum + order.total, 0),
+      unregistered: dayOrders.filter((order) => !order.geideaRegisteredAt),
+      leftUnpaid: dayOrders.filter((order) => order.customerLeft && order.paymentStatus !== "PAID"),
+    };
+  }
+
+  function exportDailyCsv() {
+    const review = dailyReviewRows();
+    const rows = [
+      ["Business Date", data?.reportBusinessDate || ""],
+      ["Cash Total", review.cash],
+      ["Visa Total", review.visa],
+      ["Not Registered Geidea", review.unregistered.length],
+      ["Left Without Paying", review.leftUnpaid.length],
+      [],
+      ["Order", "Bracelet", "Children", "Phone", "Payment", "Method", "Total", "Geidea", "Left"],
+      ...review.orders.map((order) => [
+        order.id,
+        order.braceletNo,
+        order.childNames,
+        order.customerPhone || "",
+        order.paymentStatus,
+        order.paymentMethod,
+        order.total,
+        order.geideaRegisteredAt ? "YES" : "NO",
+        order.customerLeft ? "YES" : "NO",
+      ]),
+    ];
+    const csv = rows.map((row) => row.map((cell) => `"${String(cell ?? "").replace(/"/g, '""')}"`).join(",")).join("\n");
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `billybeez-daily-report-${data?.reportBusinessDate || "today"}.csv`;
+    link.click();
+    URL.revokeObjectURL(url);
+  }
+
+  function printDailyReport() {
+    const review = dailyReviewRows();
+    const rows = review.orders.map((order) => `
+      <tr>
+        <td>${order.id}</td>
+        <td>${order.braceletNo}</td>
+        <td>${order.childNames}</td>
+        <td>${order.paymentStatus} / ${order.paymentMethod}</td>
+        <td>${order.total}</td>
+        <td>${order.geideaRegisteredAt ? "YES" : "NO"}</td>
+      </tr>
+    `).join("");
+    const win = window.open("", "_blank");
+    win.document.write(`
+      <html><head><title>Daily Report</title>
+      <style>body{font-family:Arial,sans-serif;padding:24px}table{width:100%;border-collapse:collapse}td,th{border:1px solid #ddd;padding:8px;text-align:start}.metrics{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin:16px 0}.metric{border:1px solid #ddd;padding:12px}</style>
+      </head><body>
+      <h1>BillyBeez Daily Report - ${data?.reportBusinessDate || ""}</h1>
+      <div class="metrics">
+        <div class="metric"><b>Cash</b><br>${review.cash}</div>
+        <div class="metric"><b>Visa</b><br>${review.visa}</div>
+        <div class="metric"><b>Not Geidea</b><br>${review.unregistered.length}</div>
+        <div class="metric"><b>Left Unpaid</b><br>${review.leftUnpaid.length}</div>
+      </div>
+      <table><thead><tr><th>Order</th><th>Bracelet</th><th>Children</th><th>Payment</th><th>Total</th><th>Geidea</th></tr></thead><tbody>${rows}</tbody></table>
+      <script>window.print()</script>
+      </body></html>
+    `);
+    win.document.close();
+  }
+
+  if (!data) return <div className="panel">{t("common.loading")}</div>;
+
+  const selectedIsEditableOrder = selectedOrder && !selectedOrder.isHistory;
+  const selectedIsActiveOrder = selectedIsEditableOrder;
   const selectedIsArchivedOrder = selectedOrder && !selectedOrder.isHistory && selectedOrder.archivedAt;
+  const productCategories = ["ALL", ...new Set(products.map((product) => product.categoryName).filter(Boolean))];
+  const visibleEmployees = employees.filter((employee) => {
+    const search = employeeFilter.query.trim().toLowerCase();
+    if (employeeFilter.department !== "ALL" && employee.department !== employeeFilter.department) return false;
+    if (employeeFilter.status === "ACTIVE" && !employee.active) return false;
+    if (employeeFilter.status === "INACTIVE" && employee.active) return false;
+    if (!search) return true;
+    return [employee.name, employee.department].some((value) => String(value || "").toLowerCase().includes(search));
+  });
+  const visibleProductsSettings = products.filter((product) => {
+    const search = productFilter.query.trim().toLowerCase();
+    if (productFilter.category !== "ALL" && product.categoryName !== productFilter.category) return false;
+    if (productFilter.status === "ACTIVE" && !product.active) return false;
+    if (productFilter.status === "INACTIVE" && product.active) return false;
+    if (productFilter.popular === "POPULAR" && !product.popular) return false;
+    if (productFilter.popular === "REGULAR" && product.popular) return false;
+    if (!search) return true;
+    return [product.name, product.categoryName, product.id].some((value) => String(value || "").toLowerCase().includes(search));
+  });
+  const visibleUsers = users.filter((user) => {
+    const search = userFilter.query.trim().toLowerCase();
+    if (userFilter.role !== "ALL" && user.role !== userFilter.role) return false;
+    if (userFilter.status === "ACTIVE" && !user.active) return false;
+    if (userFilter.status === "INACTIVE" && user.active) return false;
+    if (!search) return true;
+    return [user.name, user.username, user.role].some((value) => String(value || "").toLowerCase().includes(search));
+  });
 
   return (
     <>
       <section className="grid five">
-        <Metric label="Total Paid Sales" value={`${data.totalSales} EGP`} />
-        <Metric label="Orders" value={data.ordersCount} />
-        <Metric label="Unpaid" value={data.unpaidOrders} />
-        <Metric label="Left Unpaid" value={data.leftUnpaid} />
-        <Metric label="History" value={historyRows.length} />
+        <Metric label={t("manager.totalPaidSales")} value={currency(data.totalSales)} />
+        <Metric label={t("manager.orders")} value={formatNumber(data.ordersCount)} />
+        <Metric label={t("common.unpaid")} value={formatNumber(data.unpaidOrders)} />
+        <Metric label={t("manager.leftUnpaid")} value={formatNumber(data.leftUnpaid)} />
+        <Metric label={t("manager.history")} value={formatNumber(historyRows.length)} />
       </section>
 
-      <section className="panel">
+      <section className="panel manager-main-tabs">
+        <div className="tabs">
+          {[
+            ["orders", t("manager.tabOrders")],
+            ["review", t("manager.tabReview")],
+            ["reports", t("manager.tabReports")],
+            ["settings", t("manager.tabSettings")],
+            ["activity", t("manager.tabActivity")],
+          ].map(([tab, label]) => (
+            <button key={tab} className={managerTab === tab ? "active" : ""} onClick={() => setManagerTab(tab)}>{label}</button>
+          ))}
+        </div>
+      </section>
+
+      <section className={`panel ${managerTab === "review" ? "" : "is-hidden"}`}>
         <div className="row">
           <div>
-            <h2>{viewMode === "HISTORY" ? "Order History" : "Today Orders"}</h2>
+            <h2>{t("manager.dayReview")}</h2>
+            <div className="muted">{t("manager.dayReviewHint")}</div>
+          </div>
+          <div className="actions">
+            <button className="btn-print" onClick={exportDailyCsv}>{t("manager.exportExcel")}</button>
+            <button className="btn-details" onClick={printDailyReport}>{t("manager.exportPdf")}</button>
+          </div>
+        </div>
+        <div className="grid four review-grid">
+          <Metric label={t("manager.cashTotal")} value={currency(dailyReviewRows().cash)} />
+          <Metric label={t("manager.visaTotal")} value={currency(dailyReviewRows().visa)} />
+          <Metric label={t("manager.notRegisteredGeidea")} value={formatNumber(dailyReviewRows().unregistered.length)} />
+          <Metric label={t("manager.leftUnpaid")} value={formatNumber(dailyReviewRows().leftUnpaid.length)} />
+        </div>
+      </section>
+
+      <section className={`panel ${managerTab === "orders" ? "" : "is-hidden"}`}>
+        <div className="row">
+          <div>
+            <h2>{viewMode === "HISTORY" ? t("common.orderHistory") : t("manager.todayOrders")}</h2>
             <div className="muted">
-              Business day: {data.businessState?.businessDate || "Closed"} · {data.businessState?.message}
-              {data.businessState?.closedOrderCount ? ` · Auto-closed ${data.businessState.closedOrderCount} orders` : ""}
+              {t("common.businessDay")}: {data.reportBusinessDate || t("common.closed")} · {labelBusinessMessage(data.businessState?.message)}
+              {data.businessState?.closedOrderCount ? ` · ${t("manager.closedCount", { count: data.businessState.closedOrderCount })}` : ""}
             </div>
           </div>
           <div className="actions">
-            <button className={viewMode === "TODAY" ? "secondary" : ""} onClick={() => setViewMode("TODAY")}>Today</button>
-            <button className={viewMode === "HISTORY" ? "secondary" : ""} onClick={() => setViewMode("HISTORY")}>Order History</button>
+            <button className={viewMode === "TODAY" ? "secondary" : ""} onClick={() => setViewMode("TODAY")}>{t("common.today")}</button>
+            <button className={viewMode === "HISTORY" ? "secondary" : ""} onClick={() => setViewMode("HISTORY")}>{t("common.orderHistory")}</button>
           </div>
         </div>
         <div className="tabs">
           {["ALL", "CASH", "VISA", "UNPAID"].map((item) => (
-            <button key={item} className={filter === item ? "active" : ""} onClick={() => setFilter(item)}>{item}</button>
+            <button key={item} className={filter === item ? "active" : ""} onClick={() => setFilter(item)}>{filterLabel(item)}</button>
           ))}
         </div>
         {viewMode === "TODAY" && <div className="tabs">
-          {["ALL", "ACTIVE", "ARCHIVED"].map((item) => (
-            <button key={item} className={archiveFilter === item ? "active" : ""} onClick={() => setArchiveFilter(item)}>{item}</button>
+          {["ALL", "ACTIVE", "ARCHIVED", "UNREGISTERED"].map((item) => (
+            <button key={item} className={`${archiveFilter === item ? "active" : ""} ${item === "UNREGISTERED" ? "tab-danger" : ""} ${item === "ARCHIVED" ? "tab-blue" : ""}`} onClick={() => setArchiveFilter(item)}>{archiveLabel(item)}</button>
           ))}
         </div>}
-        <div className="form-grid">
-          <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search order, bracelet, phone, child, cashier, day" />
-          <input type="date" value={fromDate} onChange={(event) => setFromDate(event.target.value)} />
-          <input type="date" value={toDate} onChange={(event) => setToDate(event.target.value)} />
-          <button className="secondary" onClick={() => { setQuery(""); setFromDate(""); setToDate(""); }}>Clear Filters</button>
+        <div className="form-grid manager-filter-grid">
+          <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder={t("manager.searchPlaceholder")} />
+          <button className="secondary" onClick={() => setQuery("")}>{t("common.clearFilters")}</button>
         </div>
-        <div className="row"><span>Visible orders</span><b>{visibleOrders.length}</b></div>
+        <div className="row"><span>{t("common.visibleOrders")}</span><b>{formatNumber(visibleOrders.length)}</b></div>
         <div className="grid three honey-grid">
           {visibleOrders.map((order) => (
             <div className={`card order-cell ${orderAlertClass(order)}`} key={order.id}>
-              <div className="row">
+              <div className="row order-head">
                 <b>{order.id}</b>
-                <span className={`badge ${order.paymentStatus === "PAID" ? "paid" : "unpaid"}`}>{order.paymentStatus}</span>
+                <span className={`badge ${order.paymentStatus === "PAID" ? "paid" : "unpaid"}`}>{labelStatus(order.paymentStatus)}</span>
               </div>
-              {viewMode === "HISTORY" && <div className="meta-line"><span>Business Day</span><b>{order.businessDate}</b></div>}
-              <div className="meta-line"><span>Bracelet</span><b>{order.braceletNo}</b></div>
-              <div className="meta-line"><span>Phone</span><b>{order.customerPhone || "-"}</b></div>
-              <div className="meta-line"><span>Children</span><b>{order.childNames}</b></div>
-              <div className="meta-line"><span>Method</span><b>{order.paymentMethod}</b></div>
-              {order.customerLeft && order.paymentStatus !== "PAID" && <div className="warning warning-orange">العميل خرج ولسه متعملش تم الدفع</div>}
-              {order.customerLeft && order.paymentStatus === "PAID" && !order.archivedAt && <div className="warning">العميل خرج ولسه متسجلش على السيستم</div>}
-              {viewMode === "HISTORY" && order.closedAt && <div className="meta-line"><span>Closed</span><b>{new Date(order.closedAt).toLocaleString()}</b></div>}
-              {viewMode === "HISTORY" && !order.closedAt && order.archivedAt && <div className="meta-line"><span>Archived</span><b>{new Date(order.archivedAt).toLocaleString()}</b></div>}
+              <div className="order-info">
+                {viewMode === "HISTORY" && <div className="meta-line"><span>{t("common.businessDay")}</span><b>{order.businessDate}</b></div>}
+                <div className="meta-line"><span>{t("common.bracelet")}</span><b>{order.braceletNo}</b></div>
+                {order.customerPhone && <div className="meta-line"><span>{t("common.phone")}</span><b>{order.customerPhone}</b></div>}
+                <div className="meta-line"><span>{t("common.children")}</span><b>{order.childNames}</b></div>
+                <div className="meta-line"><span>{t("common.status")}</span><b className={`meta-value ${orderStageClass(order)}`}>{labelOrderStage(order)}</b></div>
+                {order.paymentStatus !== "PAID" && <div className="meta-line"><span>{t("common.method")}</span><b className={`meta-value ${order.paymentMethod === "VISA" ? "meta-visa" : "meta-cash"}`}>{labelMethod(order.paymentMethod)}</b></div>}
+                {order.paymentEmployee && <div className="meta-line"><span>{t("common.paymentEmployee")}</span><b className={`meta-value meta-payment-employee ${employeeGenderClass(order.paymentEmployee)}`}>{order.paymentEmployee}</b></div>}
+              </div>
               <div className="summary">
-                {(order.items || []).length === 0 ? (
-                  <div className="muted">No items</div>
-                ) : order.items.map((item) => (
-                  <div className="row" key={item.id}>
-                    <span>{item.name} x {item.qty}</span>
-                    <b>{item.total} EGP</b>
+                <div className="order-items">
+                  {(order.items || []).length === 0 ? (
+                    <div className="muted">{t("common.noItems")}</div>
+                  ) : order.items.map((item) => (
+                    <div className="row" key={item.id}>
+                      <span>{item.name} x {item.qty}</span>
+                      <b>{currency(item.total)}</b>
+                    </div>
+                  ))}
+                </div>
+                <div className="row order-total-row"><span>{t("common.orderTotal")}</span><b>{currency(order.total)}</b></div>
+              </div>
+              <div className="order-alerts">
+                {order.customerLeft && order.paymentStatus !== "PAID" && <div className="warning">{t("alert.leftUnpaid")}</div>}
+                {order.customerLeft && order.paymentStatus === "PAID" && !order.geideaRegisteredAt && <div className="warning warning-orange">{t("alert.leftNeedsSystem")}</div>}
+                {order.geideaRegisteredAt && (
+                  <div className="geidea-alert-line">
+                    <span>{t("common.geideaRegisteredBy")}</span>
+                    <b><span className={employeeGenderClass(order.geideaEmployee)}>{order.geideaEmployee || "-"}</span> · {formatDateTime(order.geideaRegisteredAt)}</b>
                   </div>
-                ))}
-                <div className="row order-total-row"><span>Order Total</span><b>{order.total} EGP</b></div>
+                )}
+                {order.exitEmployee && !order.archivedAt && <div className="meta-line exit-employee-line"><span>{t("common.exitEmployee")}</span><b className={employeeGenderClass(order.exitEmployee)}>{order.exitEmployee}</b></div>}
+                {order.archivedAt && !order.isHistory && <div className="archive-alert-line">{t("common.archivedAt")}: {formatDateTime(order.archivedAt)}</div>}
+                {viewMode === "HISTORY" && order.isHistory && order.closedAt && <div className="archive-alert-line">{t("common.closed")}: {formatDateTime(order.closedAt)}</div>}
+                {viewMode === "HISTORY" && order.isHistory && !order.closedAt && order.archivedAt && <div className="archive-alert-line">{t("common.archived")}: {formatDateTime(order.archivedAt)}</div>}
               </div>
               <div className="actions">
-                <button className="btn-details" onClick={() => setSelectedOrder(order)}>Details</button>
-                {order.archivedAt && !order.isHistory && <button className="btn-unarchive" onClick={() => runOrderAction(order.id, "unarchive")}>إلغاء الأرشفة</button>}
-                <button className="btn-print" onClick={() => window.open(`/invoice/${orderUrlId(order.id)}`, "_blank")}>Print</button>
+                <button className="btn-details" onClick={() => setSelectedOrder(order)}>{t("manager.details")}</button>
+                {!order.isHistory && !order.geideaRegisteredAt && <button className="btn-system" onClick={() => runOrderAction(order.id, "geidea")}>{t("manager.registerSystem")}</button>}
+                {!order.isHistory && order.geideaRegisteredAt && order.customerLeft && !order.archivedAt && <button className="btn-print" onClick={() => runOrderAction(order.id, "archive")}>{t("manager.archive")}</button>}
+                {order.archivedAt && !order.isHistory && <button className="btn-unarchive" onClick={() => runOrderAction(order.id, "unarchive")}>{t("manager.unarchive")}</button>}
+                <button className="btn-print" onClick={() => window.open(`/invoice/${orderUrlId(order.id)}`, "_blank")}>{t("common.print")}</button>
               </div>
             </div>
           ))}
         </div>
       </section>
 
-      <section className="grid three">
+      <section className={`grid three ${managerTab === "reports" ? "" : "is-hidden"}`}>
         <div className="panel">
-          <h3>Payment Breakdown</h3>
+          <h3>{t("manager.paymentBreakdown")}</h3>
           {data.paymentBreakdown.map((row) => (
-            <div className="row" key={row.method}><span>{row.method} ({row.count})</span><b>{row.total} EGP</b></div>
+            <div className="row" key={row.method}><span>{labelMethod(row.method)} ({formatNumber(row.count)})</span><b>{currency(row.total)}</b></div>
           ))}
-          <MiniBars rows={data.paymentBreakdown} labelKey="method" valueKey="total" />
+          <MiniBars rows={data.paymentBreakdown} labelKey="method" valueKey="total" labelFormatter={labelMethod} valueFormatter={currency} />
         </div>
         <div className="panel">
-          <h3>Top Products</h3>
+          <h3>{t("manager.topProducts")}</h3>
           {data.topProducts.map((product) => (
-            <div className="row" key={product.name}><span>{product.name}</span><b>{product.total} EGP</b></div>
+            <div className="row" key={product.name}><span>{product.name}</span><b>{currency(product.total)}</b></div>
           ))}
         </div>
         <div className="panel">
-          <h3>Status Breakdown</h3>
+          <h3>{t("manager.statusBreakdown")}</h3>
           {data.statusBreakdown.map((row) => (
-            <div className="row" key={row.status}><span>{row.status}</span><b>{row.count}</b></div>
+            <div className="row" key={row.status}><span>{labelStatus(row.status)}</span><b>{formatNumber(row.count)}</b></div>
           ))}
         </div>
       </section>
 
-      <section className="grid three">
-        <Report title="Cashier Performance" rows={data.cashierPerformance} labelKey="name" valueKey="total" suffix=" EGP" />
-        <Report title="Employees" rows={data.dataEmployeePerformance} labelKey="name" valueKey="total" suffix=" EGP" />
-        <Report title="Top Bracelets" rows={data.topBracelets} labelKey="bracelet" valueKey="total" suffix=" EGP" />
+      <section className={`grid three ${managerTab === "reports" ? "" : "is-hidden"}`}>
+        <Report title={t("manager.cashierPerformance")} rows={data.cashierPerformance} labelKey="name" valueKey="total" formatValue={currency} emptyLabel={t("common.noData")} />
+        <Report title={t("manager.employees")} rows={data.dataEmployeePerformance} labelKey="name" valueKey="total" formatValue={currency} emptyLabel={t("common.noData")} />
+        <Report title={t("manager.topBracelets")} rows={data.topBracelets} labelKey="bracelet" valueKey="total" formatValue={currency} emptyLabel={t("common.noData")} />
       </section>
 
-      <section className="panel">
-        <h3>Daily Sales</h3>
-        <MiniBars rows={data.dailySales} labelKey="date" valueKey="total" />
+      <section className={`panel ${managerTab === "reports" ? "" : "is-hidden"}`}>
+        <h3>{t("manager.dailySales")}</h3>
+        <MiniBars rows={data.dailySales} labelKey="date" valueKey="total" valueFormatter={currency} />
       </section>
 
-      <section className="panel">
-        <h3>Recent Activity</h3>
+      <section className={`panel settings-shell ${managerTab === "settings" ? "" : "is-hidden"}`}>
+        <aside className="settings-sidebar">
+          {[
+            ["employees", t("manager.employeeManagement")],
+            ["products", t("manager.productManagement")],
+            ["users", t("manager.userManagement")],
+          ].map(([tab, label]) => (
+            <button key={tab} className={settingsTab === tab ? "active" : ""} onClick={() => setSettingsTab(tab)}>{label}</button>
+          ))}
+        </aside>
+        <div className="settings-content">
+      <section className={`employee-manager ${settingsTab === "employees" ? "" : "is-hidden"}`}>
+        <div className="row">
+          <div>
+            <h3>{t("manager.employeeManagement")}</h3>
+            <div className="muted">{t("manager.employeeManagementHint")}</div>
+          </div>
+          {employeeForm.id && <button className="danger" onClick={resetEmployeeForm}>{t("common.cancel")}</button>}
+        </div>
+        <div className="form-grid employee-form-grid">
+          <input
+            value={employeeForm.name}
+            onChange={(event) => setEmployeeForm((current) => ({ ...current, name: event.target.value }))}
+            placeholder={t("manager.employeeName")}
+          />
+          <select
+            value={employeeForm.department}
+            onChange={(event) => setEmployeeForm((current) => ({ ...current, department: event.target.value }))}
+          >
+            <option value="OPERATION">{labelDepartment("OPERATION")}</option>
+            <option value="RESTAURANT">{labelDepartment("RESTAURANT")}</option>
+          </select>
+          <label className="toggle-row">
+            <input
+              type="checkbox"
+              checked={employeeForm.active}
+              onChange={(event) => setEmployeeForm((current) => ({ ...current, active: event.target.checked }))}
+            />
+            <span>{employeeForm.active ? t("common.active") : t("common.inactive")}</span>
+          </label>
+          <button className="btn-confirm" onClick={saveEmployee}>{employeeForm.id ? t("manager.updateEmployee") : t("manager.addEmployee")}</button>
+        </div>
+        <div className="form-grid settings-filter-grid">
+          <input value={employeeFilter.query} onChange={(event) => setEmployeeFilter((current) => ({ ...current, query: event.target.value }))} placeholder={t("manager.employeeSearch")} />
+          <select value={employeeFilter.department} onChange={(event) => setEmployeeFilter((current) => ({ ...current, department: event.target.value }))}>
+            <option value="ALL">{t("common.all")}</option>
+            <option value="OPERATION">{labelDepartment("OPERATION")}</option>
+            <option value="RESTAURANT">{labelDepartment("RESTAURANT")}</option>
+          </select>
+          <select value={employeeFilter.status} onChange={(event) => setEmployeeFilter((current) => ({ ...current, status: event.target.value }))}>
+            <option value="ALL">{t("common.all")}</option>
+            <option value="ACTIVE">{t("common.active")}</option>
+            <option value="INACTIVE">{t("common.inactive")}</option>
+          </select>
+          <button className="secondary" onClick={() => setEmployeeFilter({ query: "", department: "ALL", status: "ALL" })}>{t("common.clearFilters")}</button>
+        </div>
+        <div className="employee-table">
+          <div className="employee-row employee-head">
+            <b>{t("common.name")}</b>
+            <b>{t("common.department")}</b>
+            <b>{t("common.status")}</b>
+            <b>{t("common.actions")}</b>
+          </div>
+          {visibleEmployees.map((employee) => (
+            <div className="employee-row" key={employee.id}>
+              <span className={employeeGenderClass(employee.name)}>{employee.name}</span>
+              <span>{labelDepartment(employee.department)}</span>
+              <span className={`badge ${employee.active ? "paid" : "unpaid"}`}>
+                {employee.active ? t("common.active") : t("common.inactive")}
+              </span>
+              <span className="actions">
+                <button className="btn-edit" onClick={() => editEmployee(employee)}>{t("common.edit")}</button>
+                <button className={employee.active ? "danger" : "btn-unarchive"} onClick={() => toggleEmployee(employee)}>
+                  {employee.active ? t("common.deactivate") : t("common.activate")}
+                </button>
+              </span>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      <section className={`employee-manager ${settingsTab === "products" ? "" : "is-hidden"}`}>
+        <div className="row">
+          <div>
+            <h3>{t("manager.productManagement")}</h3>
+            <div className="muted">{t("manager.productManagementHint")}</div>
+          </div>
+          {productForm.id && <button className="danger" onClick={resetProductForm}>{t("common.cancel")}</button>}
+        </div>
+        <div className="form-grid product-form-grid">
+          <input value={productForm.name} onChange={(event) => setProductForm((current) => ({ ...current, name: event.target.value }))} placeholder={t("manager.productName")} />
+          <input type="number" min="0" value={productForm.price} onChange={(event) => setProductForm((current) => ({ ...current, price: event.target.value }))} placeholder={t("manager.productPrice")} />
+          <input value={productForm.categoryName} onChange={(event) => setProductForm((current) => ({ ...current, categoryName: event.target.value, categoryId: event.target.value }))} placeholder={t("manager.categoryName")} />
+          <input value={productForm.imageUrl} onChange={(event) => setProductForm((current) => ({ ...current, imageUrl: event.target.value }))} placeholder={t("manager.productImage")} />
+          <label className="toggle-row">
+            <input type="checkbox" checked={productForm.popular} onChange={(event) => setProductForm((current) => ({ ...current, popular: event.target.checked }))} />
+            <span>{t("manager.popularProduct")}</span>
+          </label>
+          <label className="toggle-row">
+            <input type="checkbox" checked={productForm.active} onChange={(event) => setProductForm((current) => ({ ...current, active: event.target.checked }))} />
+            <span>{productForm.active ? t("common.active") : t("common.inactive")}</span>
+          </label>
+          <button className="btn-confirm" onClick={saveProduct}>{productForm.id ? t("manager.updateProduct") : t("manager.addProduct")}</button>
+        </div>
+        <div className="form-grid settings-filter-grid product-settings-filter">
+          <input value={productFilter.query} onChange={(event) => setProductFilter((current) => ({ ...current, query: event.target.value }))} placeholder={t("manager.productSearch")} />
+          <select value={productFilter.category} onChange={(event) => setProductFilter((current) => ({ ...current, category: event.target.value }))}>
+            {productCategories.map((category) => <option key={category} value={category}>{category === "ALL" ? t("common.all") : category}</option>)}
+          </select>
+          <select value={productFilter.status} onChange={(event) => setProductFilter((current) => ({ ...current, status: event.target.value }))}>
+            <option value="ALL">{t("common.all")}</option>
+            <option value="ACTIVE">{t("common.active")}</option>
+            <option value="INACTIVE">{t("common.inactive")}</option>
+          </select>
+          <select value={productFilter.popular} onChange={(event) => setProductFilter((current) => ({ ...current, popular: event.target.value }))}>
+            <option value="ALL">{t("common.all")}</option>
+            <option value="POPULAR">{t("manager.popularProduct")}</option>
+            <option value="REGULAR">{t("manager.regularProduct")}</option>
+          </select>
+          <button className="secondary" onClick={() => setProductFilter({ query: "", category: "ALL", status: "ALL", popular: "ALL" })}>{t("common.clearFilters")}</button>
+        </div>
+        <div className="employee-table">
+          <div className="employee-row product-row employee-head">
+            <b>{t("common.name")}</b>
+            <b>{t("common.department")}</b>
+            <b>{t("manager.productPrice")}</b>
+            <b>{t("common.status")}</b>
+            <b>{t("common.actions")}</b>
+          </div>
+          {visibleProductsSettings.map((product) => (
+            <div className="employee-row product-row" key={product.id}>
+              <span>{product.name}</span>
+              <span>{product.categoryName}</span>
+              <span>{currency(product.price)}</span>
+              <span className={`badge ${product.active ? "paid" : "unpaid"}`}>{product.active ? t("common.active") : t("common.inactive")}</span>
+              <span className="actions">
+                <button className="btn-edit" onClick={() => editProduct(product)}>{t("common.edit")}</button>
+                <button className={product.active ? "danger" : "btn-unarchive"} onClick={() => toggleProduct(product)}>
+                  {product.active ? t("common.deactivate") : t("common.activate")}
+                </button>
+              </span>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      <section className={`employee-manager ${settingsTab === "users" ? "" : "is-hidden"}`}>
+        <div className="row">
+          <div>
+            <h3>{t("manager.userManagement")}</h3>
+            <div className="muted">{t("manager.userManagementHint")}</div>
+          </div>
+          {userForm.id && <button className="danger" onClick={resetUserForm}>{t("common.cancel")}</button>}
+        </div>
+        <div className="form-grid user-form-grid">
+          <input value={userForm.name} onChange={(event) => setUserForm((current) => ({ ...current, name: event.target.value }))} placeholder={t("common.name")} />
+          <input value={userForm.username} onChange={(event) => setUserForm((current) => ({ ...current, username: event.target.value }))} placeholder={t("login.username")} />
+          <input
+            type="password"
+            name="managed-user-new-password"
+            value={userForm.password}
+            onChange={(event) => setUserForm((current) => ({ ...current, password: event.target.value }))}
+            placeholder={userForm.id ? t("manager.passwordOptional") : t("login.password")}
+            autoComplete="new-password"
+            autoCorrect="off"
+            spellCheck={false}
+            data-lpignore="true"
+            data-1p-ignore="true"
+            data-form-type="other"
+          />
+          <select value={userForm.role} onChange={(event) => setUserForm((current) => ({ ...current, role: event.target.value }))}>
+            {["ADMIN", "MANAGER", "CASHIER", "KITCHEN"].map((role) => <option key={role} value={role}>{t(`role.${role}`)}</option>)}
+          </select>
+          <label className="toggle-row">
+            <input type="checkbox" checked={userForm.active} onChange={(event) => setUserForm((current) => ({ ...current, active: event.target.checked }))} />
+            <span>{userForm.active ? t("common.active") : t("common.inactive")}</span>
+          </label>
+          <button className="btn-confirm" onClick={saveUser}>{userForm.id ? t("manager.updateUser") : t("manager.addUser")}</button>
+        </div>
+        <div className="form-grid settings-filter-grid">
+          <input value={userFilter.query} onChange={(event) => setUserFilter((current) => ({ ...current, query: event.target.value }))} placeholder={t("manager.userSearch")} />
+          <select value={userFilter.role} onChange={(event) => setUserFilter((current) => ({ ...current, role: event.target.value }))}>
+            <option value="ALL">{t("common.all")}</option>
+            {["ADMIN", "MANAGER", "CASHIER", "KITCHEN"].map((role) => <option key={role} value={role}>{t(`role.${role}`)}</option>)}
+          </select>
+          <select value={userFilter.status} onChange={(event) => setUserFilter((current) => ({ ...current, status: event.target.value }))}>
+            <option value="ALL">{t("common.all")}</option>
+            <option value="ACTIVE">{t("common.active")}</option>
+            <option value="INACTIVE">{t("common.inactive")}</option>
+          </select>
+          <button className="secondary" onClick={() => setUserFilter({ query: "", role: "ALL", status: "ALL" })}>{t("common.clearFilters")}</button>
+        </div>
+        <div className="employee-table">
+          <div className="employee-row user-row employee-head">
+            <b>{t("common.name")}</b>
+            <b>{t("login.username")}</b>
+            <b>{t("common.status")}</b>
+            <b>{t("common.actions")}</b>
+          </div>
+          {visibleUsers.map((user) => (
+            <div className="employee-row user-row" key={user.id}>
+              <span>{user.name}</span>
+              <span>{user.username} · {t(`role.${user.role}`)}</span>
+              <span className={`badge ${user.active ? "paid" : "unpaid"}`}>{user.active ? t("common.active") : t("common.inactive")}</span>
+              <span className="actions">
+                <button className="btn-edit" onClick={() => editUser(user)}>{t("common.edit")}</button>
+                <button className={user.active ? "danger" : "btn-unarchive"} onClick={() => toggleUser(user)}>
+                  {user.active ? t("common.deactivate") : t("common.activate")}
+                </button>
+              </span>
+            </div>
+          ))}
+        </div>
+      </section>
+        </div>
+      </section>
+
+      <section className={`panel ${managerTab === "activity" ? "" : "is-hidden"}`}>
+        <h3>{t("manager.recentActivity")}</h3>
         {(data.auditLogs || []).length === 0 ? (
-          <div className="muted">No activity yet</div>
+          <div className="muted">{t("manager.noActivity")}</div>
         ) : data.auditLogs.map((log) => (
           <div className="activity-row" key={log.id}>
             <span className="activity-dot" />
             <div>
-              <b>{log.summary || log.action}</b>
-              <div className="muted">{log.user} · {log.orderId || "No order"} · {new Date(log.createdAt).toLocaleString()}</div>
+              <b>{labelAudit(log.summary || log.action)}</b>
+              <div className="muted">{log.user} · {log.orderId || t("manager.noOrder")} · {formatDateTime(log.createdAt)}</div>
             </div>
           </div>
         ))}
@@ -262,52 +929,89 @@ export default function ManagerClient() {
 
       {selectedOrder && (
         <div className="modal-backdrop" onClick={() => setSelectedOrder(null)}>
-          <div className="detail-modal" role="dialog" aria-modal="true" aria-label="Order details" onClick={(event) => event.stopPropagation()}>
+          <div className="detail-modal" role="dialog" aria-modal="true" aria-label={t("manager.orderDetails")} onClick={(event) => event.stopPropagation()}>
             <div className="modal-head">
               <div>
                 <h2>{selectedOrder.id}</h2>
-                <div className="muted">{selectedOrder.braceletNo} · {selectedOrder.paymentStatus} / {selectedOrder.paymentMethod}</div>
+                <div className="muted">{selectedOrder.braceletNo} · {labelStatus(selectedOrder.paymentStatus)} / {labelMethod(selectedOrder.paymentMethod)}</div>
               </div>
-              <button className="secondary" onClick={() => setSelectedOrder(null)}>Close</button>
+              <button className="secondary" onClick={() => setSelectedOrder(null)}>{t("common.close")}</button>
             </div>
             <div className="grid two">
-              <div className="meta-line"><span>Bracelet</span><b>{selectedOrder.braceletNo}</b></div>
-              {(selectedOrder.isHistory || selectedOrder.isCurrentArchive) && <div className="meta-line"><span>Business Day</span><b>{selectedOrder.businessDate}</b></div>}
-              <div className="meta-line"><span>Phone</span><b>{selectedOrder.customerPhone || "-"}</b></div>
-              <div className="meta-line"><span>Children</span><b>{selectedOrder.childNames}</b></div>
-              <div className="meta-line"><span>Cashier</span><b>{selectedOrder.cashier}</b></div>
-              <div className="meta-line"><span>Employee</span><b>{selectedOrder.dataEmployee}</b></div>
-              <div className="meta-line"><span>Kitchen</span><b>{selectedOrder.kitchenStatus}</b></div>
-              <div className="meta-line"><span>Payment</span><b>{selectedOrder.paymentStatus} / {selectedOrder.paymentMethod}</b></div>
-              <div className="meta-line"><span>Status</span><b>{selectedOrder.status}</b></div>
-              <div className="meta-line"><span>Archived</span><b>{selectedOrder.archivedAt ? "Yes" : "No"}</b></div>
-              {selectedOrder.closedAt && <div className="meta-line"><span>Closed At</span><b>{new Date(selectedOrder.closedAt).toLocaleString()}</b></div>}
-              {selectedOrder.archivedAt && <div className="meta-line"><span>Archived At</span><b>{new Date(selectedOrder.archivedAt).toLocaleString()}</b></div>}
+              <div className="meta-line"><span>{t("common.bracelet")}</span><b>{selectedOrder.braceletNo}</b></div>
+              {(selectedOrder.isHistory || selectedOrder.isCurrentArchive) && <div className="meta-line"><span>{t("common.businessDay")}</span><b>{selectedOrder.businessDate}</b></div>}
+              {selectedOrder.customerPhone && <div className="meta-line"><span>{t("common.phone")}</span><b>{selectedOrder.customerPhone}</b></div>}
+              <div className="meta-line"><span>{t("common.children")}</span><b>{selectedOrder.childNames}</b></div>
+              <div className="meta-line"><span>{t("common.cashier")}</span><b className="meta-value meta-user">{selectedOrder.cashier}</b></div>
+              <div className="meta-line"><span>{t("common.employee")}</span><b className={`meta-value meta-data-employee ${employeeGenderClass(selectedOrder.dataEmployee)}`}>{selectedOrder.dataEmployee}</b></div>
+              {selectedOrder.exitEmployee && <div className="meta-line exit-employee-line"><span>{t("common.exitEmployee")}</span><b className={employeeGenderClass(selectedOrder.exitEmployee)}>{selectedOrder.exitEmployee}</b></div>}
+              {selectedOrder.paymentEmployee && <div className="meta-line"><span>{t("common.paymentEmployee")}</span><b className={`meta-value meta-payment-employee ${employeeGenderClass(selectedOrder.paymentEmployee)}`}>{selectedOrder.paymentEmployee}</b></div>}
+              {selectedOrder.geideaRegisteredAt && <div className="meta-line"><span>{t("common.geideaRegisteredBy")}</span><b className="meta-value meta-system"><span className={employeeGenderClass(selectedOrder.geideaEmployee)}>{selectedOrder.geideaEmployee || "-"}</span> · {formatDateTime(selectedOrder.geideaRegisteredAt)}</b></div>}
+              {!selectedOrder.geideaRegisteredAt && <div className="meta-line"><span>{t("common.systemRegistered")}</span><b className="meta-value meta-pending">{t("common.no")}</b></div>}
+              <div className="meta-line"><span>{t("common.status")}</span><b className={`meta-value ${orderStageClass(selectedOrder)}`}>{labelOrderStage(selectedOrder)}</b></div>
+              <div className="meta-line"><span>{t("common.payment")}</span><b className={`meta-value ${selectedOrder.paymentMethod === "VISA" ? "meta-visa" : "meta-cash"}`}>{labelStatus(selectedOrder.paymentStatus)} / {labelMethod(selectedOrder.paymentMethod)}</b></div>
+              <div className="meta-line"><span>{t("common.archived")}</span><b className={`meta-value ${selectedOrder.archivedAt ? "meta-system" : "meta-pending"}`}>{selectedOrder.archivedAt ? t("common.yes") : t("common.no")}</b></div>
+              {selectedOrder.closedAt && <div className="meta-line"><span>{t("common.closedAt")}</span><b>{formatDateTime(selectedOrder.closedAt)}</b></div>}
+              {selectedOrder.archivedAt && <div className="meta-line"><span>{t("common.archivedAt")}</span><b>{formatDateTime(selectedOrder.archivedAt)}</b></div>}
             </div>
             <div className="detail-items">
               {selectedOrder.items.map((item) => (
-                <div className="row" key={item.id}><span>{item.name} x {item.qty}</span><b>{item.total} EGP</b></div>
+                <div className="row" key={item.id}>
+                  <span>{item.name} x {item.qty}</span>
+                  <span className="actions compact-actions">
+                    <b>{currency(item.total)}</b>
+                    {selectedIsEditableOrder && <button className="danger mini-button" onClick={() => removeOrderItem(selectedOrder.id, item.id)}>{t("common.delete")}</button>}
+                  </span>
+                </div>
               ))}
-              <div className="row"><span>Order Total</span><b>{selectedOrder.total} EGP</b></div>
+              <div className="row order-total-row"><span>{t("common.orderTotal")}</span><b>{currency(selectedOrder.total)}</b></div>
             </div>
-            {selectedOrder.customerLeft && selectedOrder.paymentStatus !== "PAID" && <div className="warning warning-orange">العميل خرج ولسه متعملش تم الدفع</div>}
-            {selectedOrder.customerLeft && selectedOrder.paymentStatus === "PAID" && !selectedOrder.archivedAt && <div className="warning">العميل خرج ولسه متسجلش على السيستم</div>}
+            {selectedIsEditableOrder && (
+              <div className="manager-order-tools">
+                <div className="form-grid manager-order-edit-grid">
+                  <select value={orderItemForm.productId} onChange={(event) => setOrderItemForm((current) => ({ ...current, productId: event.target.value }))}>
+                    {products.map((product) => <option key={product.id} value={product.id}>{product.name} - {currency(product.price)}</option>)}
+                  </select>
+                  <input
+                    type="number"
+                    min="1"
+                    value={orderItemForm.qty}
+                    onChange={(event) => setOrderItemForm((current) => ({ ...current, qty: Math.max(1, Number(event.target.value) || 1) }))}
+                    aria-label={t("common.qty")}
+                  />
+                  <button className="btn-confirm" onClick={() => addOrderItem(selectedOrder.id)}>{t("manager.addItem")}</button>
+                </div>
+                <div className="form-grid manager-order-edit-grid">
+                  <select value={managerPaymentEmployeeId} onChange={(event) => setManagerPaymentEmployeeId(event.target.value)}>
+                    <option value="">{t("manager.selectReceiver")}</option>
+                    {restaurantEmployees().map((employee) => <option className={employeeGenderClass(employee.name)} key={employee.id} value={employee.id}>{employee.name}</option>)}
+                  </select>
+                  <button className={paymentButtonClass(selectedOrder, "CASH", "btn-pay-cash")} onClick={() => payOrder(selectedOrder.id, "CASH")}>
+                    {selectedOrder.paymentStatus === "PAID" && selectedOrder.paymentMethod === "CASH" ? t("manager.cashPaid") : t("manager.setCashPaid")}
+                  </button>
+                  <button className={paymentButtonClass(selectedOrder, "VISA", "btn-pay-visa")} onClick={() => payOrder(selectedOrder.id, "VISA")}>
+                    {selectedOrder.paymentStatus === "PAID" && selectedOrder.paymentMethod === "VISA" ? t("manager.visaPaid") : t("manager.setVisaPaid")}
+                  </button>
+                </div>
+                <div className="form-grid manager-order-edit-grid">
+                  <select value={managerGeideaEmployeeId} onChange={(event) => setManagerGeideaEmployeeId(event.target.value)}>
+                    <option value="">{t("manager.selectGeideaEmployee")}</option>
+                    {restaurantEmployees().map((employee) => <option className={employeeGenderClass(employee.name)} key={employee.id} value={employee.id}>{employee.name}</option>)}
+                  </select>
+                  <button className="btn-system" onClick={() => runOrderAction(selectedOrder.id, "geidea", { geideaEmployeeId: managerGeideaEmployeeId })}>{t("manager.registerSystem")}</button>
+                </div>
+              </div>
+            )}
+            {selectedOrder.customerLeft && selectedOrder.paymentStatus !== "PAID" && <div className="warning">{t("alert.leftUnpaid")}</div>}
+            {selectedOrder.customerLeft && selectedOrder.paymentStatus === "PAID" && !selectedOrder.geideaRegisteredAt && <div className="warning warning-orange">{t("alert.leftNeedsSystem")}</div>}
             <div className="actions">
-              {selectedIsActiveOrder && <button className="btn-pay-cash" onClick={() => payOrder(selectedOrder.id, "CASH")}>Set Cash Paid</button>}
-              {selectedIsActiveOrder && <button className="btn-pay-visa" onClick={() => payOrder(selectedOrder.id, "VISA")}>Set Visa Paid</button>}
-              {selectedIsActiveOrder && <button className="btn-deliver" onClick={() => runOrderAction(selectedOrder.id, "deliver")}>Mark Delivered</button>}
-              {selectedIsActiveOrder && <button className="btn-exit" disabled={selectedOrder.customerLeft} onClick={() => runOrderAction(selectedOrder.id, "left")}>Mark Customer Left</button>}
-              {selectedIsActiveOrder && (
-                <button
-                  className="btn-system"
-                  disabled={selectedOrder.kitchenStatus !== "DELIVERED" || selectedOrder.paymentStatus !== "PAID"}
-                  onClick={() => runOrderAction(selectedOrder.id, "archive")}
-                >
-                  Archive
-                </button>
+              {selectedIsActiveOrder && <button className="btn-deliver" onClick={() => runOrderAction(selectedOrder.id, "deliver")}>{t("manager.markDelivered")}</button>}
+              {selectedIsActiveOrder && <button className="btn-exit" disabled={selectedOrder.customerLeft} onClick={() => runOrderAction(selectedOrder.id, "left")}>{t("manager.markCustomerLeft")}</button>}
+              {selectedIsActiveOrder && selectedOrder.geideaRegisteredAt && selectedOrder.customerLeft && !selectedOrder.archivedAt && (
+                <button className="btn-print" onClick={() => runOrderAction(selectedOrder.id, "archive")}>{t("manager.archive")}</button>
               )}
-              {selectedIsArchivedOrder && <button className="btn-unarchive" onClick={() => runOrderAction(selectedOrder.id, "unarchive")}>إلغاء الأرشفة</button>}
-              <button className="btn-print" onClick={() => window.open(`/invoice/${orderUrlId(selectedOrder.id)}`, "_blank")}>Print Invoice</button>
+              {selectedIsArchivedOrder && <button className="btn-unarchive" onClick={() => runOrderAction(selectedOrder.id, "unarchive")}>{t("manager.unarchive")}</button>}
+              <button className="btn-print" onClick={() => window.open(`/invoice/${orderUrlId(selectedOrder.id)}`, "_blank")}>{t("common.printInvoice")}</button>
             </div>
           </div>
         </div>
@@ -325,23 +1029,23 @@ function Metric({ label, value }) {
   );
 }
 
-function Report({ title, rows, labelKey, valueKey, suffix = "" }) {
+function Report({ title, rows, labelKey, valueKey, formatValue, emptyLabel }) {
   return (
     <div className="panel">
       <h3>{title}</h3>
       {rows.length === 0 ? (
-        <div className="muted">No data</div>
+        <div className="muted">{emptyLabel}</div>
       ) : rows.slice(0, 8).map((row) => (
         <div className="row" key={row[labelKey]}>
           <span>{row[labelKey]}</span>
-          <b>{row[valueKey]}{suffix}</b>
+          <b>{formatValue ? formatValue(row[valueKey]) : row[valueKey]}</b>
         </div>
       ))}
     </div>
   );
 }
 
-function MiniBars({ rows, labelKey, valueKey }) {
+function MiniBars({ rows, labelKey, valueKey, labelFormatter, valueFormatter }) {
   const max = Math.max(...rows.map((row) => Number(row[valueKey]) || 0), 1);
 
   return (
@@ -350,9 +1054,9 @@ function MiniBars({ rows, labelKey, valueKey }) {
         const value = Number(row[valueKey]) || 0;
         return (
           <div className="bar-row" key={row[labelKey]}>
-            <span>{row[labelKey]}</span>
+            <span>{labelFormatter ? labelFormatter(row[labelKey]) : row[labelKey]}</span>
             <div className="bar-track"><div className="bar-fill" style={{ width: `${Math.max(4, (value / max) * 100)}%` }} /></div>
-            <b>{value}</b>
+            <b>{valueFormatter ? valueFormatter(value) : value}</b>
           </div>
         );
       })}

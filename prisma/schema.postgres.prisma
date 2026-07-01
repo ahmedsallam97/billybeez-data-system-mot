@@ -3,8 +3,8 @@ generator client {
 }
 
 datasource db {
-  provider = "sqlite"
-  url      = env("DATABASE_URL")
+  provider = "postgresql"
+  url      = env("POSTGRES_DATABASE_URL")
 }
 
 enum Role {
@@ -96,28 +96,28 @@ model Product {
 }
 
 model Order {
-  id               String        @id
-  businessDate     String?
-  braceletNo       String
-  customerPhone    String?
-  childNames       String
-  childrenCount    Int           @default(1)
-  total            Float         @default(0)
-  status           OrderStatus   @default(OPEN)
-  kitchenStatus    KitchenStatus @default(PENDING)
-  paymentStatus    PaymentStatus @default(UNPAID)
-  paymentMethod    PaymentMethod @default(CASH)
-  customerLeft     Boolean       @default(false)
+  id                 String        @id
+  businessDate       String?
+  braceletNo         String
+  customerPhone      String?
+  childNames         String
+  childrenCount      Int           @default(1)
+  total              Float         @default(0)
+  status             OrderStatus   @default(OPEN)
+  kitchenStatus      KitchenStatus @default(PENDING)
+  paymentStatus      PaymentStatus @default(UNPAID)
+  paymentMethod      PaymentMethod @default(CASH)
+  customerLeft       Boolean       @default(false)
   geideaRegisteredAt DateTime?
-  archivedAt       DateTime?
-  cashierId        String?
-  dataEmployeeId   String?
+  archivedAt         DateTime?
+  cashierId          String?
+  dataEmployeeId     String?
   deliveryEmployeeId String?
-  geideaEmployeeId String?
-  paymentEmployeeId String?
-  exitEmployeeId    String?
-  createdAt        DateTime      @default(now())
-  updatedAt        DateTime      @updatedAt
+  geideaEmployeeId   String?
+  paymentEmployeeId  String?
+  exitEmployeeId     String?
+  createdAt          DateTime      @default(now())
+  updatedAt          DateTime      @updatedAt
 
   cashier         User?       @relation("CashierOrders", fields: [cashierId], references: [id])
   dataEmployee    Employee?   @relation("OrderDataEmployee", fields: [dataEmployeeId], references: [id])
@@ -176,33 +176,33 @@ model BusinessDay {
 }
 
 model OrderHistory {
-  id                 String    @id @default(cuid())
-  originalOrderId    String    @unique
-  businessDate       String
-  braceletNo         String
-  customerPhone      String?
-  childNames         String
-  childrenCount      Int
-  total              Float
-  status             String
-  kitchenStatus      String
-  paymentStatus      String
-  paymentMethod      String
-  customerLeft       Boolean
-  cashierName        String?
-  dataEmployeeName   String?
+  id                  String    @id @default(cuid())
+  originalOrderId     String    @unique
+  businessDate        String
+  braceletNo          String
+  customerPhone       String?
+  childNames          String
+  childrenCount       Int
+  total               Float
+  status              String
+  kitchenStatus       String
+  paymentStatus       String
+  paymentMethod       String
+  customerLeft        Boolean
+  cashierName         String?
+  dataEmployeeName    String?
   deliveryEmployeeName String?
-  geideaEmployeeName String?
+  geideaEmployeeName  String?
   paymentEmployeeName String?
   exitEmployeeName    String?
   geideaRegisteredAt  DateTime?
-  itemsJson          String
-  orderCreatedAt     DateTime
-  orderUpdatedAt     DateTime
-  archivedAt         DateTime?
-  closedAt           DateTime
-  createdAt          DateTime  @default(now())
-  updatedAt          DateTime  @updatedAt
+  itemsJson           String
+  orderCreatedAt      DateTime
+  orderUpdatedAt      DateTime
+  archivedAt          DateTime?
+  closedAt            DateTime
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
 
   @@index([businessDate])
   @@index([closedAt])

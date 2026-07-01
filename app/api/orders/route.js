@@ -1,11 +1,14 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
-import { getCurrentUser } from "@/lib/auth";
+import { authorizeApi } from "@/lib/api-auth";
 import { writeAudit } from "@/lib/audit";
 import { ensureBusinessDayState } from "@/lib/business-day";
 import { buildOrderId, includeOrderDetails, serializeOrder, validateBracelet } from "@/lib/orders";
 
 export async function GET(request) {
+  const { error } = await authorizeApi("ORDER_READ");
+  if (error) return error;
+
   await ensureBusinessDayState();
 
   const { searchParams } = new URL(request.url);
@@ -29,17 +32,15 @@ export async function GET(request) {
 }
 
 export async function POST(request) {
-  const user = await getCurrentUser();
+  const { user, error } = await authorizeApi("ORDER_CREATE");
+  if (error) return error;
+
   const businessState = await ensureBusinessDayState();
   const body = await request.json();
   const braceletNo = String(body.braceletNo || "").trim();
   const customerPhone = String(body.customerPhone || "").trim();
   const childNames = (body.childNames || []).map((name) => String(name || "").trim()).filter(Boolean);
   const items = Array.isArray(body.items) ? body.items : [];
-
-  if (!user) {
-    return NextResponse.json({ success: false, error: "Login required" }, { status: 401 });
-  }
 
   if (!businessState.isOpen) {
     return NextResponse.json({ success: false, error: businessState.message }, { status: 400 });
@@ -55,6 +56,18 @@ export async function POST(request) {
 
   if (!body.dataEmployeeId) {
     return NextResponse.json({ success: false, error: "Employee is required" }, { status: 400 });
+  }
+
+  const dataEmployee = await prisma.employee.findFirst({
+    where: {
+      id: body.dataEmployeeId,
+      active: true,
+      department: "OPERATION",
+    },
+  });
+
+  if (!dataEmployee) {
+    return NextResponse.json({ success: false, error: "Operation employee is required" }, { status: 400 });
   }
 
   if (!items.length) {

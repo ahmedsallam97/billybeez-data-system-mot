@@ -1,53 +1,54 @@
 import { NextResponse } from "next/server";
-import { prisma } from "@/lib/db";
-import { getCurrentUser } from "@/lib/auth";
+import { timingSafeEqual } from "crypto";
+import { authorizeApi } from "@/lib/api-auth";
 import { writeAudit } from "@/lib/audit";
 import { closeActiveBusinessDay, ensureBusinessDayState, openBusinessDay } from "@/lib/business-day";
 
-async function authorizePassword(password) {
-  if (!password) return null;
+function validBusinessDayPassword(value) {
+  const expected = Buffer.from(process.env.BUSINESS_DAY_PASSWORD || "");
+  const received = Buffer.from(String(value || ""));
 
-  return prisma.user.findFirst({
-    where: {
-      active: true,
-      password,
-      role: { in: ["ADMIN", "MANAGER"] },
-    },
-  });
+  return expected.length > 0
+    && expected.length === received.length
+    && timingSafeEqual(expected, received);
 }
 
 export async function GET() {
-  const user = await getCurrentUser();
-
-  if (!user) {
-    return NextResponse.json({ success: false, error: "Login required" }, { status: 401 });
-  }
+  const { error } = await authorizeApi("BUSINESS_DAY_READ");
+  if (error) return error;
 
   return NextResponse.json({ success: true, businessState: await ensureBusinessDayState() });
 }
 
 export async function POST(request) {
-  const user = await getCurrentUser();
-
-  if (!user) {
-    return NextResponse.json({ success: false, error: "Login required" }, { status: 401 });
-  }
+  const { user, error } = await authorizeApi("BUSINESS_DAY_WRITE");
+  if (error) return error;
 
   const body = await request.json();
   const action = String(body.action || "").toLowerCase();
-  const authorizedUser = await authorizePassword(String(body.password || ""));
+  const requiresPassword = user.role === "CASHIER" || user.role === "KITCHEN";
 
-  if (!authorizedUser) {
-    return NextResponse.json({ success: false, error: "Manager password is required" }, { status: 403 });
+  if (requiresPassword && !validBusinessDayPassword(body.password)) {
+    return NextResponse.json({ success: false, error: "Invalid business day password" }, { status: 403 });
   }
 
   if (!["open", "close"].includes(action)) {
     return NextResponse.json({ success: false, error: "Invalid business day action" }, { status: 400 });
   }
 
+  const currentState = await ensureBusinessDayState();
+
+  if (action === "open" && currentState.isOpen) {
+    return NextResponse.json({ success: true, businessState: currentState });
+  }
+
+  if (action === "close" && !currentState.isOpen) {
+    return NextResponse.json({ success: false, error: "Business day is already closed" }, { status: 400 });
+  }
+
   const businessState = action === "open"
     ? await openBusinessDay()
-    : await closeActiveBusinessDay();
+    : await closeActiveBusinessDay(new Date(), user);
 
   await writeAudit({
     action: action === "open" ? "BUSINESS_DAY_OPENED" : "BUSINESS_DAY_CLOSED",
@@ -55,7 +56,8 @@ export async function POST(request) {
     summary: action === "open" ? "Opened business day" : "Closed business day",
     metadata: {
       businessDate: businessState.businessDate,
-      authorizedBy: authorizedUser.name,
+      authorizedBy: user.name,
+      authorizedRole: user.role,
       closedOrderCount: businessState.closedOrderCount || 0,
     },
   });

@@ -1,27 +1,18 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
-import { getCurrentUser } from "@/lib/auth";
+import { authorizeApi } from "@/lib/api-auth";
 import { writeAudit } from "@/lib/audit";
 import { ensureBusinessDayState } from "@/lib/business-day";
-
-function restoredStatus(order) {
-  if (order.paymentStatus === "PAID") return "PAID";
-  if (order.kitchenStatus === "DELIVERED") return "DELIVERED";
-  return "OPEN";
-}
+import { routeOrderId } from "@/lib/orders";
+import { restoredStatus } from "@/lib/order-workflow.mjs";
 
 export async function POST(_request, { params }) {
-  const { id } = await params;
-  const user = await getCurrentUser();
+  const { user, error } = await authorizeApi("ORDER_UNARCHIVE");
+  if (error) return error;
+
+  const { id: rawId } = await params;
+  const id = routeOrderId(rawId);
   await ensureBusinessDayState();
-
-  if (!user) {
-    return NextResponse.json({ success: false, error: "Login required" }, { status: 401 });
-  }
-
-  if (!["ADMIN", "MANAGER"].includes(user.role)) {
-    return NextResponse.json({ success: false, error: "Manager permission required" }, { status: 403 });
-  }
 
   const current = await prisma.order.findUnique({ where: { id } });
 

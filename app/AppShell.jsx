@@ -3,9 +3,14 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import BusinessDayControl from "./BusinessDayControl";
+import PreferenceIconButtons from "./PreferenceIconButtons";
+import { useI18n } from "./i18n";
 
 export default function AppShell({ title, user, children }) {
   const router = useRouter();
+  const { t, labelRole } = useI18n();
+  const shellTitle = title?.startsWith("title.") ? t(title) : title;
+  const requiresDayPassword = user.role === "CASHIER" || user.role === "KITCHEN";
 
   async function logout() {
     await fetch("/api/auth/logout", { method: "POST" });
@@ -18,19 +23,20 @@ export default function AppShell({ title, user, children }) {
         <div className="brand-block">
           <img src="/bb-logo.png" alt="Billy Beez" className="brand-logo" />
           <div>
-            <div className="brand">{title}</div>
-            <div className="muted">{user.name} · {user.role}</div>
+            <div className="brand">{shellTitle}</div>
+            <div className="muted">{user.name} · {labelRole(user.role)}</div>
           </div>
         </div>
         <nav className="nav">
-          {(user.role === "ADMIN" || user.role === "MANAGER") && <Link href="/manager">Manager</Link>}
-          {(user.role === "ADMIN" || user.role === "MANAGER" || user.role === "CASHIER") && <Link href="/cashier">Cashier</Link>}
-          {(user.role === "ADMIN" || user.role === "MANAGER" || user.role === "KITCHEN") && <Link href="/kitchen">Kitchen</Link>}
-          <button className="danger" onClick={logout}>Logout</button>
+          {(user.role === "ADMIN" || user.role === "MANAGER") && <Link className="nav-manager" href="/manager">{t("nav.manager")}</Link>}
+          {(user.role === "ADMIN" || user.role === "CASHIER") && <Link className="nav-cashier" href="/cashier">{t("nav.cashier")}</Link>}
+          {(user.role === "ADMIN" || user.role === "KITCHEN") && <Link className="nav-kitchen" href="/kitchen">{t("nav.kitchen")}</Link>}
+          <button className="danger" onClick={logout}>{t("nav.logout")}</button>
+          <PreferenceIconButtons />
         </nav>
       </header>
       <main className="container">
-        <BusinessDayControl />
+        <BusinessDayControl requiresPassword={requiresDayPassword} />
         {children}
       </main>
     </div>

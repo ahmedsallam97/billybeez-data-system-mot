@@ -1,12 +1,16 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
-import { getCurrentUser } from "@/lib/auth";
+import { authorizeApi } from "@/lib/api-auth";
 import { writeAudit } from "@/lib/audit";
 import { ensureBusinessDayState } from "@/lib/business-day";
+import { routeOrderId } from "@/lib/orders";
 
 export async function POST(_request, { params }) {
-  const { id } = await params;
-  const user = await getCurrentUser();
+  const { user, error } = await authorizeApi("ORDER_DELIVER");
+  if (error) return error;
+
+  const { id: rawId } = await params;
+  const id = routeOrderId(rawId);
   await ensureBusinessDayState();
 
   const order = await prisma.order.findUnique({ where: { id } });
@@ -27,7 +31,10 @@ export async function POST(_request, { params }) {
     orderId: id,
     user,
     summary: "Marked delivered",
-    metadata: { previousKitchenStatus: order.kitchenStatus, paymentStatus: order.paymentStatus },
+    metadata: {
+      previousKitchenStatus: order.kitchenStatus,
+      paymentStatus: order.paymentStatus,
+    },
   });
 
   return NextResponse.json({ success: true });

@@ -367,10 +367,12 @@ html[dir="rtl"] .cart-panel h3{text-align:right}
 .product-name{font-weight:900;min-height:34px;color:var(--bb-purple);line-height:1.2;padding:10px 8px 0}
 .product-price{display:inline-flex;justify-content:center;justify-self:center;background:#f1e8fb;color:var(--bb-purple);border:1px solid #d8c3ee;border-radius:999px;padding:4px 9px;font-weight:900}
 .product-qty-actions,.cart-qty-actions{display:inline-grid;grid-template-columns:34px 54px 34px auto;gap:6px;align-items:center}
-.product-qty-actions{grid-template-columns:34px 54px 34px;justify-content:center}
-.qty-button{width:34px;min-width:34px;height:34px;min-height:34px;padding:0;border-radius:8px;font-size:18px;font-weight:950;line-height:1}
+.product-qty-actions{grid-template-columns:34px 54px 34px;justify-content:center;justify-self:center;width:max-content}
+.product-qty-actions .qty-button,.cart-qty-actions .qty-button{width:34px;min-width:34px;max-width:34px;height:34px;min-height:34px;padding:0;border-radius:8px;font-size:18px;font-weight:950;line-height:1}
 .qty-input{
   width:54px;
+  min-width:54px;
+  max-width:54px;
   height:34px;
   border:1px solid #d8c3ee;
   border-radius:8px;

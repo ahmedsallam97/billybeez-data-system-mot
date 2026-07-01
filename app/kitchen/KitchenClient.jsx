@@ -17,6 +17,7 @@ export default function KitchenClient() {
   const [defaultRestaurantEmployeeId, setDefaultRestaurantEmployeeId] = useState("");
   const [defaultPaymentEmployeeId, setDefaultPaymentEmployeeId] = useState("");
   const [employeeEditor, setEmployeeEditor] = useState(null);
+  const [printFrameUrl, setPrintFrameUrl] = useState("");
 
   function orderAlertClass(order) {
     if (order.archivedAt) return "archived-order";
@@ -143,7 +144,6 @@ export default function KitchenClient() {
   }
 
   async function startPreparation(orderId) {
-    const ticketWindow = window.open("about:blank", "_blank");
     const res = await fetch("/api/print-jobs", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -152,12 +152,12 @@ export default function KitchenClient() {
     const data = await res.json();
 
     if (!data.success) {
-      if (ticketWindow) ticketWindow.close();
       toast(data.error || t("kitchen.printJobFailed"), "error");
       return;
     }
 
-    if (ticketWindow) ticketWindow.location.href = `/kitchen-ticket/${orderUrlId(orderId)}`;
+    setPrintFrameUrl(`/kitchen-ticket/${orderUrlId(orderId)}?print=${Date.now()}`);
+    window.setTimeout(() => setPrintFrameUrl(""), 5000);
     toast(data.reused ? t("kitchen.printJobAlreadyQueued") : t("kitchen.printJobQueued"), "info");
     await load();
   }
@@ -414,6 +414,13 @@ export default function KitchenClient() {
           </div>
         </div>
       </div>
+    )}
+    {printFrameUrl && (
+      <iframe
+        className="print-frame"
+        src={printFrameUrl}
+        title="Kitchen ticket print"
+      />
     )}
     </>
   );

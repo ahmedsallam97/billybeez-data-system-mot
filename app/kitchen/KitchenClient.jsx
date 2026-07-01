@@ -170,7 +170,6 @@ export default function KitchenClient() {
       return;
     }
 
-    const invoiceWindow = printInvoice ? window.open("about:blank", "_blank") : null;
     const res = await fetch(`/api/orders/${orderUrlId(orderId)}/pay`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -179,13 +178,15 @@ export default function KitchenClient() {
     const data = await res.json();
 
     if (data.success) {
-      if (invoiceWindow) invoiceWindow.location.href = `/invoice/${orderUrlId(orderId)}`;
+      if (printInvoice) {
+        setPrintFrameUrl(`/invoice/${orderUrlId(orderId)}?print=${Date.now()}`);
+        window.setTimeout(() => setPrintFrameUrl(""), 5000);
+      }
       localStorage.setItem("lastPaymentEmployeeId", paymentEmployeeId);
       setEmployeeEditor(null);
       toast(t("kitchen.paymentToast", { method: labelMethod(paymentMethod) }));
       await load();
-    } else if (invoiceWindow) {
-      invoiceWindow.close();
+    } else {
       toast(data.error || t("kitchen.paymentFailed"), "error");
     }
   }

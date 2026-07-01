@@ -56,6 +56,8 @@ export default function ManagerClient() {
   const [orderItemForm, setOrderItemForm] = useState({ productId: "", qty: 1 });
   const [managerPaymentEmployeeId, setManagerPaymentEmployeeId] = useState("");
   const [managerGeideaEmployeeId, setManagerGeideaEmployeeId] = useState("");
+  const [printFrameUrl, setPrintFrameUrl] = useState("");
+  const [reportPrintHtml, setReportPrintHtml] = useState("");
 
   useEffect(() => {
     load();
@@ -98,6 +100,20 @@ export default function ManagerClient() {
 
   function orderUrlId(orderId) {
     return encodeURIComponent(orderId);
+  }
+
+  function printInvoice(orderId) {
+    setPrintFrameUrl(`/invoice/${orderUrlId(orderId)}?print=${Date.now()}`);
+    window.setTimeout(() => setPrintFrameUrl(""), 5000);
+  }
+
+  function escapeHtml(value) {
+    return String(value ?? "")
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#039;");
   }
 
   function paymentButtonClass(order, method, baseClass) {
@@ -475,23 +491,22 @@ export default function ManagerClient() {
     const review = dailyReviewRows();
     const rows = review.orders.map((order) => `
       <tr>
-        <td>${order.id}</td>
-        <td>${order.braceletNo}</td>
-        <td>${order.childNames}</td>
-        <td>${order.paymentStatus} / ${order.paymentMethod}</td>
-        <td>${order.total}</td>
+        <td>${escapeHtml(order.id)}</td>
+        <td>${escapeHtml(order.braceletNo)}</td>
+        <td>${escapeHtml(order.childNames)}</td>
+        <td>${escapeHtml(order.paymentStatus)} / ${escapeHtml(order.paymentMethod)}</td>
+        <td>${escapeHtml(order.total)}</td>
         <td>${order.geideaRegisteredAt ? "YES" : "NO"}</td>
       </tr>
     `).join("");
-    const win = window.open("", "_blank");
-    win.document.write(`
+    setReportPrintHtml(`
       <html><head><title>Daily Report</title>
       <style>body{font-family:Arial,sans-serif;padding:24px}table{width:100%;border-collapse:collapse}td,th{border:1px solid #ddd;padding:8px;text-align:start}.metrics{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin:16px 0}.metric{border:1px solid #ddd;padding:12px}</style>
       </head><body>
-      <h1>BillyBeez Daily Report - ${data?.reportBusinessDate || ""}</h1>
+      <h1>BillyBeez Daily Report - ${escapeHtml(data?.reportBusinessDate || "")}</h1>
       <div class="metrics">
-        <div class="metric"><b>Cash</b><br>${review.cash}</div>
-        <div class="metric"><b>Visa</b><br>${review.visa}</div>
+        <div class="metric"><b>Cash</b><br>${escapeHtml(review.cash)}</div>
+        <div class="metric"><b>Visa</b><br>${escapeHtml(review.visa)}</div>
         <div class="metric"><b>Not Geidea</b><br>${review.unregistered.length}</div>
         <div class="metric"><b>Left Unpaid</b><br>${review.leftUnpaid.length}</div>
       </div>
@@ -499,7 +514,7 @@ export default function ManagerClient() {
       <script>window.print()</script>
       </body></html>
     `);
-    win.document.close();
+    window.setTimeout(() => setReportPrintHtml(""), 5000);
   }
 
   if (!data) return <div className="panel">{t("common.loading")}</div>;
@@ -655,7 +670,7 @@ export default function ManagerClient() {
                 {!order.isHistory && !order.geideaRegisteredAt && <button className="btn-system" onClick={() => runOrderAction(order.id, "geidea")}>{t("manager.registerSystem")}</button>}
                 {!order.isHistory && order.geideaRegisteredAt && order.customerLeft && !order.archivedAt && <button className="btn-print" onClick={() => runOrderAction(order.id, "archive")}>{t("manager.archive")}</button>}
                 {order.archivedAt && !order.isHistory && <button className="btn-unarchive" onClick={() => runOrderAction(order.id, "unarchive")}>{t("manager.unarchive")}</button>}
-                <button className="btn-print" onClick={() => window.open(`/invoice/${orderUrlId(order.id)}`, "_blank")}>{t("common.print")}</button>
+                <button className="btn-print" onClick={() => printInvoice(order.id)}>{t("common.print")}</button>
               </div>
             </div>
           ))}
@@ -1011,10 +1026,24 @@ export default function ManagerClient() {
                 <button className="btn-print" onClick={() => runOrderAction(selectedOrder.id, "archive")}>{t("manager.archive")}</button>
               )}
               {selectedIsArchivedOrder && <button className="btn-unarchive" onClick={() => runOrderAction(selectedOrder.id, "unarchive")}>{t("manager.unarchive")}</button>}
-              <button className="btn-print" onClick={() => window.open(`/invoice/${orderUrlId(selectedOrder.id)}`, "_blank")}>{t("common.printInvoice")}</button>
+              <button className="btn-print" onClick={() => printInvoice(selectedOrder.id)}>{t("common.printInvoice")}</button>
             </div>
           </div>
         </div>
+      )}
+      {printFrameUrl && (
+        <iframe
+          className="print-frame"
+          src={printFrameUrl}
+          title="Invoice print"
+        />
+      )}
+      {reportPrintHtml && (
+        <iframe
+          className="print-frame"
+          srcDoc={reportPrintHtml}
+          title="Daily report print"
+        />
       )}
     </>
   );

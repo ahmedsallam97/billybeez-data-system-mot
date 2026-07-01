@@ -3,8 +3,9 @@ import { prisma } from "@/lib/db";
 import { authorizeApi } from "@/lib/api-auth";
 import { ensureBusinessDayState, serializeHistoryOrder } from "@/lib/business-day";
 import { includeOrderDetails, serializeOrder } from "@/lib/orders";
+import { withApiHandler } from "@/lib/api-handler";
 
-export async function GET() {
+async function getDashboard() {
   const { error } = await authorizeApi("DASHBOARD_READ");
   if (error) return error;
 
@@ -122,3 +123,5 @@ export async function GET() {
     orderHistory: serializedHistory,
   });
 }
+
+export const GET = withApiHandler(getDashboard);

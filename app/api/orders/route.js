@@ -5,8 +5,9 @@ import { writeAudit } from "@/lib/audit";
 import { ensureBusinessDayState } from "@/lib/business-day";
 import { buildOrderId, includeOrderDetails, serializeOrder, validateBracelet } from "@/lib/orders";
 import { enumValue, jsonValidationResponse, optionalString, requireArray, requireString } from "@/lib/validation";
+import { withApiHandler } from "@/lib/api-handler";
 
-export async function GET(request) {
+async function getOrders(request) {
   const { error } = await authorizeApi("ORDER_READ");
   if (error) return error;
 
@@ -32,7 +33,7 @@ export async function GET(request) {
   return NextResponse.json(orders.map(serializeOrder));
 }
 
-export async function POST(request) {
+async function postOrder(request) {
   const { user, error } = await authorizeApi("ORDER_CREATE");
   if (error) return error;
 
@@ -143,3 +144,6 @@ export async function POST(request) {
 
   return NextResponse.json({ success: true, order: serializeOrder(order) });
 }
+
+export const GET = withApiHandler(getOrders);
+export const POST = withApiHandler(postOrder);

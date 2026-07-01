@@ -5,6 +5,7 @@ import { writeAudit } from "@/lib/audit";
 import { ensureBusinessDayState } from "@/lib/business-day";
 import { routeOrderId } from "@/lib/orders";
 import { orderAuditSnapshot } from "@/lib/order-workflow";
+import { loadWorkflowRules, validateCustomerExitAllowed } from "@/lib/workflow-rules";
 
 export async function POST(request, { params }) {
   const { user, error } = await authorizeApi("ORDER_CUSTOMER_LEFT");
@@ -24,6 +25,12 @@ export async function POST(request, { params }) {
     return NextResponse.json({ success: false, error: "Order not found" }, { status: 404 });
   }
 
+  const rules = await loadWorkflowRules();
+  const exitError = nextCustomerLeft ? validateCustomerExitAllowed(current, rules) : null;
+  if (exitError) {
+    return NextResponse.json({ success: false, error: exitError.message }, { status: exitError.status });
+  }
+
   let exitEmployee = null;
 
   if (exitEmployeeId) {
@@ -36,7 +43,7 @@ export async function POST(request, { params }) {
     });
   }
 
-  if (!nextCustomerLeft && user.role === "CASHIER" && managerPassword !== "112411") {
+  if (!nextCustomerLeft && user.role === "CASHIER" && managerPassword !== rules.businessDayPassword) {
     return NextResponse.json({ success: false, error: "Manager password is required" }, { status: 403 });
   }
 

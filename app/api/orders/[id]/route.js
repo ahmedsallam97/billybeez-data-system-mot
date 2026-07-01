@@ -5,6 +5,7 @@ import { writeAudit } from "@/lib/audit";
 import { ensureBusinessDayState } from "@/lib/business-day";
 import { includeOrderDetails, routeOrderId, serializeOrder, validateBracelet } from "@/lib/orders";
 import { orderAuditSnapshot, restoredStatus } from "@/lib/order-workflow";
+import { canUserEditPaidOrder } from "@/lib/workflow-rules";
 
 export async function GET(_request, { params }) {
   const { error } = await authorizeApi("ORDER_READ");
@@ -53,7 +54,7 @@ export async function PATCH(request, { params }) {
     return NextResponse.json({ success: false, error: "Order not found" }, { status: 404 });
   }
 
-  if ((order.paymentStatus === "PAID" || order.customerLeft) && !["ADMIN", "MANAGER"].includes(user.role)) {
+  if ((order.paymentStatus === "PAID" || order.customerLeft) && !(await canUserEditPaidOrder(user))) {
     return NextResponse.json({ success: false, error: "Closed or paid orders can only be edited by manager" }, { status: 403 });
   }
 

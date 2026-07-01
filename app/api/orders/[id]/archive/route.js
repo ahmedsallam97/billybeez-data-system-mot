@@ -5,6 +5,7 @@ import { writeAudit } from "@/lib/audit";
 import { ensureBusinessDayState } from "@/lib/business-day";
 import { routeOrderId } from "@/lib/orders";
 import { orderAuditSnapshot } from "@/lib/order-workflow";
+import { loadWorkflowRules, validateArchiveAllowed } from "@/lib/workflow-rules";
 
 export async function POST(_request, { params }) {
   const { user, error } = await authorizeApi("ORDER_ARCHIVE");
@@ -20,12 +21,9 @@ export async function POST(_request, { params }) {
     return NextResponse.json({ success: false, error: "Order not found" }, { status: 404 });
   }
 
-  if (!current.geideaRegisteredAt) {
-    return NextResponse.json({ success: false, error: "Order must be registered on Geidea first" }, { status: 400 });
-  }
-
-  if (!current.customerLeft) {
-    return NextResponse.json({ success: false, error: "Customer must be marked as left first" }, { status: 400 });
+  const archiveError = validateArchiveAllowed(current, await loadWorkflowRules());
+  if (archiveError) {
+    return NextResponse.json({ success: false, error: archiveError.message }, { status: archiveError.status });
   }
 
   const updatedOrder = await prisma.order.update({

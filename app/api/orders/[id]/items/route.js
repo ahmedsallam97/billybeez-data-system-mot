@@ -5,6 +5,7 @@ import { writeAudit } from "@/lib/audit";
 import { ensureBusinessDayState } from "@/lib/business-day";
 import { routeOrderId } from "@/lib/orders";
 import { orderAuditSnapshot, restoredStatus } from "@/lib/order-workflow";
+import { canUserEditPaidOrder } from "@/lib/workflow-rules";
 
 export async function POST(request, { params }) {
   const { user, error } = await authorizeApi("ORDER_EDIT_ITEMS");
@@ -25,7 +26,7 @@ export async function POST(request, { params }) {
     return NextResponse.json({ success: false, error: "Order not found" }, { status: 404 });
   }
 
-  if (order.paymentStatus === "PAID" && !["ADMIN", "MANAGER"].includes(user.role)) {
+  if (order.paymentStatus === "PAID" && !(await canUserEditPaidOrder(user))) {
     return NextResponse.json({ success: false, error: "Paid orders can only be edited by manager" }, { status: 403 });
   }
 
@@ -86,7 +87,7 @@ export async function DELETE(request, { params }) {
   const { user, error } = await authorizeApi("ORDER_EDIT_ITEMS");
   if (error) return error;
 
-  if (!["ADMIN", "MANAGER"].includes(user.role)) {
+  if (!(await canUserEditPaidOrder(user))) {
     return NextResponse.json({ success: false, error: "Only manager can remove items" }, { status: 403 });
   }
 

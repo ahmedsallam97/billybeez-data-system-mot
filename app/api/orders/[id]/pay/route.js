@@ -5,6 +5,7 @@ import { writeAudit } from "@/lib/audit";
 import { ensureBusinessDayState } from "@/lib/business-day";
 import { routeOrderId } from "@/lib/orders";
 import { orderAuditSnapshot } from "@/lib/order-workflow";
+import { loadWorkflowRules, validatePaymentAllowed } from "@/lib/workflow-rules";
 
 export async function POST(request, { params }) {
   const { user, error } = await authorizeApi("ORDER_PAY");
@@ -20,6 +21,13 @@ export async function POST(request, { params }) {
 
   if (!current) {
     return NextResponse.json({ success: false, error: "Order not found" }, { status: 404 });
+  }
+
+  const rules = await loadWorkflowRules();
+  const paymentError = validatePaymentAllowed(current, rules);
+  const isEmployeeOnlyUpdate = current.paymentStatus === "PAID" && user.role === "KITCHEN";
+  if (paymentError && !isEmployeeOnlyUpdate) {
+    return NextResponse.json({ success: false, error: paymentError.message }, { status: paymentError.status });
   }
 
   let paymentEmployee = null;
@@ -40,7 +48,7 @@ export async function POST(request, { params }) {
 
   const order = await prisma.order.update({
     where: { id },
-    data: current.paymentStatus === "PAID" && user.role === "KITCHEN"
+    data: isEmployeeOnlyUpdate
       ? { paymentEmployeeId: paymentEmployee?.id || current.paymentEmployeeId }
       : {
           paymentStatus: "PAID",
@@ -60,11 +68,11 @@ export async function POST(request, { params }) {
       paymentMethod: order.paymentMethod,
       total: order.total,
       paymentEmployee: paymentEmployee?.name || null,
-      employeeOnlyUpdate: current.paymentStatus === "PAID" && user.role === "KITCHEN",
+      employeeOnlyUpdate: isEmployeeOnlyUpdate,
     },
     before: orderAuditSnapshot(current),
     after: orderAuditSnapshot(order),
-    reason: current.paymentStatus === "PAID" && user.role === "KITCHEN" ? "Updated payment receiver" : `Marked order paid by ${paymentMethod}`,
+    reason: isEmployeeOnlyUpdate ? "Updated payment receiver" : `Marked order paid by ${paymentMethod}`,
   });
 
   return NextResponse.json({ success: true });

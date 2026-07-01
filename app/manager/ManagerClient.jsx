@@ -77,6 +77,27 @@ const emptyUserForm = {
   active: true,
 };
 
+function emptyDashboardData() {
+  return {
+    businessState: null,
+    reportBusinessDate: "",
+    totalSales: 0,
+    ordersCount: 0,
+    unpaidOrders: 0,
+    leftUnpaid: 0,
+    orders: [],
+    orderHistory: [],
+    paymentBreakdown: [],
+    statusBreakdown: [],
+    topProducts: [],
+    topBracelets: [],
+    cashierPerformance: [],
+    dataEmployeePerformance: [],
+    dailySales: [],
+    auditLogs: [],
+  };
+}
+
 export default function ManagerClient() {
   const toast = useToast();
   const { t, formatNumber, currency, labelAudit, labelBusinessMessage, labelDepartment, labelMethod, labelOrderStage, labelStatus, formatDateTime } = useI18n();
@@ -107,6 +128,7 @@ export default function ManagerClient() {
   const [settingsMap, setSettingsMap] = useState({});
   const [backups, setBackups] = useState([]);
   const [rolePermissions, setRolePermissions] = useState(normalizeRolePermissions());
+  const [loadError, setLoadError] = useState("");
 
   useEffect(() => {
     load();
@@ -121,36 +143,72 @@ export default function ManagerClient() {
   }, [selectedOrder, employees, products]);
 
   async function load() {
-    const [dashboardRes, employeesRes, productsRes, usersRes, settingsRes, backupsRes] = await Promise.all([
-      fetch("/api/dashboard"),
-      fetch("/api/employees?department=ALL&includeInactive=true"),
-      fetch("/api/products?includeInactive=true"),
-      fetch("/api/users"),
-      fetch("/api/settings"),
-      fetch("/api/backups"),
-    ]);
-    const [dashboardData, employeesData, productsData, usersData, settingsData, backupsData] = await Promise.all([
-      dashboardRes.json(),
-      employeesRes.json(),
-      productsRes.json(),
-      usersRes.json(),
-      settingsRes.json(),
-      backupsRes.json(),
-    ]);
+    setLoadError("");
 
-    setData(dashboardData);
-    setEmployees(employeesData);
-    setProducts(productsData);
-    setUsers(Array.isArray(usersData) ? usersData : []);
-    const nextSettingsMap = Object.fromEntries((settingsData.settings || []).map((setting) => [setting.key, setting.value]));
-    setSettingsMap(nextSettingsMap);
-    setUiMessages(normalizeUiMessages(nextSettingsMap.UI_MESSAGE_CONFIG));
-    setRolePermissions(normalizeRolePermissions(nextSettingsMap.ROLE_PERMISSION_CONFIG));
-    const employeeStyleSetting = settingsData.settings?.find((item) => item.key === "EMPLOYEE_NAME_STYLE_CONFIG");
-    const normalizedEmployeeStyles = normalizeEmployeeNameStyles(employeeStyleSetting?.value);
-    setEmployeeNameStyles(normalizedEmployeeStyles);
-    applyEmployeeNameStyles(normalizedEmployeeStyles);
-    setBackups(Array.isArray(backupsData.backups) ? backupsData.backups : []);
+    try {
+      const [dashboardData, employeesData, productsData, usersData, settingsData, backupsData] = await Promise.all([
+        fetchJson("/api/dashboard", emptyDashboardData(), t("manager.tabOrders")),
+        fetchJson("/api/employees?department=ALL&includeInactive=true", [], t("settings.employeeManagement")),
+        fetchJson("/api/products?includeInactive=true", [], t("settings.productManagement")),
+        fetchJson("/api/users", [], t("settings.userPermissions")),
+        fetchJson("/api/settings", { settings: [] }, t("manager.tabSettings")),
+        fetchJson("/api/backups", { backups: [] }, t("settings.backupRestore")),
+      ]);
+
+      const settingsList = Array.isArray(settingsData.settings) ? settingsData.settings : [];
+      const nextSettingsMap = Object.fromEntries(settingsList.map((setting) => [setting.key, setting.value]));
+      const employeeStyleSetting = settingsList.find((item) => item.key === "EMPLOYEE_NAME_STYLE_CONFIG");
+      const normalizedEmployeeStyles = normalizeEmployeeNameStyles(employeeStyleSetting?.value);
+
+      setData({ ...emptyDashboardData(), ...(dashboardData || {}) });
+      setEmployees(Array.isArray(employeesData) ? employeesData : []);
+      setProducts(Array.isArray(productsData) ? productsData : []);
+      setUsers(Array.isArray(usersData) ? usersData : []);
+      setSettingsMap(nextSettingsMap);
+      setUiMessages(normalizeUiMessages(nextSettingsMap.UI_MESSAGE_CONFIG));
+      setRolePermissions(normalizeRolePermissions(nextSettingsMap.ROLE_PERMISSION_CONFIG));
+      setEmployeeNameStyles(normalizedEmployeeStyles);
+      applyEmployeeNameStyles(normalizedEmployeeStyles);
+      setBackups(Array.isArray(backupsData.backups) ? backupsData.backups : []);
+    } catch (error) {
+      const message = error?.message || t("manager.loadFailed");
+      console.error("[manager-load]", error);
+      setLoadError(message);
+      toast(message, "error");
+      setData((current) => current || emptyDashboardData());
+    }
+  }
+
+  async function fetchJson(endpoint, fallback, label) {
+    const controller = new AbortController();
+    const timer = window.setTimeout(() => controller.abort(), 12000);
+
+    try {
+      const res = await fetch(endpoint, { signal: controller.signal });
+      const text = await res.text();
+      let parsed = fallback;
+
+      if (text) {
+        try {
+          parsed = JSON.parse(text);
+        } catch {
+          throw new Error(`${label}: ${t("manager.invalidResponse")}`);
+        }
+      }
+
+      if (!res.ok || parsed?.success === false) {
+        throw new Error(parsed?.error || `${label}: ${res.status}`);
+      }
+
+      return parsed ?? fallback;
+    } catch (error) {
+      if (error?.name === "AbortError") {
+        throw new Error(`${label}: ${t("manager.requestTimeout")}`);
+      }
+      throw error;
+    } finally {
+      window.clearTimeout(timer);
+    }
   }
 
   function orderAlertClass(order) {
@@ -978,6 +1036,13 @@ export default function ManagerClient() {
 
   return (
     <>
+      {loadError && (
+        <section className="panel warning manager-load-error" role="alert">
+          <span>{loadError}</span>
+          <button type="button" className="secondary" onClick={load}>{t("common.refresh")}</button>
+        </section>
+      )}
+
       <section className="grid five">
         <Metric label={t("manager.totalPaidSales")} value={currency(data.totalSales)} />
         <Metric label={t("manager.orders")} value={formatNumber(data.ordersCount)} />

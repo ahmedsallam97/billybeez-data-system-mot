@@ -520,6 +520,8 @@ html[data-theme="red"] .login-page .login-box button[type="submit"]:not(:disable
 .message{color:var(--bb-red-dark);min-height:22px}
 .warning{min-height:41px;display:flex;align-items:center;justify-content:center;background:#fde5eb;border:1px solid #f3a2b2;color:var(--bb-red-dark);border-radius:8px;padding:8px 12px;margin-top:8px;font-weight:800;text-align:center}
 .warning-orange{background:#ffe2c2;border-color:#e66b00;color:#8f3400}
+.manager-load-error{justify-content:space-between;gap:12px;margin-top:14px}
+.manager-load-error button{margin:0}
 .summary{background:#fffdf4;border:1px solid var(--bb-line);border-radius:8px;padding:10px}
 .bar-row{display:grid;grid-template-columns:100px 1fr auto;gap:8px;align-items:center;font-size:13px}
 .bar-track{height:10px;background:#f2e9cf;border-radius:999px;overflow:hidden}

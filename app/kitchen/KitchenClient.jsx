@@ -334,7 +334,14 @@ export default function KitchenClient() {
             </div>
             {!showArchive && (
               <div className="actions">
-                <button className="btn-start-prep" onClick={() => startPreparation(order.id)}>{t("kitchen.startPreparation")}</button>
+                <button
+                  className="btn-start-prep"
+                  disabled={Boolean(order.kitchenPrintJob)}
+                  title={order.kitchenPrintJob ? t("printJob.PENDING") : ""}
+                  onClick={() => startPreparation(order.id)}
+                >
+                  {t("kitchen.startPreparation")}
+                </button>
                 <button className="btn-deliver" disabled={order.kitchenStatus === "DELIVERED"} onClick={() => deliver(order.id)}>{t("kitchen.markDelivered")}</button>
                 {order.paymentStatus === "PAID" ? (
                   <button

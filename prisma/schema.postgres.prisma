@@ -41,6 +41,17 @@ enum EmployeeDepartment {
   RESTAURANT
 }
 
+enum PrintJobType {
+  KITCHEN
+  INVOICE
+}
+
+enum PrintJobStatus {
+  PENDING
+  PRINTED
+  FAILED
+}
+
 model User {
   id        String   @id @default(cuid())
   name      String
@@ -127,6 +138,7 @@ model Order {
   exitEmployee    Employee?   @relation("OrderExitEmployee", fields: [exitEmployeeId], references: [id])
   items           OrderItem[]
   auditLogs       AuditLog[]
+  printJobs       PrintJob[]
 
   @@index([businessDate])
   @@index([archivedAt])
@@ -161,6 +173,25 @@ model AuditLog {
   user  User?  @relation(fields: [userId], references: [id], onDelete: SetNull)
 
   @@index([orderReference])
+  @@index([createdAt])
+}
+
+model PrintJob {
+  id          String         @id @default(cuid())
+  orderId     String
+  type        PrintJobType
+  status      PrintJobStatus @default(PENDING)
+  printerName String?
+  payload     String
+  error       String?
+  printedAt   DateTime?
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+
+  order Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@index([status])
+  @@index([type])
   @@index([createdAt])
 }
 

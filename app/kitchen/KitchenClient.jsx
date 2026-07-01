@@ -142,8 +142,24 @@ export default function KitchenClient() {
     await load();
   }
 
-  function startPreparation(orderId) {
-    window.open(`/kitchen-ticket/${orderUrlId(orderId)}`, "_blank");
+  async function startPreparation(orderId) {
+    const ticketWindow = window.open("about:blank", "_blank");
+    const res = await fetch("/api/print-jobs", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ orderId, type: "KITCHEN" }),
+    });
+    const data = await res.json();
+
+    if (!data.success) {
+      if (ticketWindow) ticketWindow.close();
+      toast(data.error || t("kitchen.printJobFailed"), "error");
+      return;
+    }
+
+    if (ticketWindow) ticketWindow.location.href = `/kitchen-ticket/${orderUrlId(orderId)}`;
+    toast(data.reused ? t("kitchen.printJobAlreadyQueued") : t("kitchen.printJobQueued"), "info");
+    await load();
   }
 
   async function pay(orderId, paymentMethod, printInvoice = true) {
@@ -309,6 +325,11 @@ export default function KitchenClient() {
                 </div>
               )}
               {showArchive && <div className="archive-alert-line">{t("common.archivedAt")}: {formatDateTime(order.archivedAt)}</div>}
+              {order.kitchenPrintJob && (
+                <div className={`print-job-alert print-job-${String(order.kitchenPrintJob.status).toLowerCase()}`}>
+                  {t(`printJob.${order.kitchenPrintJob.status}`)}
+                </div>
+              )}
             </div>
             {!showArchive && (
               <div className="actions">

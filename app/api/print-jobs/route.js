@@ -1,0 +1,100 @@
+import { NextResponse } from "next/server";
+import { prisma } from "@/lib/db";
+import { authorizeApi } from "@/lib/api-auth";
+import { writeAudit } from "@/lib/audit";
+import { includeOrderDetails, routeOrderId, serializeOrder } from "@/lib/orders";
+
+function serializePrintJob(job) {
+  return {
+    id: job.id,
+    orderId: job.orderId,
+    type: job.type,
+    status: job.status,
+    printerName: job.printerName || "",
+    error: job.error || "",
+    printedAt: job.printedAt,
+    createdAt: job.createdAt,
+    updatedAt: job.updatedAt,
+    payload: job.payload ? JSON.parse(job.payload) : null,
+  };
+}
+
+export async function GET(request) {
+  const { error } = await authorizeApi("PRINT_JOB_READ");
+  if (error) return error;
+
+  const { searchParams } = new URL(request.url);
+  const status = searchParams.get("status") || "PENDING";
+  const type = searchParams.get("type") || "KITCHEN";
+
+  const jobs = await prisma.printJob.findMany({
+    where: { status, type },
+    orderBy: { createdAt: "asc" },
+    take: 50,
+  });
+
+  return NextResponse.json({ success: true, jobs: jobs.map(serializePrintJob) });
+}
+
+export async function POST(request) {
+  const { user, error } = await authorizeApi("PRINT_JOB_CREATE");
+  if (error) return error;
+
+  const body = await request.json().catch(() => ({}));
+  const orderId = routeOrderId(body.orderId);
+  const type = body.type === "INVOICE" ? "INVOICE" : "KITCHEN";
+  const printerName = String(body.printerName || "").trim() || null;
+
+  const order = await prisma.order.findUnique({
+    where: { id: orderId },
+    include: includeOrderDetails(),
+  });
+
+  if (!order) {
+    return NextResponse.json({ success: false, error: "Order not found" }, { status: 404 });
+  }
+
+  const existingPending = await prisma.printJob.findFirst({
+    where: { orderId, type, status: "PENDING" },
+    orderBy: { createdAt: "desc" },
+  });
+
+  if (existingPending) {
+    return NextResponse.json({ success: true, job: serializePrintJob(existingPending), reused: true });
+  }
+
+  const serializedOrder = serializeOrder(order);
+  delete serializedOrder.kitchenPrintJob;
+
+  const payload = {
+    order: serializedOrder,
+    requestedBy: {
+      id: user.id,
+      name: user.name,
+      role: user.role,
+    },
+  };
+
+  const job = await prisma.printJob.create({
+    data: {
+      orderId,
+      type,
+      printerName,
+      payload: JSON.stringify(payload),
+    },
+  });
+
+  await writeAudit({
+    action: "PRINT_JOB_CREATED",
+    orderId,
+    user,
+    summary: `Created ${type.toLowerCase()} print job`,
+    metadata: {
+      printJobId: job.id,
+      type,
+      printerName,
+    },
+  });
+
+  return NextResponse.json({ success: true, job: serializePrintJob(job) });
+}

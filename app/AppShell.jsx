@@ -10,7 +10,7 @@ export default function AppShell({ title, user, children }) {
   const router = useRouter();
   const { t, labelRole } = useI18n();
   const shellTitle = title?.startsWith("title.") ? t(title) : title;
-  const requiresDayPassword = user.role === "CASHIER" || user.role === "KITCHEN";
+  const canManageBusinessDay = title === "title.manager" && (user.role === "ADMIN" || user.role === "MANAGER");
 
   async function logout() {
     await fetch("/api/auth/logout", { method: "POST" });
@@ -36,7 +36,7 @@ export default function AppShell({ title, user, children }) {
         </nav>
       </header>
       <main className="container">
-        <BusinessDayControl requiresPassword={requiresDayPassword} />
+        <BusinessDayControl showActions={canManageBusinessDay} />
         {children}
       </main>
     </div>

@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { useToast } from "./ToastProvider";
 import { useI18n } from "./i18n";
 
-export default function BusinessDayControl({ requiresPassword = false }) {
+export default function BusinessDayControl({ requiresPassword = false, showActions = true }) {
   const toast = useToast();
   const { t, labelBusinessMessage } = useI18n();
   const [businessState, setBusinessState] = useState(null);
@@ -56,38 +56,40 @@ export default function BusinessDayControl({ requiresPassword = false }) {
         <b>{businessState?.isOpen ? t("business.open") : t("business.closed")}</b>
         <span>{businessState?.businessDate || "-"} · {labelBusinessMessage(businessState?.message)}</span>
       </div>
-      <div className={`business-day-actions ${requiresPassword ? "requires-password" : ""}`}>
-        {requiresPassword && (
-          <input
-            value={password}
-            onChange={(event) => setPassword(event.target.value)}
-            placeholder={t("business.password")}
-            type="password"
-            name="business-day-control-code"
-            inputMode="numeric"
-            autoComplete="new-password"
-            autoCorrect="off"
-            spellCheck={false}
-            data-lpignore="true"
-            data-1p-ignore="true"
-            data-form-type="other"
-          />
-        )}
-        <button
-          className="btn-confirm"
-          disabled={!businessState || Boolean(busyAction) || businessState.isOpen || (requiresPassword && !password)}
-          onClick={() => runAction("open")}
-        >
-          {t("business.openDay")}
-        </button>
-        <button
-          className="danger"
-          disabled={!businessState || Boolean(busyAction) || !businessState.isOpen || (requiresPassword && !password)}
-          onClick={() => runAction("close")}
-        >
-          {t("business.closeDay")}
-        </button>
-      </div>
+      {showActions && (
+        <div className={`business-day-actions ${requiresPassword ? "requires-password" : ""}`}>
+          {requiresPassword && (
+            <input
+              value={password}
+              onChange={(event) => setPassword(event.target.value)}
+              placeholder={t("business.password")}
+              type="password"
+              name="business-day-control-code"
+              inputMode="numeric"
+              autoComplete="new-password"
+              autoCorrect="off"
+              spellCheck={false}
+              data-lpignore="true"
+              data-1p-ignore="true"
+              data-form-type="other"
+            />
+          )}
+          <button
+            className="btn-confirm"
+            disabled={!businessState || Boolean(busyAction) || businessState.isOpen || (requiresPassword && !password)}
+            onClick={() => runAction("open")}
+          >
+            {t("business.openDay")}
+          </button>
+          <button
+            className="danger"
+            disabled={!businessState || Boolean(busyAction) || !businessState.isOpen || (requiresPassword && !password)}
+            onClick={() => runAction("close")}
+          >
+            {t("business.closeDay")}
+          </button>
+        </div>
+      )}
     </section>
   );
 }

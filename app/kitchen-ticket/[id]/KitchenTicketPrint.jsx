@@ -2,26 +2,11 @@
 
 import { useEffect } from "react";
 import { useI18n } from "../../i18n";
+import { filterKitchenTicketItems } from "../../../lib/kitchen-ticket-rules";
 
-const kitchenCategoryPatterns = [
-  /meal/i,
-  /sandwich/i,
-  /burger/i,
-  /وجبات/,
-  /وجبة/,
-  /ساند/,
-  /برجر/,
-];
-
-function isKitchenItem(item) {
-  const category = `${item.categoryName || ""} ${item.name || ""}`;
-  return kitchenCategoryPatterns.some((pattern) => pattern.test(category));
-}
-
-export default function KitchenTicketPrint({ order }) {
+export default function KitchenTicketPrint({ order, ticketRules }) {
   const { t, formatNumber, formatDateTime } = useI18n();
-  const matchedItems = (order.items || []).filter(isKitchenItem);
-  const items = matchedItems.length ? matchedItems : (order.items || []);
+  const { matchedItems, items } = filterKitchenTicketItems(order.items || [], ticketRules);
 
   useEffect(() => {
     const timer = setTimeout(() => window.print(), 700);
@@ -48,7 +33,9 @@ export default function KitchenTicketPrint({ order }) {
       <div className="receipt-rule" />
 
       <div className="kitchen-ticket-items">
-        {items.map((item) => (
+        {items.length === 0 ? (
+          <div className="receipt-center muted">{t("kitchenTicket.noMatchedItems")}</div>
+        ) : items.map((item) => (
           <div className="kitchen-ticket-item" key={item.id}>
             <b>{formatNumber(item.qty)} x</b>
             <span>{item.name}</span>
@@ -59,7 +46,7 @@ export default function KitchenTicketPrint({ order }) {
       <div className="receipt-rule" />
 
       <div className="receipt-center kitchen-ticket-note">
-        {matchedItems.length ? t("kitchenTicket.filtered") : t("kitchenTicket.allItems")}
+        {items.length === 0 ? t("kitchenTicket.noMatchedItems") : matchedItems.length ? t("kitchenTicket.filtered") : t("kitchenTicket.allItems")}
       </div>
       <button className="no-print" onClick={() => window.print()}>{t("common.print")}</button>
     </div>

@@ -5,6 +5,7 @@ import { useToast } from "../ToastProvider";
 import { useI18n } from "../i18n";
 import { applyEmployeeNameStyles, employeeGenderClass, normalizeEmployeeNameStyles } from "../employeeDisplay";
 import { formatUiMessage, normalizeUiMessages, uiMessageKeys, uiMessageStyle } from "../uiMessages";
+import { kitchenTicketRuleValue, parseKitchenTicketRules } from "../../lib/kitchen-ticket-rules";
 
 const roles = ["ADMIN", "MANAGER", "CASHIER", "KITCHEN"];
 const permissionKeys = [
@@ -205,9 +206,81 @@ export default function ManagerClient() {
   }
 
   function renderSettingsFields(fields) {
+    const categoryOptions = [...new Map(products.map((product) => [
+      product.categoryId || product.categoryName,
+      {
+        id: product.categoryId || product.categoryName,
+        name: product.categoryName || product.categoryId,
+      },
+    ]).filter(([id]) => Boolean(id))).values()];
+
+    function updateKitchenTicketRules(part, value, checked) {
+      const currentRules = parseKitchenTicketRules(settingsMap.KITCHEN_TICKET_CATEGORIES);
+      const selected = new Set(currentRules[part] || []);
+
+      if (checked) {
+        selected.add(value);
+      } else {
+        selected.delete(value);
+      }
+
+      updateSettingValue("KITCHEN_TICKET_CATEGORIES", kitchenTicketRuleValue({
+        ...currentRules,
+        [part]: [...selected],
+      }));
+    }
+
+    function renderKitchenTicketRules(field) {
+      const rules = parseKitchenTicketRules(settingsMap[field.key]);
+      const selectedCategoryIds = new Set(rules.categoryIds || []);
+      const selectedCategoryNames = new Set((rules.categoryNames || []).map((name) => String(name || "").toLowerCase()));
+      const selectedProductIds = new Set(rules.productIds || []);
+
+      return (
+        <div className="admin-setting-field kitchen-ticket-settings">
+          <span>{field.label}</span>
+          <div className="settings-check-grid">
+            <div>
+              <b>{t("settings.kitchenTicketCategoryList")}</b>
+              <div className="settings-check-list">
+                {categoryOptions.map((category) => (
+                  <label className="toggle-row" key={category.id}>
+                    <input
+                      type="checkbox"
+                      checked={selectedCategoryIds.has(category.id) || selectedCategoryNames.has(String(category.name || "").toLowerCase())}
+                      onChange={(event) => updateKitchenTicketRules("categoryIds", category.id, event.target.checked)}
+                    />
+                    <span>{category.name}</span>
+                  </label>
+                ))}
+              </div>
+            </div>
+            <div>
+              <b>{t("settings.kitchenTicketProductList")}</b>
+              <div className="settings-check-list">
+                {products.map((product) => (
+                  <label className="toggle-row" key={product.id}>
+                    <input
+                      type="checkbox"
+                      checked={selectedProductIds.has(product.id)}
+                      onChange={(event) => updateKitchenTicketRules("productIds", product.id, event.target.checked)}
+                    />
+                    <span>{product.name} <small>{product.categoryName}</small></span>
+                  </label>
+                ))}
+              </div>
+            </div>
+          </div>
+          <small className="muted">{t("settings.kitchenTicketRulesHint")}</small>
+        </div>
+      );
+    }
+
     return (
       <div className="admin-settings-grid">
-        {fields.map((field) => (
+        {fields.map((field) => field.type === "kitchenTicketRules" ? (
+          <div key={field.key}>{renderKitchenTicketRules(field)}</div>
+        ) : (
           <label className="admin-setting-field" key={field.key}>
             <span>{field.label}</span>
             {field.type === "select" ? (
@@ -943,7 +1016,7 @@ export default function ManagerClient() {
       { key: "PRINT_COPIES_KITCHEN", label: t("settings.kitchenCopies"), type: "number", min: 1 },
       { key: "PRINT_AUTO_INVOICE", label: t("settings.autoInvoicePrint"), type: "checkbox" },
       { key: "PRINT_AUTO_KITCHEN", label: t("settings.autoKitchenPrint"), type: "checkbox" },
-      { key: "KITCHEN_TICKET_CATEGORIES", label: t("settings.kitchenTicketCategories") },
+      { key: "KITCHEN_TICKET_CATEGORIES", label: t("settings.kitchenTicketCategories"), type: "kitchenTicketRules" },
     ],
     business: [
       { key: "BUSINESS_OPEN_HOUR", label: t("settings.openHour"), type: "number", min: 0 },

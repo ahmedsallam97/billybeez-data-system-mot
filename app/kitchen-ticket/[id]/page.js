@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
 import { includeOrderDetails, routeOrderId, serializeOrder } from "@/lib/orders";
+import { getSetting } from "@/lib/settings";
 import KitchenTicketPrint from "./KitchenTicketPrint";
 
 export default async function KitchenTicketPage({ params }) {
@@ -17,5 +18,7 @@ export default async function KitchenTicketPage({ params }) {
     return <div className="invoice">Kitchen ticket not found</div>;
   }
 
-  return <KitchenTicketPrint order={serializeOrder(order)} />;
+  const ticketRules = await getSetting("KITCHEN_TICKET_CATEGORIES", "");
+
+  return <KitchenTicketPrint order={serializeOrder(order)} ticketRules={ticketRules} />;
 }

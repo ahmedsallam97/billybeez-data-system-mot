@@ -5,6 +5,8 @@ import { writeAudit } from "@/lib/audit";
 import { includeOrderDetails, routeOrderId, serializeOrder } from "@/lib/orders";
 import { nextSequence } from "@/lib/numbering";
 import { nextWorkflowState, orderAuditSnapshot } from "@/lib/order-workflow";
+import { filterKitchenTicketItems } from "@/lib/kitchen-ticket-rules";
+import { getSetting } from "@/lib/settings";
 
 function serializePrintJob(job) {
   return {
@@ -68,6 +70,11 @@ export async function POST(request) {
 
   const serializedOrder = serializeOrder(order);
   delete serializedOrder.kitchenPrintJob;
+
+  if (type === "KITCHEN") {
+    const ticketRules = await getSetting("KITCHEN_TICKET_CATEGORIES", "");
+    serializedOrder.items = filterKitchenTicketItems(serializedOrder.items, ticketRules).items;
+  }
 
   const payload = {
     order: serializedOrder,

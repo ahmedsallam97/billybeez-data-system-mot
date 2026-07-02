@@ -7,7 +7,7 @@ export default async function KitchenPage() {
 
   return (
     <AppShell title="title.kitchen" user={user}>
-      <KitchenClient />
+      <KitchenClient user={user} />
     </AppShell>
   );
 }

@@ -64,13 +64,15 @@ export async function POST(request) {
     return NextResponse.json({ success: false, error: "Child name is required" }, { status: 400 });
   }
 
-  if (!body.dataEmployeeId) {
+  const dataEmployeeId = user.employee?.department === "OPERATION" ? user.employeeId : body.dataEmployeeId;
+
+  if (!dataEmployeeId) {
     return NextResponse.json({ success: false, error: "Employee is required" }, { status: 400 });
   }
 
   const dataEmployee = await prisma.employee.findFirst({
     where: {
-      id: body.dataEmployeeId,
+      id: dataEmployeeId,
       active: true,
       department: "OPERATION",
     },
@@ -120,7 +122,7 @@ export async function POST(request) {
       workflowState: "OPEN",
       paymentMethod: enumValue(body.paymentMethod, ["CASH", "VISA"], "CASH"),
       cashierId: user.id,
-      dataEmployeeId: body.dataEmployeeId,
+      dataEmployeeId,
       items: { create: orderItems },
     },
     include: includeOrderDetails(),

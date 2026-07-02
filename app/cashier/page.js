@@ -7,7 +7,7 @@ export default async function CashierPage() {
 
   return (
     <AppShell title="title.cashier" user={user}>
-      <CashierClient />
+      <CashierClient user={user} />
     </AppShell>
   );
 }

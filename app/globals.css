@@ -388,6 +388,7 @@ html[dir="rtl"] .cart-panel h3{text-align:right}
 .cart-qty-actions b{min-width:92px;text-align:end}
 .muted{color:var(--bb-muted)}
 .block{display:block}
+.employee-fixed-value{min-height:44px;display:flex;align-items:center;justify-content:center;border:1px solid var(--bb-line);border-radius:8px;background:#f7fbff;font-weight:900}
 .row{display:flex;justify-content:space-between;gap:10px;border-bottom:1px solid var(--bb-line);padding:8px 0}
 .row:last-child{border-bottom:0}
 .order-total-row{

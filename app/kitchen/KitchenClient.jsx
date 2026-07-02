@@ -6,7 +6,7 @@ import { useI18n } from "../i18n";
 import { applyEmployeeNameStyles, employeeGenderClass } from "../employeeDisplay";
 import { formatUiMessage, normalizeUiMessages, uiMessageStyle } from "../uiMessages";
 
-export default function KitchenClient() {
+export default function KitchenClient({ user }) {
   const toast = useToast();
   const { t, formatNumber, currency, labelMethod, labelOrderStage, labelStatus, formatDateTime } = useI18n();
   const [orders, setOrders] = useState([]);
@@ -20,6 +20,8 @@ export default function KitchenClient() {
   const [employeeEditor, setEmployeeEditor] = useState(null);
   const [printFrameUrl, setPrintFrameUrl] = useState("");
   const [uiMessages, setUiMessages] = useState(normalizeUiMessages());
+  const linkedRestaurantEmployeeId = user?.employee?.department === "RESTAURANT" ? user.employeeId : "";
+  const linkedRestaurantEmployeeName = user?.employee?.department === "RESTAURANT" ? user.employee.name : "";
 
   function orderAlertClass(order) {
     if (order.archivedAt) return "archived-order";
@@ -114,14 +116,18 @@ export default function KitchenClient() {
     setRestaurantEmployees(employees);
 
     const lastEmployeeId = localStorage.getItem("lastRestaurantEmployeeId") || "";
-    if (employees.some((employee) => employee.id === lastEmployeeId)) {
+    if (linkedRestaurantEmployeeId) {
+      setDefaultRestaurantEmployeeId(linkedRestaurantEmployeeId);
+    } else if (employees.some((employee) => employee.id === lastEmployeeId)) {
       setDefaultRestaurantEmployeeId(lastEmployeeId);
     } else {
       setDefaultRestaurantEmployeeId("");
     }
 
     const lastPaymentEmployeeId = localStorage.getItem("lastPaymentEmployeeId") || "";
-    if (employees.some((employee) => employee.id === lastPaymentEmployeeId)) {
+    if (linkedRestaurantEmployeeId) {
+      setDefaultPaymentEmployeeId(linkedRestaurantEmployeeId);
+    } else if (employees.some((employee) => employee.id === lastPaymentEmployeeId)) {
       setDefaultPaymentEmployeeId(lastPaymentEmployeeId);
     } else {
       setDefaultPaymentEmployeeId(employees[0]?.id || "");
@@ -129,21 +135,21 @@ export default function KitchenClient() {
   }
 
   function selectedPaymentEmployeeId(orderId) {
-    return paymentEmployeeByOrder[orderId] || defaultPaymentEmployeeId;
+    return linkedRestaurantEmployeeId || paymentEmployeeByOrder[orderId] || defaultPaymentEmployeeId;
   }
 
   function selectPaymentEmployee(orderId, employeeId) {
     setPaymentEmployeeByOrder((current) => ({ ...current, [orderId]: employeeId }));
-    localStorage.setItem("lastPaymentEmployeeId", employeeId);
+    if (!linkedRestaurantEmployeeId) localStorage.setItem("lastPaymentEmployeeId", employeeId);
   }
 
   function selectedGeideaEmployeeId(orderId) {
-    return geideaEmployeeByOrder[orderId] || defaultRestaurantEmployeeId;
+    return linkedRestaurantEmployeeId || geideaEmployeeByOrder[orderId] || defaultRestaurantEmployeeId;
   }
 
   function selectGeideaEmployee(orderId, employeeId) {
     setGeideaEmployeeByOrder((current) => ({ ...current, [orderId]: employeeId }));
-    localStorage.setItem("lastRestaurantEmployeeId", employeeId);
+    if (!linkedRestaurantEmployeeId) localStorage.setItem("lastRestaurantEmployeeId", employeeId);
   }
 
   async function deliver(orderId) {
@@ -204,7 +210,7 @@ export default function KitchenClient() {
         setPrintFrameUrl(`/invoice/${orderUrlId(orderId)}?print=${Date.now()}`);
         window.setTimeout(() => setPrintFrameUrl(""), 5000);
       }
-      localStorage.setItem("lastPaymentEmployeeId", paymentEmployeeId);
+      if (!linkedRestaurantEmployeeId) localStorage.setItem("lastPaymentEmployeeId", paymentEmployeeId);
       setEmployeeEditor(null);
       toast(
         formatUiMessage(uiMessages.paymentSaved, { method: labelMethod(paymentMethod) }),
@@ -228,7 +234,7 @@ export default function KitchenClient() {
 
   function selectedEditorEmployeeName() {
     const employeeId = selectedEditorEmployeeId();
-    return restaurantEmployees.find((employee) => employee.id === employeeId)?.name || "-";
+    return linkedRestaurantEmployeeName || restaurantEmployees.find((employee) => employee.id === employeeId)?.name || "-";
   }
 
   function editorSaveLabel() {
@@ -254,6 +260,18 @@ export default function KitchenClient() {
   function saveEditorAction() {
     if (employeeEditor.type === "payment") return pay(employeeEditor.order.id, employeeEditor.method || employeeEditor.order.paymentMethod || "CASH", !employeeEditor.order.paymentStatus || employeeEditor.order.paymentStatus !== "PAID");
     return registerGeidea(employeeEditor.order.id);
+  }
+
+  function openEmployeeAction(order, type, method) {
+    if (linkedRestaurantEmployeeId) {
+      if (type === "payment") {
+        pay(order.id, method || order.paymentMethod || "CASH", !order.paymentStatus || order.paymentStatus !== "PAID");
+      } else {
+        registerGeidea(order.id);
+      }
+      return;
+    }
+    setEmployeeEditor({ order, type, method });
   }
 
   async function registerGeidea(orderId) {
@@ -403,16 +421,16 @@ export default function KitchenClient() {
                 {order.paymentStatus === "PAID" ? (
                   <button
                     className={paymentButtonClass(order, order.paymentMethod, order.paymentMethod === "VISA" ? "btn-pay-visa" : "btn-pay-cash")}
-                    onClick={() => setEmployeeEditor({ order, type: "payment", method: order.paymentMethod })}
+                    onClick={() => openEmployeeAction(order, "payment", order.paymentMethod)}
                   >
                     {paidPaymentLabel(order)}
                   </button>
                 ) : (
                   <>
-                    <button className={paymentButtonClass(order, "CASH", "btn-pay-cash")} onClick={() => setEmployeeEditor({ order, type: "payment", method: "CASH" })}>
+                    <button className={paymentButtonClass(order, "CASH", "btn-pay-cash")} onClick={() => openEmployeeAction(order, "payment", "CASH")}>
                       {t("common.cash")}
                     </button>
-                    <button className={paymentButtonClass(order, "VISA", "btn-pay-visa")} onClick={() => setEmployeeEditor({ order, type: "payment", method: "VISA" })}>
+                    <button className={paymentButtonClass(order, "VISA", "btn-pay-visa")} onClick={() => openEmployeeAction(order, "payment", "VISA")}>
                       {t("common.visa")}
                     </button>
                   </>
@@ -421,7 +439,7 @@ export default function KitchenClient() {
                   <button
                     className="btn-system"
                     disabled={order.kitchenStatus !== "DELIVERED" || order.paymentStatus !== "PAID"}
-                    onClick={() => setEmployeeEditor({ order, type: "geidea" })}
+                    onClick={() => openEmployeeAction(order, "geidea")}
                   >
                     {t("kitchen.registerSystem")}
                   </button>

@@ -15,7 +15,7 @@ export async function POST(request, { params }) {
   const id = routeOrderId(rawId);
   await ensureBusinessDayState();
   const body = await request.json().catch(() => ({}));
-  const exitEmployeeId = String(body.exitEmployeeId || "");
+  const exitEmployeeId = String(user.employee?.department === "OPERATION" ? user.employeeId : body.exitEmployeeId || "");
   const nextCustomerLeft = body.customerLeft === false ? false : true;
   const managerPassword = String(body.managerPassword || "");
 

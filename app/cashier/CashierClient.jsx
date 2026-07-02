@@ -6,7 +6,7 @@ import { useI18n } from "../i18n";
 import { applyEmployeeNameStyles, employeeGenderClass } from "../employeeDisplay";
 import { formatUiMessage, normalizeUiMessages, uiMessageStyle } from "../uiMessages";
 
-export default function CashierClient() {
+export default function CashierClient({ user }) {
   const toast = useToast();
   const { t, formatNumber, currency, labelCategory, labelMethod, labelOrderStage, labelStatus, formatDateTime } = useI18n();
   const fallbackImage = "/products/fallback.jpg";
@@ -32,6 +32,8 @@ export default function CashierClient() {
   const [employeeEditor, setEmployeeEditor] = useState(null);
   const [entryPassword, setEntryPassword] = useState("");
   const [uiMessages, setUiMessages] = useState(normalizeUiMessages());
+  const linkedOperationEmployeeId = user?.employee?.department === "OPERATION" ? user.employeeId : "";
+  const linkedOperationEmployeeName = user?.employee?.department === "OPERATION" ? user.employee.name : "";
 
   useEffect(() => {
     load(showArchived);
@@ -71,12 +73,14 @@ export default function CashierClient() {
     });
 
     const lastEmployee = localStorage.getItem("lastDataEmployeeId");
-    setDataEmployeeId(lastEmployee || employeesData[0]?.id || "");
+    setDataEmployeeId(linkedOperationEmployeeId || lastEmployee || employeesData[0]?.id || "");
 
     const operationEmployees = employeesData.filter((employee) => employee.department === "OPERATION");
     const lastExitEmployee = localStorage.getItem("lastExitEmployeeId") || "";
     setDefaultExitEmployeeId(
-      operationEmployees.some((employee) => employee.id === lastExitEmployee)
+      linkedOperationEmployeeId
+        ? linkedOperationEmployeeId
+        : operationEmployees.some((employee) => employee.id === lastExitEmployee)
         ? lastExitEmployee
         : operationEmployees[0]?.id || ""
     );
@@ -113,18 +117,18 @@ export default function CashierClient() {
   }
 
   function selectedExitEmployeeId(orderId) {
-    return exitEmployeeByOrder[orderId] || defaultExitEmployeeId;
+    return linkedOperationEmployeeId || exitEmployeeByOrder[orderId] || defaultExitEmployeeId;
   }
 
   function selectExitEmployee(orderId, employeeId) {
     setExitEmployeeByOrder((current) => ({ ...current, [orderId]: employeeId }));
-    localStorage.setItem("lastExitEmployeeId", employeeId);
+    if (!linkedOperationEmployeeId) localStorage.setItem("lastExitEmployeeId", employeeId);
   }
 
   function exitEmployeeName(order) {
     if (order.exitEmployee) return order.exitEmployee;
     const selectedId = selectedExitEmployeeId(order.id);
-    return operationEmployees.find((employee) => employee.id === selectedId)?.name || "";
+    return linkedOperationEmployeeName || operationEmployees.find((employee) => employee.id === selectedId)?.name || "";
   }
 
   function orderStageClass(order) {
@@ -243,7 +247,7 @@ export default function CashierClient() {
         braceletNo,
         customerPhone,
         childNames,
-        dataEmployeeId,
+        dataEmployeeId: linkedOperationEmployeeId || dataEmployeeId,
         paymentMethod,
         items: cart,
       }),
@@ -257,7 +261,7 @@ export default function CashierClient() {
     }
 
     toast(t("cashier.saved", { id: data.order.id }));
-    localStorage.setItem("lastDataEmployeeId", dataEmployeeId);
+    if (!linkedOperationEmployeeId) localStorage.setItem("lastDataEmployeeId", dataEmployeeId);
     setEditingOrder(null);
     setBraceletNo("");
     setCustomerPhone("");
@@ -366,6 +370,10 @@ export default function CashierClient() {
 
   function openExitFlow(order) {
     setEntryPassword("");
+    if (!order.customerLeft && linkedOperationEmployeeId) {
+      markCustomerLeft(order.id);
+      return;
+    }
     setEmployeeEditor(order);
   }
 
@@ -474,14 +482,20 @@ export default function CashierClient() {
               <select value={childCount} onChange={(event) => setChildren(Number(event.target.value))}>
                 {[1, 2, 3, 4, 5, 6].map((count) => <option key={count} value={count}>{t("cashier.childCount", { count })}</option>)}
               </select>
-              <select
-                className={employeeGenderClass(employees.find((employee) => employee.id === dataEmployeeId)?.name)}
-                value={dataEmployeeId}
-                onChange={(event) => setDataEmployeeId(event.target.value)}
-              >
-                <option value="">{t("common.employee")}</option>
-                {employees.map((employee) => <option className={employeeGenderClass(employee.name)} key={employee.id} value={employee.id}>{employee.name}</option>)}
-              </select>
+              {linkedOperationEmployeeId ? (
+                <div className={`employee-fixed-value ${employeeGenderClass(linkedOperationEmployeeName)}`}>
+                  {linkedOperationEmployeeName}
+                </div>
+              ) : (
+                <select
+                  className={employeeGenderClass(employees.find((employee) => employee.id === dataEmployeeId)?.name)}
+                  value={dataEmployeeId}
+                  onChange={(event) => setDataEmployeeId(event.target.value)}
+                >
+                  <option value="">{t("common.employee")}</option>
+                  {employees.map((employee) => <option className={employeeGenderClass(employee.name)} key={employee.id} value={employee.id}>{employee.name}</option>)}
+                </select>
+              )}
             </div>
             <div className="form-grid child-fields">
               {childNames.map((name, index) => (
@@ -669,6 +683,10 @@ export default function CashierClient() {
                   data-1p-ignore="true"
                   data-form-type="other"
                 />
+              ) : linkedOperationEmployeeId ? (
+                <div className={`employee-fixed-value ${employeeGenderClass(linkedOperationEmployeeName)}`}>
+                  {linkedOperationEmployeeName}
+                </div>
               ) : (
                 <select
                   className={`employee-select-line modal-select ${employeeGenderClass(operationEmployees.find((employee) => employee.id === selectedExitEmployeeId(employeeEditor.id))?.name)}`}

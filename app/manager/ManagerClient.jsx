@@ -211,15 +211,13 @@ export default function ManagerClient() {
           <label className="admin-setting-field" key={field.key}>
             <span>{field.label}</span>
             {field.type === "select" ? (
-              <select name={field.key} aria-label={field.label} value={settingsMap[field.key] ?? field.defaultValue ?? ""} onChange={(event) => updateSettingValue(field.key, event.target.value)}>
+              <select value={settingsMap[field.key] ?? field.defaultValue ?? ""} onChange={(event) => updateSettingValue(field.key, event.target.value)}>
                 {field.options.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
               </select>
             ) : field.type === "checkbox" ? (
               <span className="toggle-row setting-toggle">
                 <input
                   type="checkbox"
-                  name={field.key}
-                  aria-label={field.label}
                   checked={["1", "true", "yes", "on"].includes(String(settingsMap[field.key] ?? field.defaultValue ?? "").toLowerCase())}
                   onChange={(event) => updateSettingValue(field.key, event.target.checked ? "true" : "false")}
                 />
@@ -229,8 +227,6 @@ export default function ManagerClient() {
               <input
                 type={field.type || "text"}
                 min={field.min}
-                name={field.key}
-                aria-label={field.label}
                 value={settingsMap[field.key] ?? field.defaultValue ?? ""}
                 onChange={(event) => updateSettingValue(field.key, event.target.value)}
               />
@@ -1044,7 +1040,7 @@ export default function ManagerClient() {
           ))}
         </div>}
         <div className="form-grid manager-filter-grid">
-          <input name="manager-order-search" aria-label={t("manager.searchPlaceholder")} value={query} onChange={(event) => setQuery(event.target.value)} placeholder={t("manager.searchPlaceholder")} />
+          <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder={t("manager.searchPlaceholder")} />
           <button className="secondary" onClick={() => setQuery("")}>{t("common.clearFilters")}</button>
         </div>
         <div className="row"><span>{t("common.visibleOrders")}</span><b>{formatNumber(visibleOrders.length)}</b></div>
@@ -1209,15 +1205,11 @@ export default function ManagerClient() {
         </div>
         <div className="form-grid employee-form-grid">
           <input
-            name="employee-name"
-            aria-label={t("manager.employeeName")}
             value={employeeForm.name}
             onChange={(event) => setEmployeeForm((current) => ({ ...current, name: event.target.value }))}
             placeholder={t("manager.employeeName")}
           />
           <select
-            name="employee-department"
-            aria-label={t("common.department")}
             value={employeeForm.department}
             onChange={(event) => setEmployeeForm((current) => ({ ...current, department: event.target.value }))}
           >
@@ -1227,8 +1219,6 @@ export default function ManagerClient() {
           <label className="toggle-row">
             <input
               type="checkbox"
-              name="employee-active"
-              aria-label={employeeForm.active ? t("common.active") : t("common.inactive")}
               checked={employeeForm.active}
               onChange={(event) => setEmployeeForm((current) => ({ ...current, active: event.target.checked }))}
             />
@@ -1255,26 +1245,26 @@ export default function ManagerClient() {
                 <div className="ui-message-fields">
                   <label>
                     <span>{t("manager.textColor")}</span>
-                    <input type="color" name={`${group}-employee-color`} aria-label={`${label} ${t("manager.textColor")}`} value={employeeNameStyles[group].color} onChange={(event) => updateEmployeeNameStyle(group, "color", event.target.value)} />
+                    <input type="color" value={employeeNameStyles[group].color} onChange={(event) => updateEmployeeNameStyle(group, "color", event.target.value)} />
                   </label>
                   <label>
                     <span>{t("manager.fontSize")}</span>
-                    <input type="number" name={`${group}-employee-font-size`} aria-label={`${label} ${t("manager.fontSize")}`} min="10" max="28" value={employeeNameStyles[group].fontSize} onChange={(event) => updateEmployeeNameStyle(group, "fontSize", event.target.value)} />
+                    <input type="number" min="10" max="28" value={employeeNameStyles[group].fontSize} onChange={(event) => updateEmployeeNameStyle(group, "fontSize", event.target.value)} />
                   </label>
                   <label>
                     <span>{t("manager.fontWeight")}</span>
-                    <input type="number" name={`${group}-employee-font-weight`} aria-label={`${label} ${t("manager.fontWeight")}`} min="400" max="950" step="50" value={employeeNameStyles[group].fontWeight} onChange={(event) => updateEmployeeNameStyle(group, "fontWeight", event.target.value)} />
+                    <input type="number" min="400" max="950" step="50" value={employeeNameStyles[group].fontWeight} onChange={(event) => updateEmployeeNameStyle(group, "fontWeight", event.target.value)} />
                   </label>
                   <label>
                     <span>{t("manager.fontStyle")}</span>
-                    <select name={`${group}-employee-font-style`} aria-label={`${label} ${t("manager.fontStyle")}`} value={employeeNameStyles[group].fontStyle} onChange={(event) => updateEmployeeNameStyle(group, "fontStyle", event.target.value)}>
+                    <select value={employeeNameStyles[group].fontStyle} onChange={(event) => updateEmployeeNameStyle(group, "fontStyle", event.target.value)}>
                       <option value="normal">{t("manager.fontStyleNormal")}</option>
                       <option value="italic">{t("manager.fontStyleItalic")}</option>
                     </select>
                   </label>
                   <label>
                     <span>{t("manager.fontFamily")}</span>
-                    <select name={`${group}-employee-font-family`} aria-label={`${label} ${t("manager.fontFamily")}`} value={employeeNameStyles[group].fontFamily} onChange={(event) => updateEmployeeNameStyle(group, "fontFamily", event.target.value)}>
+                    <select value={employeeNameStyles[group].fontFamily} onChange={(event) => updateEmployeeNameStyle(group, "fontFamily", event.target.value)}>
                       <option value="">{t("manager.fontFamilyDefault")}</option>
                       <option value="Tajawal">Tajawal</option>
                       <option value="Arial">Arial</option>
@@ -1288,13 +1278,13 @@ export default function ManagerClient() {
           </div>
         </div>
         <div className="form-grid settings-filter-grid">
-          <input name="employee-search" aria-label={t("manager.employeeSearch")} value={employeeFilter.query} onChange={(event) => setEmployeeFilter((current) => ({ ...current, query: event.target.value }))} placeholder={t("manager.employeeSearch")} />
-          <select name="employee-filter-department" aria-label={t("common.department")} value={employeeFilter.department} onChange={(event) => setEmployeeFilter((current) => ({ ...current, department: event.target.value }))}>
+          <input value={employeeFilter.query} onChange={(event) => setEmployeeFilter((current) => ({ ...current, query: event.target.value }))} placeholder={t("manager.employeeSearch")} />
+          <select value={employeeFilter.department} onChange={(event) => setEmployeeFilter((current) => ({ ...current, department: event.target.value }))}>
             <option value="ALL">{t("common.all")}</option>
             <option value="OPERATION">{labelDepartment("OPERATION")}</option>
             <option value="RESTAURANT">{labelDepartment("RESTAURANT")}</option>
           </select>
-          <select name="employee-filter-status" aria-label={t("common.status")} value={employeeFilter.status} onChange={(event) => setEmployeeFilter((current) => ({ ...current, status: event.target.value }))}>
+          <select value={employeeFilter.status} onChange={(event) => setEmployeeFilter((current) => ({ ...current, status: event.target.value }))}>
             <option value="ALL">{t("common.all")}</option>
             <option value="ACTIVE">{t("common.active")}</option>
             <option value="INACTIVE">{t("common.inactive")}</option>
@@ -1335,31 +1325,31 @@ export default function ManagerClient() {
           {productForm.id && <button className="danger" onClick={resetProductForm}>{t("common.cancel")}</button>}
         </div>
         <div className="form-grid product-form-grid">
-          <input name="product-name" aria-label={t("manager.productName")} value={productForm.name} onChange={(event) => setProductForm((current) => ({ ...current, name: event.target.value }))} placeholder={t("manager.productName")} />
-          <input name="product-price" aria-label={t("manager.productPrice")} type="number" min="0" value={productForm.price} onChange={(event) => setProductForm((current) => ({ ...current, price: event.target.value }))} placeholder={t("manager.productPrice")} />
-          <input name="product-category" aria-label={t("manager.categoryName")} value={productForm.categoryName} onChange={(event) => setProductForm((current) => ({ ...current, categoryName: event.target.value, categoryId: event.target.value }))} placeholder={t("manager.categoryName")} />
-          <input name="product-image-url" aria-label={t("manager.productImage")} value={productForm.imageUrl} onChange={(event) => setProductForm((current) => ({ ...current, imageUrl: event.target.value }))} placeholder={t("manager.productImage")} />
+          <input value={productForm.name} onChange={(event) => setProductForm((current) => ({ ...current, name: event.target.value }))} placeholder={t("manager.productName")} />
+          <input type="number" min="0" value={productForm.price} onChange={(event) => setProductForm((current) => ({ ...current, price: event.target.value }))} placeholder={t("manager.productPrice")} />
+          <input value={productForm.categoryName} onChange={(event) => setProductForm((current) => ({ ...current, categoryName: event.target.value, categoryId: event.target.value }))} placeholder={t("manager.categoryName")} />
+          <input value={productForm.imageUrl} onChange={(event) => setProductForm((current) => ({ ...current, imageUrl: event.target.value }))} placeholder={t("manager.productImage")} />
           <label className="toggle-row">
-            <input type="checkbox" name="product-popular" aria-label={t("manager.popularProduct")} checked={productForm.popular} onChange={(event) => setProductForm((current) => ({ ...current, popular: event.target.checked }))} />
+            <input type="checkbox" checked={productForm.popular} onChange={(event) => setProductForm((current) => ({ ...current, popular: event.target.checked }))} />
             <span>{t("manager.popularProduct")}</span>
           </label>
           <label className="toggle-row">
-            <input type="checkbox" name="product-active" aria-label={productForm.active ? t("common.active") : t("common.inactive")} checked={productForm.active} onChange={(event) => setProductForm((current) => ({ ...current, active: event.target.checked }))} />
+            <input type="checkbox" checked={productForm.active} onChange={(event) => setProductForm((current) => ({ ...current, active: event.target.checked }))} />
             <span>{productForm.active ? t("common.active") : t("common.inactive")}</span>
           </label>
           <button className="btn-confirm" onClick={saveProduct}>{productForm.id ? t("manager.updateProduct") : t("manager.addProduct")}</button>
         </div>
         <div className="form-grid settings-filter-grid product-settings-filter">
-          <input name="product-search" aria-label={t("manager.productSearch")} value={productFilter.query} onChange={(event) => setProductFilter((current) => ({ ...current, query: event.target.value }))} placeholder={t("manager.productSearch")} />
-          <select name="product-filter-category" aria-label={t("manager.categoryName")} value={productFilter.category} onChange={(event) => setProductFilter((current) => ({ ...current, category: event.target.value }))}>
+          <input value={productFilter.query} onChange={(event) => setProductFilter((current) => ({ ...current, query: event.target.value }))} placeholder={t("manager.productSearch")} />
+          <select value={productFilter.category} onChange={(event) => setProductFilter((current) => ({ ...current, category: event.target.value }))}>
             {productCategories.map((category) => <option key={category} value={category}>{category === "ALL" ? t("common.all") : category}</option>)}
           </select>
-          <select name="product-filter-status" aria-label={t("common.status")} value={productFilter.status} onChange={(event) => setProductFilter((current) => ({ ...current, status: event.target.value }))}>
+          <select value={productFilter.status} onChange={(event) => setProductFilter((current) => ({ ...current, status: event.target.value }))}>
             <option value="ALL">{t("common.all")}</option>
             <option value="ACTIVE">{t("common.active")}</option>
             <option value="INACTIVE">{t("common.inactive")}</option>
           </select>
-          <select name="product-filter-popular" aria-label={t("manager.popularProduct")} value={productFilter.popular} onChange={(event) => setProductFilter((current) => ({ ...current, popular: event.target.value }))}>
+          <select value={productFilter.popular} onChange={(event) => setProductFilter((current) => ({ ...current, popular: event.target.value }))}>
             <option value="ALL">{t("common.all")}</option>
             <option value="POPULAR">{t("manager.popularProduct")}</option>
             <option value="REGULAR">{t("manager.regularProduct")}</option>
@@ -1400,12 +1390,11 @@ export default function ManagerClient() {
           {userForm.id && <button className="danger" onClick={resetUserForm}>{t("common.cancel")}</button>}
         </div>
         <div className="form-grid user-form-grid">
-          <input name="managed-user-name" aria-label={t("common.name")} value={userForm.name} onChange={(event) => setUserForm((current) => ({ ...current, name: event.target.value }))} placeholder={t("common.name")} />
-          <input name="managed-user-username" aria-label={t("login.username")} value={userForm.username} onChange={(event) => setUserForm((current) => ({ ...current, username: event.target.value }))} placeholder={t("login.username")} />
+          <input value={userForm.name} onChange={(event) => setUserForm((current) => ({ ...current, name: event.target.value }))} placeholder={t("common.name")} />
+          <input value={userForm.username} onChange={(event) => setUserForm((current) => ({ ...current, username: event.target.value }))} placeholder={t("login.username")} />
           <input
             type="password"
             name="managed-user-new-password"
-            aria-label={userForm.id ? t("manager.passwordOptional") : t("login.password")}
             value={userForm.password}
             onChange={(event) => setUserForm((current) => ({ ...current, password: event.target.value }))}
             placeholder={userForm.id ? t("manager.passwordOptional") : t("login.password")}
@@ -1416,22 +1405,22 @@ export default function ManagerClient() {
             data-1p-ignore="true"
             data-form-type="other"
           />
-          <select name="managed-user-role" aria-label="Role" value={userForm.role} onChange={(event) => setUserForm((current) => ({ ...current, role: event.target.value }))}>
+          <select value={userForm.role} onChange={(event) => setUserForm((current) => ({ ...current, role: event.target.value }))}>
             {["ADMIN", "MANAGER", "CASHIER", "KITCHEN"].map((role) => <option key={role} value={role}>{t(`role.${role}`)}</option>)}
           </select>
           <label className="toggle-row">
-            <input type="checkbox" name="managed-user-active" aria-label={userForm.active ? t("common.active") : t("common.inactive")} checked={userForm.active} onChange={(event) => setUserForm((current) => ({ ...current, active: event.target.checked }))} />
+            <input type="checkbox" checked={userForm.active} onChange={(event) => setUserForm((current) => ({ ...current, active: event.target.checked }))} />
             <span>{userForm.active ? t("common.active") : t("common.inactive")}</span>
           </label>
           <button className="btn-confirm" onClick={saveUser}>{userForm.id ? t("manager.updateUser") : t("manager.addUser")}</button>
         </div>
         <div className="form-grid settings-filter-grid">
-          <input name="user-search" aria-label={t("manager.userSearch")} value={userFilter.query} onChange={(event) => setUserFilter((current) => ({ ...current, query: event.target.value }))} placeholder={t("manager.userSearch")} />
-          <select name="user-filter-role" aria-label="Role" value={userFilter.role} onChange={(event) => setUserFilter((current) => ({ ...current, role: event.target.value }))}>
+          <input value={userFilter.query} onChange={(event) => setUserFilter((current) => ({ ...current, query: event.target.value }))} placeholder={t("manager.userSearch")} />
+          <select value={userFilter.role} onChange={(event) => setUserFilter((current) => ({ ...current, role: event.target.value }))}>
             <option value="ALL">{t("common.all")}</option>
             {["ADMIN", "MANAGER", "CASHIER", "KITCHEN"].map((role) => <option key={role} value={role}>{t(`role.${role}`)}</option>)}
           </select>
-          <select name="user-filter-status" aria-label={t("common.status")} value={userFilter.status} onChange={(event) => setUserFilter((current) => ({ ...current, status: event.target.value }))}>
+          <select value={userFilter.status} onChange={(event) => setUserFilter((current) => ({ ...current, status: event.target.value }))}>
             <option value="ALL">{t("common.all")}</option>
             <option value="ACTIVE">{t("common.active")}</option>
             <option value="INACTIVE">{t("common.inactive")}</option>
@@ -1479,8 +1468,6 @@ export default function ManagerClient() {
                   <label className="role-check" key={role}>
                     <input
                       type="checkbox"
-                      name={`permission-${permission}-${role}`}
-                      aria-label={`${t(`permission.${permission}`)} ${t(`role.${role}`)}`}
                       checked={(rolePermissions[permission] || []).includes(role)}
                       onChange={() => toggleRolePermission(permission, role)}
                     />
@@ -1552,8 +1539,6 @@ export default function ManagerClient() {
                   <span className="muted">{key}</span>
                 </div>
                 <textarea
-                  name={`ui-message-${key}`}
-                  aria-label={t(`uiMessage.${key}`)}
                   value={message.text}
                   onChange={(event) => updateUiMessage(key, "text", event.target.value)}
                   rows={3}
@@ -1562,31 +1547,31 @@ export default function ManagerClient() {
                 <div className="ui-message-fields">
                   <label>
                     <span>{t("manager.backgroundColor")}</span>
-                    <input type="color" name={`ui-message-${key}-background`} aria-label={`${t(`uiMessage.${key}`)} ${t("manager.backgroundColor")}`} value={message.backgroundColor} onChange={(event) => updateUiMessage(key, "backgroundColor", event.target.value)} />
+                    <input type="color" value={message.backgroundColor} onChange={(event) => updateUiMessage(key, "backgroundColor", event.target.value)} />
                   </label>
                   <label>
                     <span>{t("manager.textColor")}</span>
-                    <input type="color" name={`ui-message-${key}-text-color`} aria-label={`${t(`uiMessage.${key}`)} ${t("manager.textColor")}`} value={message.textColor} onChange={(event) => updateUiMessage(key, "textColor", event.target.value)} />
+                    <input type="color" value={message.textColor} onChange={(event) => updateUiMessage(key, "textColor", event.target.value)} />
                   </label>
                   <label>
                     <span>{t("manager.borderColor")}</span>
-                    <input type="color" name={`ui-message-${key}-border-color`} aria-label={`${t(`uiMessage.${key}`)} ${t("manager.borderColor")}`} value={message.borderColor} onChange={(event) => updateUiMessage(key, "borderColor", event.target.value)} />
+                    <input type="color" value={message.borderColor} onChange={(event) => updateUiMessage(key, "borderColor", event.target.value)} />
                   </label>
                   <label>
                     <span>{t("manager.fontSize")}</span>
-                    <input type="number" name={`ui-message-${key}-font-size`} aria-label={`${t(`uiMessage.${key}`)} ${t("manager.fontSize")}`} min="10" max="28" value={message.fontSize} onChange={(event) => updateUiMessage(key, "fontSize", event.target.value)} />
+                    <input type="number" min="10" max="28" value={message.fontSize} onChange={(event) => updateUiMessage(key, "fontSize", event.target.value)} />
                   </label>
                   <label>
                     <span>{t("manager.fontWeight")}</span>
-                    <input type="number" name={`ui-message-${key}-font-weight`} aria-label={`${t(`uiMessage.${key}`)} ${t("manager.fontWeight")}`} min="400" max="950" step="50" value={message.fontWeight} onChange={(event) => updateUiMessage(key, "fontWeight", event.target.value)} />
+                    <input type="number" min="400" max="950" step="50" value={message.fontWeight} onChange={(event) => updateUiMessage(key, "fontWeight", event.target.value)} />
                   </label>
                   <label>
                     <span>{t("manager.minHeight")}</span>
-                    <input type="number" name={`ui-message-${key}-min-height`} aria-label={`${t(`uiMessage.${key}`)} ${t("manager.minHeight")}`} min="24" max="90" value={message.minHeight} onChange={(event) => updateUiMessage(key, "minHeight", event.target.value)} />
+                    <input type="number" min="24" max="90" value={message.minHeight} onChange={(event) => updateUiMessage(key, "minHeight", event.target.value)} />
                   </label>
                   <label>
                     <span>{t("manager.radius")}</span>
-                    <input type="number" name={`ui-message-${key}-radius`} aria-label={`${t(`uiMessage.${key}`)} ${t("manager.radius")}`} min="0" max="24" value={message.radius} onChange={(event) => updateUiMessage(key, "radius", event.target.value)} />
+                    <input type="number" min="0" max="24" value={message.radius} onChange={(event) => updateUiMessage(key, "radius", event.target.value)} />
                   </label>
                 </div>
                 <div className="ui-message-preview" style={uiMessageStyle(message)}>
@@ -1684,14 +1669,13 @@ export default function ManagerClient() {
             {selectedIsEditableOrder && (
               <div className="manager-order-tools">
                 <div className="form-grid manager-order-edit-grid">
-                  <select name="manager-order-product" aria-label={t("manager.addItem")} value={orderItemForm.productId} onChange={(event) => setOrderItemForm((current) => ({ ...current, productId: event.target.value }))}>
+                  <select value={orderItemForm.productId} onChange={(event) => setOrderItemForm((current) => ({ ...current, productId: event.target.value }))}>
                     {products.map((product) => <option key={product.id} value={product.id}>{product.name} - {currency(product.price)}</option>)}
                   </select>
                   <input
                     type="number"
                     min="1"
                     value={orderItemForm.qty}
-                    name="manager-order-item-qty"
                     onChange={(event) => setOrderItemForm((current) => ({ ...current, qty: Math.max(1, Number(event.target.value) || 1) }))}
                     aria-label={t("common.qty")}
                   />
@@ -1699,8 +1683,6 @@ export default function ManagerClient() {
                 </div>
                 <div className="form-grid manager-order-edit-grid">
                   <select
-                    name="manager-payment-employee"
-                    aria-label={t("manager.selectReceiver")}
                     className={employeeGenderClass(restaurantEmployees().find((employee) => employee.id === managerPaymentEmployeeId)?.name)}
                     value={managerPaymentEmployeeId}
                     onChange={(event) => setManagerPaymentEmployeeId(event.target.value)}
@@ -1717,8 +1699,6 @@ export default function ManagerClient() {
                 </div>
                 <div className="form-grid manager-order-edit-grid">
                   <select
-                    name="manager-geidea-employee"
-                    aria-label={t("manager.selectGeideaEmployee")}
                     className={employeeGenderClass(restaurantEmployees().find((employee) => employee.id === managerGeideaEmployeeId)?.name)}
                     value={managerGeideaEmployeeId}
                     onChange={(event) => setManagerGeideaEmployeeId(event.target.value)}

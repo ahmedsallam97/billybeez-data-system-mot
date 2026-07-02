@@ -64,7 +64,6 @@ export default function BusinessDayControl({ requiresPassword = false }) {
             placeholder={t("business.password")}
             type="password"
             name="business-day-control-code"
-            aria-label={t("business.password")}
             inputMode="numeric"
             autoComplete="new-password"
             autoCorrect="off"

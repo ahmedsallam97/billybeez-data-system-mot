@@ -30,13 +30,11 @@ async function postLogin(request) {
   const body = await request.json().catch(() => ({}));
   const username = String(body.username || "").trim();
   const password = String(body.password || "");
-  const rate = process.env.NODE_ENV === "production"
-    ? rateLimit({
-        key: loginRateLimitKey(request, username),
-        limit: 8,
-        windowMs: 10 * 60 * 1000,
-      })
-    : { allowed: true, resetAt: Date.now() };
+  const rate = rateLimit({
+    key: loginRateLimitKey(request, username),
+    limit: 8,
+    windowMs: 10 * 60 * 1000,
+  });
 
   if (!username || !password || username.length > 80 || password.length > 200) {
     await recordLoginAudit({ action: "LOGIN_FAILED", username, request });

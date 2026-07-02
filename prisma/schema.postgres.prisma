@@ -63,17 +63,21 @@ enum PrintJobStatus {
 }
 
 model User {
-  id        String   @id @default(cuid())
-  name      String
-  username  String   @unique
-  password  String
-  role      Role
-  active    Boolean  @default(true)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id         String   @id @default(cuid())
+  name       String
+  username   String   @unique
+  password   String
+  role       Role
+  active     Boolean  @default(true)
+  employeeId String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
 
+  employee  Employee?  @relation("EmployeeLoginUsers", fields: [employeeId], references: [id], onDelete: SetNull)
   orders    Order[]    @relation("CashierOrders")
   auditLogs AuditLog[]
+
+  @@index([employeeId])
 }
 
 model Employee {
@@ -84,11 +88,12 @@ model Employee {
   createdAt  DateTime           @default(now())
   updatedAt  DateTime           @updatedAt
 
-  dataOrders    Order[] @relation("OrderDataEmployee")
+  dataOrders     Order[] @relation("OrderDataEmployee")
   deliveryOrders Order[] @relation("OrderDeliveryEmployee")
-  geideaOrders  Order[] @relation("OrderGeideaEmployee")
-  paymentOrders Order[] @relation("OrderPaymentEmployee")
-  exitOrders    Order[] @relation("OrderExitEmployee")
+  geideaOrders   Order[] @relation("OrderGeideaEmployee")
+  paymentOrders  Order[] @relation("OrderPaymentEmployee")
+  exitOrders     Order[] @relation("OrderExitEmployee")
+  loginUsers     User[]  @relation("EmployeeLoginUsers")
 }
 
 model Category {
@@ -141,15 +146,15 @@ model Order {
   createdAt          DateTime      @default(now())
   updatedAt          DateTime      @updatedAt
 
-  cashier         User?       @relation("CashierOrders", fields: [cashierId], references: [id])
-  dataEmployee    Employee?   @relation("OrderDataEmployee", fields: [dataEmployeeId], references: [id])
-  deliveryEmployee Employee?  @relation("OrderDeliveryEmployee", fields: [deliveryEmployeeId], references: [id])
-  geideaEmployee  Employee?   @relation("OrderGeideaEmployee", fields: [geideaEmployeeId], references: [id])
-  paymentEmployee Employee?   @relation("OrderPaymentEmployee", fields: [paymentEmployeeId], references: [id])
-  exitEmployee    Employee?   @relation("OrderExitEmployee", fields: [exitEmployeeId], references: [id])
-  items           OrderItem[]
-  auditLogs       AuditLog[]
-  printJobs       PrintJob[]
+  cashier          User?       @relation("CashierOrders", fields: [cashierId], references: [id])
+  dataEmployee     Employee?   @relation("OrderDataEmployee", fields: [dataEmployeeId], references: [id])
+  deliveryEmployee Employee?   @relation("OrderDeliveryEmployee", fields: [deliveryEmployeeId], references: [id])
+  geideaEmployee   Employee?   @relation("OrderGeideaEmployee", fields: [geideaEmployeeId], references: [id])
+  paymentEmployee  Employee?   @relation("OrderPaymentEmployee", fields: [paymentEmployeeId], references: [id])
+  exitEmployee     Employee?   @relation("OrderExitEmployee", fields: [exitEmployeeId], references: [id])
+  items            OrderItem[]
+  auditLogs        AuditLog[]
+  printJobs        PrintJob[]
 
   @@index([businessDate])
   @@index([workflowState])
@@ -189,17 +194,17 @@ model AuditLog {
 }
 
 model PrintJob {
-  id          String         @id @default(cuid())
-  orderId     String
-  type        PrintJobType
-  status      PrintJobStatus @default(PENDING)
+  id           String         @id @default(cuid())
+  orderId      String
+  type         PrintJobType
+  status       PrintJobStatus @default(PENDING)
   ticketNumber Int?
-  printerName String?
-  payload     String
-  error       String?
-  printedAt   DateTime?
-  createdAt   DateTime       @default(now())
-  updatedAt   DateTime       @updatedAt
+  printerName  String?
+  payload      String
+  error        String?
+  printedAt    DateTime?
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
 
   order Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
 
@@ -230,22 +235,22 @@ model SystemSetting {
 }
 
 model DailyClosingSnapshot {
-  id                    String   @id @default(cuid())
-  businessDate          String   @unique
-  ordersCount           Int      @default(0)
-  paidOrdersCount       Int      @default(0)
-  unpaidOrdersCount     Int      @default(0)
-  cashTotal             Float    @default(0)
-  visaTotal             Float    @default(0)
-  unpaidTotal           Float    @default(0)
-  notRegisteredGeidea   Int      @default(0)
-  leftUnpaid            Int      @default(0)
-  archivedOrdersCount   Int      @default(0)
-  topProductsJson       String   @default("[]")
-  paymentBreakdownJson  String   @default("[]")
-  statusBreakdownJson   String   @default("[]")
-  createdAt             DateTime @default(now())
-  updatedAt             DateTime @updatedAt
+  id                   String   @id @default(cuid())
+  businessDate         String   @unique
+  ordersCount          Int      @default(0)
+  paidOrdersCount      Int      @default(0)
+  unpaidOrdersCount    Int      @default(0)
+  cashTotal            Float    @default(0)
+  visaTotal            Float    @default(0)
+  unpaidTotal          Float    @default(0)
+  notRegisteredGeidea  Int      @default(0)
+  leftUnpaid           Int      @default(0)
+  archivedOrdersCount  Int      @default(0)
+  topProductsJson      String   @default("[]")
+  paymentBreakdownJson String   @default("[]")
+  statusBreakdownJson  String   @default("[]")
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
 }
 
 model CounterSequence {
@@ -256,33 +261,33 @@ model CounterSequence {
 }
 
 model OrderHistory {
-  id                  String    @id @default(cuid())
-  originalOrderId     String    @unique
-  businessDate        String
-  braceletNo          String
-  customerPhone       String?
-  childNames          String
-  childrenCount       Int
-  total               Float
-  status              String
-  kitchenStatus       String
-  paymentStatus       String
-  paymentMethod       String
-  customerLeft        Boolean
-  cashierName         String?
-  dataEmployeeName    String?
+  id                   String    @id @default(cuid())
+  originalOrderId      String    @unique
+  businessDate         String
+  braceletNo           String
+  customerPhone        String?
+  childNames           String
+  childrenCount        Int
+  total                Float
+  status               String
+  kitchenStatus        String
+  paymentStatus        String
+  paymentMethod        String
+  customerLeft         Boolean
+  cashierName          String?
+  dataEmployeeName     String?
   deliveryEmployeeName String?
-  geideaEmployeeName  String?
-  paymentEmployeeName String?
-  exitEmployeeName    String?
-  geideaRegisteredAt  DateTime?
-  itemsJson           String
-  orderCreatedAt      DateTime
-  orderUpdatedAt      DateTime
-  archivedAt          DateTime?
-  closedAt            DateTime
-  createdAt           DateTime  @default(now())
-  updatedAt           DateTime  @updatedAt
+  geideaEmployeeName   String?
+  paymentEmployeeName  String?
+  exitEmployeeName     String?
+  geideaRegisteredAt   DateTime?
+  itemsJson            String
+  orderCreatedAt       DateTime
+  orderUpdatedAt       DateTime
+  archivedAt           DateTime?
+  closedAt             DateTime
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
 
   @@index([businessDate])
   @@index([closedAt])

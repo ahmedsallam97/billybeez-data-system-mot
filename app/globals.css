@@ -387,6 +387,7 @@ html[dir="rtl"] .cart-panel h3{text-align:right}
 .cart-item-row > span:first-child{font-weight:900;color:var(--bb-purple)}
 .cart-qty-actions b{min-width:92px;text-align:end}
 .muted{color:var(--bb-muted)}
+.block{display:block}
 .row{display:flex;justify-content:space-between;gap:10px;border-bottom:1px solid var(--bb-line);padding:8px 0}
 .row:last-child{border-bottom:0}
 .order-total-row{
@@ -524,7 +525,7 @@ html[data-theme="red"] .login-page .login-box button[type="submit"]:not(:disable
 .product-form-grid .toggle-row{min-height:46px}
 .product-form-grid .toggle-row,.product-form-grid .btn-confirm{min-width:130px}
 .product-form-grid .btn-confirm{min-height:46px;justify-self:start}
-.user-form-grid{grid-template-columns:minmax(160px,1.2fr) minmax(150px,1fr) minmax(160px,1fr) minmax(130px,.8fr) minmax(120px,auto) auto;align-items:center}
+.user-form-grid{grid-template-columns:repeat(auto-fit,minmax(150px,1fr));align-items:center}
 .settings-filter-grid{grid-template-columns:minmax(180px,1fr) minmax(130px,auto) minmax(130px,auto) minmax(120px,auto);align-items:center;background:#fffdf4;border:1px solid var(--bb-line);border-radius:8px;padding:10px}
 .product-settings-filter{grid-template-columns:minmax(180px,1fr) minmax(140px,auto) minmax(130px,auto) minmax(130px,auto) minmax(120px,auto)}
 .ui-message-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
@@ -553,7 +554,7 @@ html[data-theme="red"] .login-page .login-box button[type="submit"]:not(:disable
 .employee-table{overflow-x:auto;border:1px solid var(--bb-line);border-radius:8px;background:#fff}
 .employee-row{min-width:680px;display:grid;grid-template-columns:minmax(210px,2fr) minmax(150px,1fr) minmax(110px,.7fr) minmax(220px,1.2fr);gap:12px;align-items:center;padding:10px 12px;border-bottom:1px solid var(--bb-line)}
 .employee-row.product-row{min-width:860px;grid-template-columns:minmax(210px,2fr) minmax(140px,1fr) minmax(100px,.6fr) minmax(100px,.6fr) minmax(220px,1.2fr)}
-.employee-row.user-row{min-width:760px;grid-template-columns:minmax(180px,1.4fr) minmax(220px,1.4fr) minmax(110px,.7fr) minmax(220px,1.2fr)}
+.employee-row.user-row{min-width:860px;grid-template-columns:minmax(180px,1.2fr) minmax(220px,1.3fr) minmax(150px,1fr) minmax(110px,.7fr) minmax(220px,1.2fr)}
 .employee-row.backup-row{min-width:840px;grid-template-columns:minmax(280px,2fr) minmax(100px,.7fr) minmax(180px,1fr) minmax(240px,1.2fr)}
 .backup-empty{padding:18px}
 .employee-row:last-child{border-bottom:0}

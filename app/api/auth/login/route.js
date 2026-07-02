@@ -15,7 +15,10 @@ export async function POST(request) {
     return NextResponse.json({ success: false, error: "Invalid username or password" }, { status: 401 });
   }
 
-  const user = await prisma.user.findUnique({ where: { username } });
+  const user = await prisma.user.findUnique({
+    where: { username },
+    include: { employee: true },
+  });
   const passwordMatches = await bcrypt.compare(password, user?.password || DUMMY_PASSWORD_HASH);
 
   if (!user?.active || !passwordMatches) {
@@ -31,6 +34,9 @@ export async function POST(request) {
       name: user.name,
       username: user.username,
       role: user.role,
+      employeeId: user.employeeId || "",
+      employeeName: user.employee?.name || "",
+      employeeDepartment: user.employee?.department || "",
     },
     home: getRoleHome(user.role),
   });

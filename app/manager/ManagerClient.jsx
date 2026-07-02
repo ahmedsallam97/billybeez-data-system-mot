@@ -71,6 +71,8 @@ const emptyProductForm = {
 
 const emptyUserForm = {
   id: "",
+  accountType: "GENERAL",
+  employeeId: "",
   name: "",
   username: "",
   password: "",
@@ -528,6 +530,8 @@ export default function ManagerClient() {
   function editUser(user) {
     setUserForm({
       id: user.id,
+      accountType: user.accountType || (user.employeeId ? "EMPLOYEE" : "GENERAL"),
+      employeeId: user.employeeId || "",
       name: user.name,
       username: user.username,
       password: "",
@@ -989,8 +993,9 @@ export default function ManagerClient() {
     if (userFilter.status === "ACTIVE" && !user.active) return false;
     if (userFilter.status === "INACTIVE" && user.active) return false;
     if (!search) return true;
-    return [user.name, user.username, user.role].some((value) => String(value || "").toLowerCase().includes(search));
+    return [user.name, user.username, user.role, user.employeeName, user.employeeDepartment].some((value) => String(value || "").toLowerCase().includes(search));
   });
+  const activeEmployees = employees.filter((employee) => employee.active);
   const settingsGroups = {
     branch: [
       { key: "COMPANY_NAME", label: t("settings.companyName") },
@@ -1463,6 +1468,38 @@ export default function ManagerClient() {
           {userForm.id && <button className="danger" onClick={resetUserForm}>{t("common.cancel")}</button>}
         </div>
         <div className="form-grid user-form-grid">
+          <select
+            value={userForm.accountType}
+            onChange={(event) => setUserForm((current) => ({
+              ...current,
+              accountType: event.target.value,
+              employeeId: event.target.value === "EMPLOYEE" ? current.employeeId : "",
+            }))}
+          >
+            <option value="GENERAL">{t("manager.generalAccount")}</option>
+            <option value="EMPLOYEE">{t("manager.employeeAccount")}</option>
+          </select>
+          {userForm.accountType === "EMPLOYEE" && (
+            <select
+              value={userForm.employeeId}
+              onChange={(event) => {
+                const employee = activeEmployees.find((item) => item.id === event.target.value);
+                setUserForm((current) => ({
+                  ...current,
+                  employeeId: event.target.value,
+                  name: employee?.name || current.name,
+                  role: employee?.department === "RESTAURANT" ? "KITCHEN" : "CASHIER",
+                }));
+              }}
+            >
+              <option value="">{t("manager.selectEmployee")}</option>
+              {activeEmployees.map((employee) => (
+                <option key={employee.id} value={employee.id}>
+                  {employee.name} - {labelDepartment(employee.department)}
+                </option>
+              ))}
+            </select>
+          )}
           <input value={userForm.name} onChange={(event) => setUserForm((current) => ({ ...current, name: event.target.value }))} placeholder={t("common.name")} />
           <input value={userForm.username} onChange={(event) => setUserForm((current) => ({ ...current, username: event.target.value }))} placeholder={t("login.username")} />
           <input
@@ -1504,6 +1541,7 @@ export default function ManagerClient() {
           <div className="employee-row user-row employee-head">
             <b>{t("common.name")}</b>
             <b>{t("login.username")}</b>
+            <b>{t("manager.accountType")}</b>
             <b>{t("common.status")}</b>
             <b>{t("common.actions")}</b>
           </div>
@@ -1511,6 +1549,10 @@ export default function ManagerClient() {
             <div className="employee-row user-row" key={user.id}>
               <span>{user.name}</span>
               <span>{user.username} · {t(`role.${user.role}`)}</span>
+              <span>
+                {user.accountType === "EMPLOYEE" ? t("manager.employeeAccount") : t("manager.generalAccount")}
+                {user.employeeName ? <small className="muted block">{user.employeeName}</small> : null}
+              </span>
               <span className={`badge ${user.active ? "paid" : "unpaid"}`}>{user.active ? t("common.active") : t("common.inactive")}</span>
               <span className="actions">
                 <button className="btn-edit" onClick={() => editUser(user)}>{t("common.edit")}</button>

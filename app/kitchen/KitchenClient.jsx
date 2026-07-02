@@ -47,20 +47,25 @@ export default function KitchenClient() {
     return "meta-pending";
   }
 
+  const kitchenOrders = useMemo(() => {
+    if (showArchive) return orders;
+    return orders.filter((order) => !order.geideaRegisteredAt);
+  }, [orders, showArchive]);
+
   const visibleOrders = useMemo(() => {
     const search = ordersQuery.trim().toLowerCase();
-    if (!search) return orders;
+    if (!search) return kitchenOrders;
 
-    return orders.filter((order) => [
+    return kitchenOrders.filter((order) => [
       order.id,
       order.braceletNo,
       order.customerPhone,
       order.childNames,
     ].some((value) => String(value || "").toLowerCase().includes(search)));
-  }, [orders, ordersQuery]);
+  }, [kitchenOrders, ordersQuery]);
 
-  const unpaidCount = orders.filter((order) => order.paymentStatus !== "PAID").length;
-  const unregisteredCount = orders.filter((order) => !order.geideaRegisteredAt).length;
+  const unpaidCount = kitchenOrders.filter((order) => order.paymentStatus !== "PAID").length;
+  const unregisteredCount = kitchenOrders.filter((order) => !order.geideaRegisteredAt).length;
 
   useEffect(() => {
     load();
@@ -303,7 +308,7 @@ export default function KitchenClient() {
         <Metric label={t("common.visibleOrders")} value={formatNumber(visibleOrders.length)} />
         <Metric label={t("common.unpaid")} value={formatNumber(unpaidCount)} />
         <Metric label={t("manager.notRegisteredGeidea")} value={formatNumber(unregisteredCount)} />
-        <Metric label={showArchive ? t("common.archived") : t("common.active")} value={formatNumber(orders.length)} />
+        <Metric label={showArchive ? t("common.archived") : t("common.active")} value={formatNumber(kitchenOrders.length)} />
       </div>
       <div className="form-grid manager-filter-grid">
         <input value={ordersQuery} onChange={(event) => setOrdersQuery(event.target.value)} placeholder={t("cashier.searchOrdersPlaceholder")} />

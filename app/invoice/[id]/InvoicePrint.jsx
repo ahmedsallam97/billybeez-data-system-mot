@@ -86,7 +86,7 @@ export default function InvoicePrint({ order, settings = {} }) {
         <div>{t("invoice.contact")}: {settings.contactNumber || settings.branchPhone || "19881"}</div>
         {settings.website && <div>{settings.website}</div>}
       </div>
-      <button type="button" className="no-print" onClick={() => window.print()}>{t("common.print")}</button>
+      <button className="no-print" onClick={() => window.print()}>{t("common.print")}</button>
     </div>
   );
 }

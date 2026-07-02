@@ -61,7 +61,7 @@ export default function KitchenTicketPrint({ order }) {
       <div className="receipt-center kitchen-ticket-note">
         {matchedItems.length ? t("kitchenTicket.filtered") : t("kitchenTicket.allItems")}
       </div>
-      <button type="button" className="no-print" onClick={() => window.print()}>{t("common.print")}</button>
+      <button className="no-print" onClick={() => window.print()}>{t("common.print")}</button>
     </div>
   );
 }

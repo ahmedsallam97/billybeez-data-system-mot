@@ -75,7 +75,6 @@ export default function BusinessDayControl({ requiresPassword = false }) {
           />
         )}
         <button
-          type="button"
           className="btn-confirm"
           disabled={!businessState || Boolean(busyAction) || businessState.isOpen || (requiresPassword && !password)}
           onClick={() => runAction("open")}
@@ -83,7 +82,6 @@ export default function BusinessDayControl({ requiresPassword = false }) {
           {t("business.openDay")}
         </button>
         <button
-          type="button"
           className="danger"
           disabled={!businessState || Boolean(busyAction) || !businessState.isOpen || (requiresPassword && !password)}
           onClick={() => runAction("close")}

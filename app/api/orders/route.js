@@ -64,6 +64,21 @@ export async function POST(request) {
     return NextResponse.json({ success: false, error: "Child name is required" }, { status: 400 });
   }
 
+  const duplicateBraceletOrder = await prisma.order.findFirst({
+    where: {
+      braceletNo,
+      archivedAt: null,
+    },
+    select: { id: true },
+  });
+
+  if (duplicateBraceletOrder) {
+    return NextResponse.json({
+      success: false,
+      error: `Bracelet ${braceletNo} already has an active order: ${duplicateBraceletOrder.id}`,
+    }, { status: 409 });
+  }
+
   const dataEmployeeId = user.employee?.department === "OPERATION" ? user.employeeId : body.dataEmployeeId;
 
   if (!dataEmployeeId) {

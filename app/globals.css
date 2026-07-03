@@ -66,12 +66,13 @@
   --bb-yellow-soft:#fff1c2;
 }
 *{box-sizing:border-box}
-body{margin:0;font-family:"Avenir Next","Segoe UI",Arial,sans-serif;background:var(--bb-bg);color:var(--bb-ink)}
+body{margin:0;font-family:"Avenir Next","Segoe UI",Arial,sans-serif;background:var(--bb-bg);color:var(--bb-ink);caret-color:transparent}
 html[lang="ar"] body{font-family:"Tajawal","Segoe UI",Arial,sans-serif}
 html[dir="ltr"] body{text-align:left}
 html[dir="rtl"] body{text-align:right}
 a{color:inherit;text-decoration:none}
-button,input,select{font:inherit}
+button,input,select,textarea{font:inherit}
+input,textarea,[contenteditable="true"]{caret-color:auto}
 button{border:0;border-radius:8px;padding:10px 14px;cursor:pointer;background:var(--bb-red);color:#fff;font-weight:800;box-shadow:0 2px 0 rgba(48,24,72,.18)}
 button:not(:disabled){transition:transform .16s ease,filter .16s ease,box-shadow .16s ease,background-color .16s ease,border-color .16s ease,color .16s ease}
 button:not(:disabled):hover{transform:translateY(-2px);filter:brightness(1.06);box-shadow:0 7px 16px rgba(48,24,72,.18)}

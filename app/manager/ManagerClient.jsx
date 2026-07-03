@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useToast } from "../ToastProvider";
 import { useI18n } from "../i18n";
 import { applyEmployeeNameStyles, employeeGenderClass, normalizeEmployeeNameStyles } from "../employeeDisplay";
-import { formatUiMessage, normalizeUiMessages, uiMessageKeys, uiMessageStyle } from "../uiMessages";
+import { formatUiMessage, normalizeUiMessages, uiMessageStyle } from "../uiMessages";
 import { kitchenTicketRuleValue, parseKitchenTicketRules } from "../../lib/kitchen-ticket-rules";
 
 const roles = ["ADMIN", "MANAGER", "CASHIER", "KITCHEN"];
@@ -79,6 +79,29 @@ const emptyUserForm = {
   role: "CASHIER",
   active: true,
 };
+
+const uiMessageGroups = [
+  {
+    titleKey: "manager.uiMessageGroupOrders",
+    keys: ["orderSaved", "orderUpdated", "itemAdded", "itemRemoved", "customerLeft", "customerPresent", "delivered", "orderArchived"],
+  },
+  {
+    titleKey: "manager.uiMessageGroupPayment",
+    keys: ["paymentSaved", "geideaSaved", "geideaRegistered", "leftUnpaid", "leftNeedsGeidea", "exitEmployee"],
+  },
+  {
+    titleKey: "manager.uiMessageGroupPrinting",
+    keys: ["kitchenTicketQueued", "printJobPending", "printJobPrinted", "printJobFailed"],
+  },
+  {
+    titleKey: "manager.uiMessageGroupBusiness",
+    keys: ["businessOpened", "businessClosed", "archivedAt", "closedAt"],
+  },
+  {
+    titleKey: "manager.uiMessageGroupSettings",
+    keys: ["settingsSaved", "uiMessagesSaved", "employeeStyleSaved", "employeeSaved", "productSaved", "userSaved", "rolePermissionsSaved", "backupCreated", "backupRestored"],
+  },
+];
 
 export default function ManagerClient() {
   const toast = useToast();
@@ -805,6 +828,71 @@ export default function ManagerClient() {
 
     setRolePermissions(normalizeRolePermissions(result.setting?.value));
     showUiToast("rolePermissionsSaved");
+  }
+
+  function renderUiMessageEditor(key) {
+    const message = uiMessages[key];
+    if (!message) return null;
+
+    return (
+      <div className="ui-message-editor" key={key}>
+        <div className="row">
+          <b>{t(`uiMessage.${key}`)}</b>
+          <span className="muted">{key}</span>
+        </div>
+        <textarea
+          value={message.text}
+          onChange={(event) => updateUiMessage(key, "text", event.target.value)}
+          rows={3}
+          placeholder={t("manager.messageTextArabic")}
+        />
+        <textarea
+          value={message.textEn || ""}
+          onChange={(event) => updateUiMessage(key, "textEn", event.target.value)}
+          rows={3}
+          dir="ltr"
+          placeholder={t("manager.messageTextEnglish")}
+        />
+        <div className="ui-message-fields">
+          <label>
+            <span>{t("manager.backgroundColor")}</span>
+            <input type="color" value={message.backgroundColor} onChange={(event) => updateUiMessage(key, "backgroundColor", event.target.value)} />
+          </label>
+          <label>
+            <span>{t("manager.textColor")}</span>
+            <input type="color" value={message.textColor} onChange={(event) => updateUiMessage(key, "textColor", event.target.value)} />
+          </label>
+          <label>
+            <span>{t("manager.borderColor")}</span>
+            <input type="color" value={message.borderColor} onChange={(event) => updateUiMessage(key, "borderColor", event.target.value)} />
+          </label>
+          <label>
+            <span>{t("manager.fontSize")}</span>
+            <input type="number" min="10" max="28" value={message.fontSize} onChange={(event) => updateUiMessage(key, "fontSize", event.target.value)} />
+          </label>
+          <label>
+            <span>{t("manager.fontWeight")}</span>
+            <input type="number" min="400" max="950" step="50" value={message.fontWeight} onChange={(event) => updateUiMessage(key, "fontWeight", event.target.value)} />
+          </label>
+          <label>
+            <span>{t("manager.minHeight")}</span>
+            <input type="number" min="24" max="90" value={message.minHeight} onChange={(event) => updateUiMessage(key, "minHeight", event.target.value)} />
+          </label>
+          <label>
+            <span>{t("manager.radius")}</span>
+            <input type="number" min="0" max="24" value={message.radius} onChange={(event) => updateUiMessage(key, "radius", event.target.value)} />
+          </label>
+        </div>
+        <div className="ui-message-preview" style={uiMessageStyle(message)}>
+          {formatUiMessage(message, {
+            employee: "محمد أمين",
+            time: "01:38:25 PM",
+            method: labelMethod("CASH"),
+            id: "ORD#1",
+          }).split("\n").map((line, index) => <span key={index}>{line}</span>)}
+        </div>
+      </div>
+    );
   }
 
   function dailyReviewRows() {
@@ -1648,69 +1736,18 @@ export default function ManagerClient() {
           </div>
           <button className="btn-confirm" onClick={saveUiMessages}>{t("common.save")}</button>
         </div>
-        <div className="ui-message-grid">
-          {uiMessageKeys.map((key) => {
-            const message = uiMessages[key];
-            return (
-              <div className="ui-message-editor" key={key}>
-                <div className="row">
-                  <b>{t(`uiMessage.${key}`)}</b>
-                  <span className="muted">{key}</span>
-                </div>
-                <textarea
-                  value={message.text}
-                  onChange={(event) => updateUiMessage(key, "text", event.target.value)}
-                  rows={3}
-                  placeholder={t("manager.messageTextArabic")}
-                />
-                <textarea
-                  value={message.textEn || ""}
-                  onChange={(event) => updateUiMessage(key, "textEn", event.target.value)}
-                  rows={3}
-                  dir="ltr"
-                  placeholder={t("manager.messageTextEnglish")}
-                />
-                <div className="ui-message-fields">
-                  <label>
-                    <span>{t("manager.backgroundColor")}</span>
-                    <input type="color" value={message.backgroundColor} onChange={(event) => updateUiMessage(key, "backgroundColor", event.target.value)} />
-                  </label>
-                  <label>
-                    <span>{t("manager.textColor")}</span>
-                    <input type="color" value={message.textColor} onChange={(event) => updateUiMessage(key, "textColor", event.target.value)} />
-                  </label>
-                  <label>
-                    <span>{t("manager.borderColor")}</span>
-                    <input type="color" value={message.borderColor} onChange={(event) => updateUiMessage(key, "borderColor", event.target.value)} />
-                  </label>
-                  <label>
-                    <span>{t("manager.fontSize")}</span>
-                    <input type="number" min="10" max="28" value={message.fontSize} onChange={(event) => updateUiMessage(key, "fontSize", event.target.value)} />
-                  </label>
-                  <label>
-                    <span>{t("manager.fontWeight")}</span>
-                    <input type="number" min="400" max="950" step="50" value={message.fontWeight} onChange={(event) => updateUiMessage(key, "fontWeight", event.target.value)} />
-                  </label>
-                  <label>
-                    <span>{t("manager.minHeight")}</span>
-                    <input type="number" min="24" max="90" value={message.minHeight} onChange={(event) => updateUiMessage(key, "minHeight", event.target.value)} />
-                  </label>
-                  <label>
-                    <span>{t("manager.radius")}</span>
-                    <input type="number" min="0" max="24" value={message.radius} onChange={(event) => updateUiMessage(key, "radius", event.target.value)} />
-                  </label>
-                </div>
-                <div className="ui-message-preview" style={uiMessageStyle(message)}>
-                  {formatUiMessage(message, {
-                    employee: "محمد أمين",
-                    time: "01:38:25 PM",
-                    method: labelMethod("CASH"),
-                    id: "ORD#1",
-                  }).split("\n").map((line, index) => <span key={index}>{line}</span>)}
-                </div>
+        <div className="ui-message-category-list">
+          {uiMessageGroups.map((group) => (
+            <section className="ui-message-category" key={group.titleKey}>
+              <div className="ui-message-category-head">
+                <h4>{t(group.titleKey)}</h4>
+                <span>{formatNumber(group.keys.length)}</span>
               </div>
-            );
-          })}
+              <div className="ui-message-grid">
+                {group.keys.map(renderUiMessageEditor)}
+              </div>
+            </section>
+          ))}
         </div>
       </section>
         </div>

@@ -105,7 +105,7 @@ const uiMessageGroups = [
 
 export default function ManagerClient() {
   const toast = useToast();
-  const { t, formatNumber, currency, labelAudit, labelBusinessMessage, labelDepartment, labelMethod, labelOrderStage, labelStatus, formatDateTime } = useI18n();
+  const { language, t, formatNumber, currency, labelAudit, labelBusinessMessage, labelDepartment, labelMethod, labelOrderStage, labelStatus, formatDateTime } = useI18n();
   const [data, setData] = useState(null);
   const [employees, setEmployees] = useState([]);
   const [products, setProducts] = useState([]);
@@ -115,7 +115,9 @@ export default function ManagerClient() {
   const [userForm, setUserForm] = useState(emptyUserForm);
   const [viewMode, setViewMode] = useState("TODAY");
   const [dateFilterMode, setDateFilterMode] = useState("DAY");
-  const [dateFilter, setDateFilter] = useState({ day: "", month: "", from: "", to: "" });
+  const [dateFilter, setDateFilter] = useState({ day: "", month: "", from: "", to: "", monthFrom: "", monthTo: "" });
+  const [datePickerOpen, setDatePickerOpen] = useState(false);
+  const [calendarMonth, setCalendarMonth] = useState("");
   const [filter, setFilter] = useState("ALL");
   const [archiveFilter, setArchiveFilter] = useState("ALL");
   const [managerTab, setManagerTab] = useState("orders");
@@ -151,7 +153,8 @@ export default function ManagerClient() {
   useEffect(() => {
     if (!data?.reportBusinessDate || dateFilter.day) return;
     const month = String(data.reportBusinessDate).slice(0, 7);
-    setDateFilter({ day: data.reportBusinessDate, month, from: data.reportBusinessDate, to: data.reportBusinessDate });
+    setCalendarMonth(month);
+    setDateFilter({ day: data.reportBusinessDate, month, from: data.reportBusinessDate, to: data.reportBusinessDate, monthFrom: month, monthTo: month });
   }, [data?.reportBusinessDate, dateFilter.day]);
 
   async function load() {
@@ -426,6 +429,12 @@ export default function ManagerClient() {
     if (dateFilterMode === "MONTH") {
       return dateFilter.month ? businessDate.startsWith(dateFilter.month) : true;
     }
+    if (dateFilterMode === "MONTH_RANGE") {
+      const month = businessDate.slice(0, 7);
+      const from = dateFilter.monthFrom || "0000-01";
+      const to = dateFilter.monthTo || "9999-12";
+      return month >= from && month <= to;
+    }
     if (dateFilterMode === "RANGE") {
       const from = dateFilter.from || "0000-01-01";
       const to = dateFilter.to || "9999-12-31";
@@ -436,8 +445,162 @@ export default function ManagerClient() {
 
   function selectedPeriodLabel() {
     if (dateFilterMode === "MONTH") return dateFilter.month || data?.reportBusinessDate?.slice(0, 7) || "";
+    if (dateFilterMode === "MONTH_RANGE") return `${dateFilter.monthFrom || "..."} - ${dateFilter.monthTo || "..."}`;
     if (dateFilterMode === "RANGE") return `${dateFilter.from || "..."} - ${dateFilter.to || "..."}`;
     return dateFilter.day || data?.reportBusinessDate || "";
+  }
+
+  function monthLabel(monthValue) {
+    if (!monthValue) return "";
+    const date = new Date(`${monthValue}-01T00:00:00`);
+    return date.toLocaleDateString(language === "ar" ? "ar-EG" : "en-US", { month: "long", year: "numeric" });
+  }
+
+  function monthName(monthValue) {
+    if (!monthValue) return "";
+    const date = new Date(`${monthValue}-01T00:00:00`);
+    return date.toLocaleDateString(language === "ar" ? "ar-EG" : "en-US", { month: "long" });
+  }
+
+  function dayNameLabels() {
+    return language === "ar" ? ["س", "ح", "ن", "ث", "ر", "خ", "ج"] : ["S", "M", "T", "W", "T", "F", "S"];
+  }
+
+  function calendarDays() {
+    const month = calendarMonth || dateFilter.month || data?.reportBusinessDate?.slice(0, 7) || new Date().toISOString().slice(0, 7);
+    const [year, monthNumber] = month.split("-").map(Number);
+    const first = new Date(year, monthNumber - 1, 1);
+    const daysInMonth = new Date(year, monthNumber, 0).getDate();
+    const startOffset = first.getDay();
+    const days = Array.from({ length: startOffset }, () => null);
+    for (let day = 1; day <= daysInMonth; day++) {
+      days.push(`${month}-${String(day).padStart(2, "0")}`);
+    }
+    return days;
+  }
+
+  function shiftCalendarMonth(step) {
+    const month = calendarMonth || data?.reportBusinessDate?.slice(0, 7) || new Date().toISOString().slice(0, 7);
+    const [year, monthNumber] = month.split("-").map(Number);
+    const next = new Date(year, monthNumber - 1 + step, 1);
+    setCalendarMonth(`${next.getFullYear()}-${String(next.getMonth() + 1).padStart(2, "0")}`);
+  }
+
+  function monthOptionsForPicker() {
+    const month = calendarMonth || data?.reportBusinessDate?.slice(0, 7) || new Date().toISOString().slice(0, 7);
+    const [year] = month.split("-").map(Number);
+    return Array.from({ length: 12 }, (_, index) => `${year}-${String(index + 1).padStart(2, "0")}`);
+  }
+
+  function shiftCalendarYear(step) {
+    const month = calendarMonth || data?.reportBusinessDate?.slice(0, 7) || new Date().toISOString().slice(0, 7);
+    const [year, monthNumber] = month.split("-").map(Number);
+    const next = new Date(year + step, monthNumber - 1, 1);
+    setCalendarMonth(`${next.getFullYear()}-${String(next.getMonth() + 1).padStart(2, "0")}`);
+  }
+
+  function selectCalendarDay(day) {
+    if (!day) return;
+    const month = day.slice(0, 7);
+    if (dateFilterMode === "RANGE") {
+      if (!dateFilter.from || (dateFilter.from && dateFilter.to)) {
+        setDateFilter((current) => ({ ...current, from: day, to: "", day, month }));
+        return;
+      }
+      const from = day < dateFilter.from ? day : dateFilter.from;
+      const to = day < dateFilter.from ? dateFilter.from : day;
+      setDateFilter((current) => ({ ...current, from, to, day: from, month: from.slice(0, 7) }));
+      return;
+    }
+    setDateFilter((current) => ({ ...current, day, month, from: day, to: day, monthFrom: month, monthTo: month }));
+    setDatePickerOpen(false);
+  }
+
+  function selectCalendarMonth(month) {
+    if (!month) return;
+    if (dateFilterMode === "MONTH_RANGE") {
+      if (!dateFilter.monthFrom || (dateFilter.monthFrom && dateFilter.monthTo)) {
+        setDateFilter((current) => ({ ...current, monthFrom: month, monthTo: "", month, day: `${month}-01`, from: `${month}-01`, to: "" }));
+        return;
+      }
+      const monthFrom = month < dateFilter.monthFrom ? month : dateFilter.monthFrom;
+      const monthTo = month < dateFilter.monthFrom ? dateFilter.monthFrom : month;
+      setDateFilter((current) => ({ ...current, monthFrom, monthTo, month: monthFrom, day: `${monthFrom}-01`, from: `${monthFrom}-01`, to: `${monthTo}-31` }));
+      return;
+    }
+    setDateFilter((current) => ({ ...current, month, monthFrom: month, monthTo: month, day: `${month}-01`, from: `${month}-01`, to: `${month}-31` }));
+    setDatePickerOpen(false);
+  }
+
+  function calendarDayClass(day) {
+    if (!day) return "empty";
+    if (dateFilterMode === "RANGE") {
+      if (day === dateFilter.from || day === dateFilter.to) return "selected";
+      if (dateFilter.from && dateFilter.to && day > dateFilter.from && day < dateFilter.to) return "in-range";
+      return "";
+    }
+    return day === dateFilter.day ? "selected" : "";
+  }
+
+  function calendarMonthClass(month) {
+    if (dateFilterMode === "MONTH_RANGE") {
+      if (month === dateFilter.monthFrom || month === dateFilter.monthTo) return "selected";
+      if (dateFilter.monthFrom && dateFilter.monthTo && month > dateFilter.monthFrom && month < dateFilter.monthTo) return "in-range";
+      return "";
+    }
+    return month === dateFilter.month ? "selected" : "";
+  }
+
+  function renderDateRangePicker() {
+    return (
+      <div className="date-range-control">
+        <button type="button" className="date-picker-trigger" onClick={() => setDatePickerOpen((current) => !current)} aria-expanded={datePickerOpen}>
+          <span className="date-range-icon" aria-hidden="true" />
+          <span>{selectedPeriodLabel() || t("manager.dateRange")}</span>
+        </button>
+        {datePickerOpen && (
+          <div className="date-picker-popover">
+            <div className="date-picker-tabs">
+              {[
+                ["DAY", t("manager.rangeDay")],
+                ["RANGE", t("manager.rangeDays")],
+                ["MONTH", t("manager.rangeMonth")],
+                ["MONTH_RANGE", t("manager.rangeMonths")],
+              ].map(([mode, label]) => (
+                <button key={mode} type="button" className={dateFilterMode === mode ? "secondary" : ""} onClick={() => setDateFilterMode(mode)}>{label}</button>
+              ))}
+            </div>
+            <div className="date-picker-head">
+              <button type="button" className="icon-step" onClick={() => (dateFilterMode.includes("MONTH") ? shiftCalendarYear(-1) : shiftCalendarMonth(-1))}>‹</button>
+              <b>{dateFilterMode.includes("MONTH") ? String((calendarMonth || "").slice(0, 4)) : monthLabel(calendarMonth || dateFilter.month)}</b>
+              <button type="button" className="icon-step" onClick={() => (dateFilterMode.includes("MONTH") ? shiftCalendarYear(1) : shiftCalendarMonth(1))}>›</button>
+            </div>
+            {dateFilterMode.includes("MONTH") ? (
+              <div className="month-grid">
+                {monthOptionsForPicker().map((month) => (
+                  <button type="button" key={month} className={calendarMonthClass(month)} onClick={() => selectCalendarMonth(month)}>{monthName(month)}</button>
+                ))}
+              </div>
+            ) : (
+              <>
+                <div className="weekday-grid">{dayNameLabels().map((day) => <span key={day}>{day}</span>)}</div>
+                <div className="calendar-grid">
+                  {calendarDays().map((day, index) => (
+                    <button type="button" key={day || `empty-${index}`} className={calendarDayClass(day)} disabled={!day} onClick={() => selectCalendarDay(day)}>
+                      {day ? Number(day.slice(-2)) : ""}
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
+            <div className="date-picker-foot">
+              <span>{selectedPeriodLabel()}</span>
+              <button type="button" className="btn-confirm" onClick={() => setDatePickerOpen(false)}>{t("common.save")}</button>
+            </div>
+          </div>
+        )}
+      </div>
+    );
   }
 
   const currentArchivedOrders = useMemo(
@@ -1250,31 +1413,13 @@ export default function ManagerClient() {
             </div>
           </div>
           <div className="actions">
-            <div className="date-range-control" aria-label={t("manager.dateRange")}>
-              <span className="date-range-icon" aria-hidden="true" />
-              <select value={dateFilterMode} onChange={(event) => setDateFilterMode(event.target.value)}>
-                <option value="DAY">{t("manager.rangeDay")}</option>
-                <option value="MONTH">{t("manager.rangeMonth")}</option>
-                <option value="RANGE">{t("manager.rangeCustom")}</option>
-              </select>
-              {dateFilterMode === "DAY" && (
-                <input type="date" value={dateFilter.day} onChange={(event) => setDateFilter((current) => ({ ...current, day: event.target.value }))} />
-              )}
-              {dateFilterMode === "MONTH" && (
-                <input type="month" value={dateFilter.month} onChange={(event) => setDateFilter((current) => ({ ...current, month: event.target.value }))} />
-              )}
-              {dateFilterMode === "RANGE" && (
-                <>
-                  <input type="date" value={dateFilter.from} onChange={(event) => setDateFilter((current) => ({ ...current, from: event.target.value }))} />
-                  <input type="date" value={dateFilter.to} onChange={(event) => setDateFilter((current) => ({ ...current, to: event.target.value }))} />
-                </>
-              )}
-            </div>
+            {renderDateRangePicker()}
             <button className={viewMode === "TODAY" ? "secondary" : ""} onClick={() => {
               const day = data.reportBusinessDate || new Date().toISOString().slice(0, 10);
               setViewMode("TODAY");
               setDateFilterMode("DAY");
-              setDateFilter((current) => ({ ...current, day, month: day.slice(0, 7), from: day, to: day }));
+              setCalendarMonth(day.slice(0, 7));
+              setDateFilter((current) => ({ ...current, day, month: day.slice(0, 7), from: day, to: day, monthFrom: day.slice(0, 7), monthTo: day.slice(0, 7) }));
             }}>{t("common.today")}</button>
             <button className={viewMode === "HISTORY" ? "secondary" : ""} onClick={() => setViewMode("HISTORY")}>{t("common.orderHistory")}</button>
           </div>

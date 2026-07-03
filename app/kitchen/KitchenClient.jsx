@@ -386,7 +386,7 @@ export default function KitchenClient({ user }) {
                   {formatUiMessage(uiMessages.archivedAt, { time: formatDateTime(order.archivedAt) })}
                 </div>
               )}
-              {order.kitchenPrintJob && (
+              {order.kitchenPrintJob && order.kitchenStatus !== "DELIVERED" && (
                 <div
                   className={`print-job-alert print-job-${String(order.kitchenPrintJob.status).toLowerCase()}`}
                   style={uiMessageStyle(

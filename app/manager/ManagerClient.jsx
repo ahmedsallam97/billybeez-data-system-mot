@@ -881,26 +881,35 @@ export default function ManagerClient() {
   function renderUiMessageEditor(key) {
     const message = uiMessages[key];
     if (!message) return null;
+    const title = t(`uiMessage.${key}`);
 
     return (
       <div className="ui-message-editor" key={key}>
-        <div className="row">
-          <b>{t(`uiMessage.${key}`)}</b>
-          <span className="muted">{key}</span>
+        <div className="ui-message-editor-head">
+          <b>{title === `uiMessage.${key}` ? message.label || key : title}</b>
+          <span>{key}</span>
         </div>
-        <textarea
-          value={message.text}
-          onChange={(event) => updateUiMessage(key, "text", event.target.value)}
-          rows={3}
-          placeholder={t("manager.messageTextArabic")}
-        />
-        <textarea
-          value={message.textEn || ""}
-          onChange={(event) => updateUiMessage(key, "textEn", event.target.value)}
-          rows={3}
-          dir="ltr"
-          placeholder={t("manager.messageTextEnglish")}
-        />
+        <div className="ui-message-texts">
+          <label>
+            <span>{t("manager.messageTextArabic")}</span>
+            <textarea
+              value={message.text}
+              onChange={(event) => updateUiMessage(key, "text", event.target.value)}
+              rows={3}
+              placeholder={t("manager.messageTextArabic")}
+            />
+          </label>
+          <label>
+            <span>{t("manager.messageTextEnglish")}</span>
+            <textarea
+              value={message.textEn || ""}
+              onChange={(event) => updateUiMessage(key, "textEn", event.target.value)}
+              rows={3}
+              dir="ltr"
+              placeholder={t("manager.messageTextEnglish")}
+            />
+          </label>
+        </div>
         <div className="ui-message-fields">
           <label>
             <span>{t("manager.backgroundColor")}</span>

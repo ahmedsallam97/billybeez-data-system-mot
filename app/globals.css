@@ -511,7 +511,9 @@ html[data-theme="red"] .login-page .login-box button[type="submit"]:not(:disable
 .activity-row:nth-child(3n) .activity-dot{background:var(--bb-sky);box-shadow:0 0 0 4px #e7f7fb}
 .activity-row:nth-child(3n+1) .activity-dot{background:var(--bb-purple);box-shadow:0 0 0 4px #f1e8fb}
 .employee-manager{display:grid;gap:14px}
-.employee-manager > .row{align-items:flex-start}
+.employee-manager > .row:first-child{align-items:center;background:linear-gradient(135deg,#fffdf4,#f7efff);border:1px solid var(--bb-line);border-inline-start:5px solid var(--bb-primary);border-radius:8px;padding:12px 14px;box-shadow:0 6px 14px rgba(48,24,72,.05)}
+.employee-manager > .row:first-child h3{margin:0 0 4px;color:var(--bb-primary);font-size:21px}
+.employee-manager > .row:first-child .muted{font-size:13px}
 .employee-manager h3{margin-bottom:4px}
 .settings-shell{display:grid;grid-template-columns:minmax(190px,230px) minmax(0,1fr);gap:14px;align-items:start}
 .settings-sidebar{position:sticky;top:68px;display:grid;gap:8px;background:#fffdf4;border:1px solid var(--bb-line);border-radius:8px;padding:10px}

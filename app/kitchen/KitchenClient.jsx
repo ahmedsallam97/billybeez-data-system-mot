@@ -34,6 +34,10 @@ export default function KitchenClient({ user }) {
     return encodeURIComponent(orderId);
   }
 
+  function showUiToast(key, values = {}, type = "info") {
+    toast(formatUiMessage(uiMessages[key], values), type, uiMessageStyle(uiMessages[key]));
+  }
+
   function paymentButtonClass(order, method, baseClass) {
     return `${baseClass} ${order.paymentStatus === "PAID" && order.paymentMethod === method ? "payment-selected" : ""}`;
   }
@@ -163,7 +167,7 @@ export default function KitchenClient({ user }) {
       return;
     }
 
-    toast(t("kitchen.deliveredToast"));
+    showUiToast("delivered");
     await load();
   }
 
@@ -294,7 +298,7 @@ export default function KitchenClient({ user }) {
       return;
     }
 
-    toast(t("kitchen.registeredToast"));
+    showUiToast("geideaSaved");
     setEmployeeEditor(null);
     await load();
   }
@@ -308,7 +312,7 @@ export default function KitchenClient({ user }) {
       return;
     }
 
-    toast(t("kitchen.archivedToast"));
+    showUiToast("orderArchived");
     await load();
   }
 

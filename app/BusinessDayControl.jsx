@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useToast } from "./ToastProvider";
 import { useI18n } from "./i18n";
+import { formatUiMessage, normalizeUiMessages, uiMessageStyle } from "./uiMessages";
 
 export default function BusinessDayControl({ requiresPassword = false, showActions = true }) {
   const toast = useToast();
@@ -10,15 +11,29 @@ export default function BusinessDayControl({ requiresPassword = false, showActio
   const [businessState, setBusinessState] = useState(null);
   const [password, setPassword] = useState("");
   const [busyAction, setBusyAction] = useState("");
+  const [uiMessages, setUiMessages] = useState(normalizeUiMessages());
 
   useEffect(() => {
     loadState();
+    loadUiMessages();
   }, []);
 
   async function loadState() {
     const res = await fetch("/api/business-day");
     const data = await res.json();
     if (data.success) setBusinessState(data.businessState);
+  }
+
+  async function loadUiMessages() {
+    const res = await fetch("/api/settings").catch(() => null);
+    if (!res?.ok) return;
+    const data = await res.json();
+    const setting = data.settings?.find((item) => item.key === "UI_MESSAGE_CONFIG");
+    setUiMessages(normalizeUiMessages(setting?.value));
+  }
+
+  function showUiToast(key, type = "info") {
+    toast(formatUiMessage(uiMessages[key]), type, uiMessageStyle(uiMessages[key]));
   }
 
   async function runAction(action) {
@@ -46,7 +61,7 @@ export default function BusinessDayControl({ requiresPassword = false, showActio
 
     setPassword("");
     setBusinessState(data.businessState);
-    toast(action === "open" ? t("business.opened") : t("business.closedToast"), "info");
+    showUiToast(action === "open" ? "businessOpened" : "businessClosed");
     setTimeout(() => window.location.reload(), 350);
   }
 

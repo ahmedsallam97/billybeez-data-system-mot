@@ -167,6 +167,10 @@ export default function ManagerClient() {
     return encodeURIComponent(orderId);
   }
 
+  function showUiToast(key, values = {}, type = "info") {
+    toast(formatUiMessage(uiMessages[key], values), type, uiMessageStyle(uiMessages[key]));
+  }
+
   function printInvoice(orderId) {
     setPrintFrameUrl(`/invoice/${orderUrlId(orderId)}?print=${Date.now()}`);
     window.setTimeout(() => setPrintFrameUrl(""), 5000);
@@ -203,7 +207,7 @@ export default function ManagerClient() {
       }
     }
 
-    toast(t("manager.settingsSaved"));
+    showUiToast("settingsSaved");
     await load();
   }
 
@@ -447,7 +451,7 @@ export default function ManagerClient() {
       return;
     }
 
-    toast(t("manager.orderUpdated"));
+    showUiToast("orderUpdated");
     await refreshAfterOrderChange(orderId, closeModal);
   }
 
@@ -469,7 +473,7 @@ export default function ManagerClient() {
       return;
     }
 
-    toast(t("manager.itemAdded"));
+    showUiToast("itemAdded");
     await refreshAfterOrderChange(orderId);
   }
 
@@ -488,7 +492,7 @@ export default function ManagerClient() {
       return;
     }
 
-    toast(t("manager.itemRemoved"));
+    showUiToast("itemRemoved");
     await refreshAfterOrderChange(orderId);
   }
 
@@ -554,7 +558,7 @@ export default function ManagerClient() {
       return;
     }
 
-    toast(t("manager.employeeSaved"));
+    showUiToast("employeeSaved");
     resetEmployeeForm();
     await load();
   }
@@ -579,7 +583,7 @@ export default function ManagerClient() {
       return;
     }
 
-    toast(t("manager.employeeSaved"));
+    showUiToast("employeeSaved");
     await load();
   }
 
@@ -597,7 +601,7 @@ export default function ManagerClient() {
       return;
     }
 
-    toast(t("manager.productSaved"));
+    showUiToast("productSaved");
     resetProductForm();
     await load();
   }
@@ -617,7 +621,7 @@ export default function ManagerClient() {
       return;
     }
 
-    toast(t("manager.productSaved"));
+    showUiToast("productSaved");
     await load();
   }
 
@@ -635,7 +639,7 @@ export default function ManagerClient() {
       return;
     }
 
-    toast(t("manager.userSaved"));
+    showUiToast("userSaved");
     resetUserForm();
     await load();
   }
@@ -655,7 +659,7 @@ export default function ManagerClient() {
       return;
     }
 
-    toast(t("manager.userSaved"));
+    showUiToast("userSaved");
     await load();
   }
 
@@ -686,7 +690,7 @@ export default function ManagerClient() {
     }
 
     setUiMessages(normalizeUiMessages(result.setting?.value));
-    toast(t("manager.uiMessagesSaved"));
+    showUiToast("uiMessagesSaved");
   }
 
   function updateEmployeeNameStyle(group, field, value) {
@@ -722,7 +726,7 @@ export default function ManagerClient() {
     const normalized = normalizeEmployeeNameStyles(result.setting?.value);
     setEmployeeNameStyles(normalized);
     applyEmployeeNameStyles(normalized);
-    toast(t("manager.employeeStyleSaved"));
+    showUiToast("employeeStyleSaved");
   }
 
   async function refreshBackups() {
@@ -744,7 +748,7 @@ export default function ManagerClient() {
       return;
     }
 
-    toast(t("manager.backupCreated"), "info");
+    showUiToast("backupCreated");
     await refreshBackups();
   }
 
@@ -766,7 +770,7 @@ export default function ManagerClient() {
       return;
     }
 
-    toast(t("manager.restoreBackupDone"), "info");
+    showUiToast("backupRestored");
     await refreshBackups();
   }
 
@@ -800,7 +804,7 @@ export default function ManagerClient() {
     }
 
     setRolePermissions(normalizeRolePermissions(result.setting?.value));
-    toast(t("manager.rolePermissionsSaved"));
+    showUiToast("rolePermissionsSaved");
   }
 
   function dailyReviewRows() {
@@ -1694,6 +1698,7 @@ export default function ManagerClient() {
                     employee: "محمد أمين",
                     time: "01:38:25 PM",
                     method: labelMethod("CASH"),
+                    id: "ORD#1",
                   }).split("\n").map((line, index) => <span key={index}>{line}</span>)}
                 </div>
               </div>

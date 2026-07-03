@@ -116,6 +116,10 @@ export default function CashierClient({ user }) {
     return encodeURIComponent(orderId);
   }
 
+  function showUiToast(key, values = {}, type = "info") {
+    toast(formatUiMessage(uiMessages[key], values), type, uiMessageStyle(uiMessages[key]));
+  }
+
   function selectedExitEmployeeId(orderId) {
     return linkedOperationEmployeeId || exitEmployeeByOrder[orderId] || defaultExitEmployeeId;
   }
@@ -260,7 +264,7 @@ export default function CashierClient({ user }) {
       return;
     }
 
-    toast(t("cashier.saved", { id: data.order.id }));
+    showUiToast("orderSaved", { id: data.order.id });
     if (!linkedOperationEmployeeId) localStorage.setItem("lastDataEmployeeId", dataEmployeeId);
     setEditingOrder(null);
     setBraceletNo("");
@@ -312,7 +316,7 @@ export default function CashierClient({ user }) {
       }
     }
 
-    toast(cart.length ? t("cashier.orderUpdatedWithItems") : t("cashier.orderUpdated"));
+    showUiToast("orderUpdated");
     setEditingOrder(null);
     setBraceletNo("");
     setCustomerPhone("");
@@ -343,7 +347,7 @@ export default function CashierClient({ user }) {
       return;
     }
 
-    toast(t("cashier.leftToast"), "info");
+    showUiToast("customerLeft");
     localStorage.setItem("lastExitEmployeeId", exitEmployeeId);
     setEmployeeEditor(null);
     await load(showArchived);
@@ -362,7 +366,7 @@ export default function CashierClient({ user }) {
       return;
     }
 
-    toast(t("cashier.presentToast"), "info");
+    showUiToast("customerPresent");
     setEntryPassword("");
     setEmployeeEditor(null);
     await load(showArchived);

@@ -319,6 +319,16 @@ html[dir="rtl"] .new-order-layout{
 .manager-main-tabs{position:sticky;top:0;z-index:5}
 .manager-main-tabs .tabs{margin:0}
 .top-summary{margin:10px 0 12px}
+.orders-layout{display:grid;grid-template-columns:minmax(230px,280px) minmax(0,1fr);gap:14px;align-items:start}
+.orders-sidebar{position:sticky;top:86px;display:grid;gap:12px;background:#fffdf4;border:1px solid var(--bb-line);border-radius:8px;padding:12px;box-shadow:0 8px 18px rgba(48,24,72,.06)}
+.orders-sidebar .tabs{display:grid;grid-template-columns:1fr;margin:0;overflow:visible}
+.orders-sidebar .tabs button{width:100%;justify-content:center;white-space:normal}
+.orders-sidebar-metrics{display:grid;gap:8px}
+.orders-sidebar-metrics .metric{padding:10px;min-height:74px}
+.orders-sidebar-metrics .metric .value{font-size:22px}
+.orders-sidebar .cashier-order-search{grid-template-columns:1fr;margin:0}
+.orders-sidebar .cashier-order-search button{width:100%}
+.orders-content{min-width:0}
 .payment-radios{display:grid;grid-template-columns:repeat(2,1fr);gap:8px}
 .payment-option{min-height:46px;display:flex;align-items:center;justify-content:center;gap:8px;border:1px solid var(--bb-line);border-radius:8px;background:#fff;color:var(--bb-purple);font-weight:900;cursor:pointer;box-shadow:0 2px 0 rgba(48,24,72,.08)}
 .payment-option{transition:transform .16s ease,box-shadow .16s ease,border-color .16s ease,background-color .16s ease}
@@ -667,4 +677,4 @@ html[dir="rtl"] .employee-row .actions{justify-content:flex-start}
 @page{size:80mm auto;margin:0}
 @media print{html,body{width:80mm;background:#fff}.topbar,.actions,.no-print{display:none!important}.invoice{width:80mm;margin:0;padding:4mm 3mm;box-shadow:none;border:0}.shell,main{padding:0!important;margin:0!important;background:#fff!important}}
 @media(max-width:1200px){.grid.three.honey-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.new-order-layout{grid-template-columns:minmax(0,8fr) minmax(260px,3fr)}.products{grid-template-columns:repeat(3,minmax(0,1fr))}}
-@media(max-width:900px){.grid,.grid.two,.grid.three,.grid.four,.grid.five,.grid.three.honey-grid,.form-grid,.products,.employee-form-grid,.product-form-grid,.user-form-grid,.settings-filter-grid,.product-settings-filter,.settings-shell,.ui-message-grid,.ui-message-fields,.employee-style-grid,.admin-settings-grid,.new-order-layout,.new-order-fields,.child-fields,.edit-order-summary .new-order-fields,.edit-order-summary .child-fields{grid-template-columns:1fr}.new-order-layout,html[dir="rtl"] .new-order-layout{grid-template-areas:"details" "products" "cart"}.new-order-details,.order-cart{position:static}.settings-sidebar{position:static;display:flex;overflow:auto}.settings-sidebar button{width:auto;white-space:nowrap}.order-cart{position:static}.topbar{align-items:flex-start;flex-direction:column}.business-day-control{align-items:stretch;flex-direction:column}.business-day-actions{grid-template-columns:1fr}.cashier-command{align-items:flex-start;flex-direction:column}.order-cell{max-width:350px;min-height:560px;padding:28px 26px 30px}.hex-action{width:172px}.modal-head{flex-direction:column}.employee-form-grid .toggle-row{justify-content:flex-start}}
+@media(max-width:900px){.grid,.grid.two,.grid.three,.grid.four,.grid.five,.grid.three.honey-grid,.form-grid,.products,.employee-form-grid,.product-form-grid,.user-form-grid,.settings-filter-grid,.product-settings-filter,.settings-shell,.ui-message-grid,.ui-message-fields,.employee-style-grid,.admin-settings-grid,.new-order-layout,.new-order-fields,.child-fields,.edit-order-summary .new-order-fields,.edit-order-summary .child-fields,.orders-layout{grid-template-columns:1fr}.new-order-layout,html[dir="rtl"] .new-order-layout{grid-template-areas:"details" "products" "cart"}.new-order-details,.order-cart,.orders-sidebar{position:static}.orders-sidebar-metrics{grid-template-columns:repeat(2,minmax(0,1fr))}.settings-sidebar{position:static;display:flex;overflow:auto}.settings-sidebar button{width:auto;white-space:nowrap}.order-cart{position:static}.topbar{align-items:flex-start;flex-direction:column}.business-day-control{align-items:stretch;flex-direction:column}.business-day-actions{grid-template-columns:1fr}.cashier-command{align-items:flex-start;flex-direction:column}.order-cell{max-width:350px;min-height:560px;padding:28px 26px 30px}.hex-action{width:172px}.modal-head{flex-direction:column}.employee-form-grid .toggle-row{justify-content:flex-start}}

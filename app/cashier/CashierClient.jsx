@@ -561,28 +561,32 @@ export default function CashierClient({ user }) {
       <section className="panel" id="orders" ref={ordersRef}>
         <div className="row">
           <h2>{showArchived ? t("common.archivedOrders") : t("common.currentOrders")}</h2>
-          <div className="tabs order-tabs">
-            <button className={!showArchived ? "active" : ""} onClick={() => showOrdersTab(false)}>{t("common.currentOrders")}</button>
-            <button className={showArchived ? "active" : ""} onClick={() => showOrdersTab(true)}>{t("common.archivedOrders")}</button>
-          </div>
         </div>
-        <div className="grid four top-summary">
-          <Metric label={t("common.visibleOrders")} value={formatNumber(visibleOrders.length)} />
-          <Metric label={t("common.unpaid")} value={formatNumber(unpaidCount)} />
-          <Metric label={t("manager.notRegisteredGeidea")} value={formatNumber(unregisteredCount)} />
-          <Metric label={showArchived ? t("common.archived") : t("common.active")} value={formatNumber(orders.length)} />
-        </div>
-        <div className="form-grid cashier-order-search">
-          <input
-            value={ordersQuery}
-            onChange={(event) => setOrdersQuery(event.target.value)}
-            placeholder={t("cashier.searchOrdersPlaceholder")}
-          />
-          <button className="secondary" onClick={() => setOrdersQuery("")}>{t("common.clearFilters")}</button>
-        </div>
-        <div className="grid three honey-grid">
-          {visibleOrders.map((order) => (
-            <div className={`card order-cell ${orderAlertClass(order)}`} key={order.id}>
+        <div className="orders-layout">
+          <aside className="orders-sidebar">
+            <div className="tabs order-tabs">
+              <button className={!showArchived ? "active" : ""} onClick={() => showOrdersTab(false)}>{t("common.currentOrders")}</button>
+              <button className={showArchived ? "active" : ""} onClick={() => showOrdersTab(true)}>{t("common.archivedOrders")}</button>
+            </div>
+            <div className="orders-sidebar-metrics">
+              <Metric label={t("common.visibleOrders")} value={formatNumber(visibleOrders.length)} />
+              <Metric label={t("common.unpaid")} value={formatNumber(unpaidCount)} />
+              <Metric label={t("manager.notRegisteredGeidea")} value={formatNumber(unregisteredCount)} />
+              <Metric label={showArchived ? t("common.archived") : t("common.active")} value={formatNumber(orders.length)} />
+            </div>
+            <div className="form-grid cashier-order-search">
+              <input
+                value={ordersQuery}
+                onChange={(event) => setOrdersQuery(event.target.value)}
+                placeholder={t("cashier.searchOrdersPlaceholder")}
+              />
+              <button className="secondary" onClick={() => setOrdersQuery("")}>{t("common.clearFilters")}</button>
+            </div>
+          </aside>
+          <div className="orders-content">
+            <div className="grid three honey-grid">
+              {visibleOrders.map((order) => (
+                <div className={`card order-cell ${orderAlertClass(order)}`} key={order.id}>
               <div className="row order-head"><b>{order.id}</b><span className={`badge ${order.paymentStatus === "PAID" ? "paid" : "unpaid"}`}>{labelStatus(order.paymentStatus)}</span></div>
               <div className="order-info">
                 <div className="meta-line"><span>{t("common.bracelet")}</span><b>{order.braceletNo}</b></div>
@@ -657,8 +661,10 @@ export default function CashierClient({ user }) {
                     </button>
                   </div>
               )}
+                </div>
+              ))}
             </div>
-          ))}
+          </div>
         </div>
       </section>
       {employeeEditor && (

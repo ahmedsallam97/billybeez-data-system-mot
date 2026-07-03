@@ -321,24 +321,28 @@ export default function KitchenClient({ user }) {
     <section className="panel">
       <div className="row">
         <h2>{showArchive ? t("common.archive") : t("kitchen.orders")}</h2>
-        <div className="actions">
-          <button className={!showArchive ? "secondary" : ""} onClick={() => setShowArchive(false)}>{t("common.active")}</button>
-          <button className={showArchive ? "secondary" : ""} onClick={() => setShowArchive(true)}>{t("common.archive")}</button>
-        </div>
       </div>
-      <div className="grid four top-summary">
-        <Metric label={t("common.visibleOrders")} value={formatNumber(visibleOrders.length)} />
-        <Metric label={t("common.unpaid")} value={formatNumber(unpaidCount)} />
-        <Metric label={t("manager.notRegisteredGeidea")} value={formatNumber(unregisteredCount)} />
-        <Metric label={showArchive ? t("common.archived") : t("common.active")} value={formatNumber(kitchenOrders.length)} />
-      </div>
-      <div className="form-grid manager-filter-grid">
-        <input value={ordersQuery} onChange={(event) => setOrdersQuery(event.target.value)} placeholder={t("cashier.searchOrdersPlaceholder")} />
-        <button className="secondary" onClick={() => setOrdersQuery("")}>{t("common.clearFilters")}</button>
-      </div>
-      <div className="grid three honey-grid">
-        {visibleOrders.map((order) => (
-          <div className={`card order-cell ${orderAlertClass(order)}`} key={order.id}>
+      <div className="orders-layout">
+        <aside className="orders-sidebar">
+          <div className="tabs order-tabs">
+            <button className={!showArchive ? "active" : ""} onClick={() => setShowArchive(false)}>{t("common.active")}</button>
+            <button className={showArchive ? "active" : ""} onClick={() => setShowArchive(true)}>{t("common.archive")}</button>
+          </div>
+          <div className="orders-sidebar-metrics">
+            <Metric label={t("common.visibleOrders")} value={formatNumber(visibleOrders.length)} />
+            <Metric label={t("common.unpaid")} value={formatNumber(unpaidCount)} />
+            <Metric label={t("manager.notRegisteredGeidea")} value={formatNumber(unregisteredCount)} />
+            <Metric label={showArchive ? t("common.archived") : t("common.active")} value={formatNumber(kitchenOrders.length)} />
+          </div>
+          <div className="form-grid cashier-order-search">
+            <input value={ordersQuery} onChange={(event) => setOrdersQuery(event.target.value)} placeholder={t("cashier.searchOrdersPlaceholder")} />
+            <button className="secondary" onClick={() => setOrdersQuery("")}>{t("common.clearFilters")}</button>
+          </div>
+        </aside>
+        <div className="orders-content">
+          <div className="grid three honey-grid">
+            {visibleOrders.map((order) => (
+              <div className={`card order-cell ${orderAlertClass(order)}`} key={order.id}>
             <div className="row order-head">
               <b>{order.id}</b>
               <span className={`badge ${order.paymentStatus === "PAID" ? "paid" : "unpaid"}`}>{labelStatus(order.paymentStatus)}</span>
@@ -453,8 +457,10 @@ export default function KitchenClient({ user }) {
                 )}
               </div>
             )}
+              </div>
+            ))}
           </div>
-        ))}
+        </div>
       </div>
     </section>
     {employeeEditor && (

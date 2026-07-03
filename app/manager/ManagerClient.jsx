@@ -1661,7 +1661,14 @@ export default function ManagerClient() {
                   value={message.text}
                   onChange={(event) => updateUiMessage(key, "text", event.target.value)}
                   rows={3}
-                  placeholder={t("manager.messageText")}
+                  placeholder={t("manager.messageTextArabic")}
+                />
+                <textarea
+                  value={message.textEn || ""}
+                  onChange={(event) => updateUiMessage(key, "textEn", event.target.value)}
+                  rows={3}
+                  dir="ltr"
+                  placeholder={t("manager.messageTextEnglish")}
                 />
                 <div className="ui-message-fields">
                   <label>

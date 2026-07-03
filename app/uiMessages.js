@@ -1,5 +1,39 @@
 "use client";
 
+const defaultUiMessageTextEn = {
+  kitchenTicketQueued: "Kitchen ticket is already in the print queue",
+  printJobPending: "Preparing the order",
+  geideaRegistered: "Registered on Geidea by\n{employee} · {time}",
+  paymentSaved: "Payment saved as {method}",
+  settingsSaved: "Settings saved",
+  uiMessagesSaved: "UI messages saved",
+  employeeStyleSaved: "Employee name style saved",
+  employeeSaved: "Employee saved",
+  productSaved: "Product saved",
+  userSaved: "User saved",
+  rolePermissionsSaved: "Role permissions saved",
+  backupCreated: "Backup created",
+  backupRestored: "Backup restored. Restart the app if old data is still visible.",
+  orderSaved: "Order {id} saved",
+  orderUpdated: "Order updated",
+  itemAdded: "Item added",
+  itemRemoved: "Item removed",
+  customerLeft: "Customer marked as left",
+  customerPresent: "Customer marked as present",
+  delivered: "Order marked delivered",
+  geideaSaved: "Order registered on Geidea",
+  orderArchived: "Order archived",
+  businessOpened: "Business day opened",
+  businessClosed: "Business day closed",
+  leftUnpaid: "Customer left without paying",
+  leftNeedsGeidea: "Customer left and is not registered on Geidea",
+  exitEmployee: "Exit employee\n{employee}",
+  archivedAt: "Archived at: {time}",
+  closedAt: "Closed: {time}",
+  printJobPrinted: "Kitchen ticket printed",
+  printJobFailed: "Kitchen ticket print failed",
+};
+
 export const defaultUiMessages = {
   kitchenTicketQueued: {
     label: "Kitchen ticket queue message",
@@ -357,7 +391,11 @@ export function normalizeUiMessages(value) {
   }
 
   return uiMessageKeys.reduce((messages, key) => {
-    messages[key] = { ...defaultUiMessages[key], ...(parsed?.[key] || {}) };
+    messages[key] = {
+      ...defaultUiMessages[key],
+      textEn: defaultUiMessageTextEn[key] || defaultUiMessages[key].text,
+      ...(parsed?.[key] || {}),
+    };
     return messages;
   }, {});
 }
@@ -378,6 +416,8 @@ export function uiMessageStyle(message) {
   };
 }
 
-export function formatUiMessage(message, values = {}) {
-  return String(message?.text || "").replace(/\{(\w+)\}/g, (_, key) => values[key] ?? "");
+export function formatUiMessage(message, values = {}, language) {
+  const activeLanguage = language || (typeof document !== "undefined" ? document.documentElement.lang : "ar");
+  const text = activeLanguage === "en" ? (message?.textEn || message?.text) : message?.text;
+  return String(text || "").replace(/\{(\w+)\}/g, (_, key) => values[key] ?? "");
 }

@@ -513,18 +513,14 @@ export default function ManagerClient() {
   function selectCalendarDay(day) {
     if (!day) return;
     const month = day.slice(0, 7);
-    if (dateFilterMode === "RANGE") {
-      if (!dateFilter.from || (dateFilter.from && dateFilter.to)) {
-        setDateFilter((current) => ({ ...current, from: day, to: "", day, month, year: day.slice(0, 4) }));
-        return;
-      }
+    if (dateFilterMode === "RANGE" && dateFilter.from && dateFilter.from === dateFilter.to) {
       const from = day < dateFilter.from ? day : dateFilter.from;
       const to = day < dateFilter.from ? dateFilter.from : day;
       setDateFilter((current) => ({ ...current, from, to, day: from, month: from.slice(0, 7), year: from.slice(0, 4) }));
       return;
     }
+    setDateFilterMode("RANGE");
     setDateFilter((current) => ({ ...current, day, month, year: day.slice(0, 4), from: day, to: day }));
-    setDatePickerOpen(false);
   }
 
   function calendarDayClass(day) {
@@ -552,7 +548,6 @@ export default function ManagerClient() {
                 ["YESTERDAY", t("manager.rangeYesterday"), () => applyDatePreset("YESTERDAY")],
                 ["MONTH", t("manager.rangeMonth"), () => applyDatePreset("MONTH")],
                 ["YEAR", t("manager.rangeYear"), () => applyDatePreset("YEAR")],
-                ["RANGE", t("manager.rangeCustom"), () => setDateFilterMode("RANGE")],
               ].map(([mode, label, onClick]) => (
                 <button key={mode} type="button" className={dateFilterMode === mode ? "secondary" : ""} onClick={onClick}>{label}</button>
               ))}
@@ -605,11 +600,13 @@ export default function ManagerClient() {
     if (viewMode !== "HISTORY" && !isCurrentSelectedDay()) rows = allPeriodRows;
     rows = rows.filter(isOrderInSelectedPeriod);
 
+    const currentSelectedDay = isCurrentSelectedDay();
+
     if (filter === "UNPAID") rows = rows.filter((order) => order.paymentStatus !== "PAID");
     if (filter === "CASH" || filter === "VISA") rows = rows.filter((order) => order.paymentStatus === "PAID" && order.paymentMethod === filter);
-    if (viewMode === "TODAY" && archiveFilter === "ALL") rows = rows.filter((order) => !isUnclosedOrder(order));
-    if (viewMode === "TODAY" && archiveFilter === "ACTIVE") rows = rows.filter((order) => !order.archivedAt && !isUnclosedOrder(order));
-    if (viewMode === "TODAY" && archiveFilter === "ARCHIVED") rows = rows.filter((order) => order.archivedAt && !isUnclosedOrder(order));
+    if (viewMode === "TODAY" && archiveFilter === "ALL" && currentSelectedDay) rows = rows.filter((order) => !isUnclosedOrder(order));
+    if (viewMode === "TODAY" && archiveFilter === "ACTIVE") rows = rows.filter((order) => !order.archivedAt && (!currentSelectedDay || !isUnclosedOrder(order)));
+    if (viewMode === "TODAY" && archiveFilter === "ARCHIVED") rows = rows.filter((order) => order.archivedAt && (!currentSelectedDay || !isUnclosedOrder(order)));
     if (viewMode === "TODAY" && archiveFilter === "UNREGISTERED") rows = rows.filter((order) => !order.geideaRegisteredAt);
 
     const search = query.trim().toLowerCase();
@@ -627,6 +624,96 @@ export default function ManagerClient() {
 
     return rows;
   }, [data, viewMode, historyRows, allPeriodRows, filter, archiveFilter, query, dateFilterMode, dateFilter]);
+
+  const periodOrders = useMemo(
+    () => allPeriodRows.filter(isOrderInSelectedPeriod),
+    [allPeriodRows, dateFilterMode, dateFilter],
+  );
+
+  const periodAuditLogs = useMemo(() => {
+    return (data?.auditLogs || []).filter((log) => {
+      const logDate = String(log.createdAt || "").slice(0, 10);
+      return isDateInSelectedPeriod(logDate);
+    });
+  }, [data, dateFilterMode, dateFilter]);
+
+  const periodReports = useMemo(() => buildPeriodReports(periodOrders), [periodOrders]);
+
+  function isDateInSelectedPeriod(dateValue) {
+    if (!dateValue) return false;
+    if (dateFilterMode === "MONTH") return dateFilter.month ? dateValue.startsWith(dateFilter.month) : true;
+    if (dateFilterMode === "YEAR") return dateFilter.year ? dateValue.startsWith(dateFilter.year) : true;
+    if (dateFilterMode === "RANGE") {
+      const from = dateFilter.from || "0000-01-01";
+      const to = dateFilter.to || "9999-12-31";
+      return dateValue >= from && dateValue <= to;
+    }
+    return dateFilter.day ? dateValue === dateFilter.day : true;
+  }
+
+  function buildPeriodReports(orders) {
+    const paymentMap = new Map();
+    const productMap = new Map();
+    const statusMap = new Map();
+    const cashierMap = new Map();
+    const employeeMap = new Map();
+    const braceletMap = new Map();
+    const dayMap = new Map();
+
+    orders.forEach((order) => {
+      const total = Number(order.total) || 0;
+      const paymentKey = order.paymentStatus === "PAID" ? (order.paymentMethod || "UNKNOWN") : "UNPAID";
+      const paymentRow = paymentMap.get(paymentKey) || { method: paymentKey, count: 0, total: 0 };
+      paymentRow.count += 1;
+      paymentRow.total += total;
+      paymentMap.set(paymentKey, paymentRow);
+
+      const statusKey = order.archivedAt ? "ARCHIVED" : order.paymentStatus;
+      const statusRow = statusMap.get(statusKey) || { status: statusKey, count: 0 };
+      statusRow.count += 1;
+      statusMap.set(statusKey, statusRow);
+
+      const cashierName = order.cashier || "-";
+      const cashierRow = cashierMap.get(cashierName) || { name: cashierName, total: 0 };
+      cashierRow.total += total;
+      cashierMap.set(cashierName, cashierRow);
+
+      const employeeName = order.dataEmployee || "-";
+      const employeeRow = employeeMap.get(employeeName) || { name: employeeName, total: 0 };
+      employeeRow.total += total;
+      employeeMap.set(employeeName, employeeRow);
+
+      const bracelet = order.braceletNo || "-";
+      const braceletRow = braceletMap.get(bracelet) || { bracelet, total: 0 };
+      braceletRow.total += total;
+      braceletMap.set(bracelet, braceletRow);
+
+      const day = orderBusinessDate(order);
+      if (day) {
+        const dayRow = dayMap.get(day) || { date: day, total: 0 };
+        dayRow.total += total;
+        dayMap.set(day, dayRow);
+      }
+
+      (order.items || []).forEach((item) => {
+        const name = item.name || "-";
+        const productRow = productMap.get(name) || { name, total: 0 };
+        productRow.total += Number(item.total) || 0;
+        productMap.set(name, productRow);
+      });
+    });
+
+    const byTotal = (a, b) => b.total - a.total;
+    return {
+      paymentBreakdown: [...paymentMap.values()].sort(byTotal),
+      topProducts: [...productMap.values()].sort(byTotal).slice(0, 8),
+      statusBreakdown: [...statusMap.values()].sort((a, b) => b.count - a.count),
+      cashierPerformance: [...cashierMap.values()].sort(byTotal).slice(0, 8),
+      dataEmployeePerformance: [...employeeMap.values()].sort(byTotal).slice(0, 8),
+      topBracelets: [...braceletMap.values()].sort(byTotal).slice(0, 8),
+      dailySales: [...dayMap.values()].sort((a, b) => a.date.localeCompare(b.date)),
+    };
+  }
 
   async function payOrder(orderId, paymentMethod, paymentEmployeeId = managerPaymentEmployeeId) {
     const res = await fetch(`/api/orders/${orderUrlId(orderId)}/pay`, {
@@ -1093,7 +1180,7 @@ export default function ManagerClient() {
   }
 
   function dailyReviewRows() {
-    const dayOrders = allPeriodRows.filter(isOrderInSelectedPeriod);
+    const dayOrders = periodOrders;
     return {
       orders: dayOrders,
       cash: dayOrders.filter((order) => order.paymentStatus === "PAID" && order.paymentMethod === "CASH").reduce((sum, order) => sum + order.total, 0),
@@ -1169,31 +1256,31 @@ export default function ManagerClient() {
     return [
       {
         title: t("manager.paymentBreakdown"),
-        rows: data.paymentBreakdown.map((row) => [labelMethod(row.method), `${currency(row.total)} (${formatNumber(row.count)})`]),
+        rows: periodReports.paymentBreakdown.map((row) => [labelMethod(row.method), `${currency(row.total)} (${formatNumber(row.count)})`]),
       },
       {
         title: t("manager.topProducts"),
-        rows: data.topProducts.map((product) => [product.name, currency(product.total)]),
+        rows: periodReports.topProducts.map((product) => [product.name, currency(product.total)]),
       },
       {
         title: t("manager.statusBreakdown"),
-        rows: data.statusBreakdown.map((row) => [labelStatus(row.status), formatNumber(row.count)]),
+        rows: periodReports.statusBreakdown.map((row) => [labelStatus(row.status), formatNumber(row.count)]),
       },
       {
         title: t("manager.cashierPerformance"),
-        rows: data.cashierPerformance.map((row) => [row.name, currency(row.total)]),
+        rows: periodReports.cashierPerformance.map((row) => [row.name, currency(row.total)]),
       },
       {
         title: t("manager.employees"),
-        rows: data.dataEmployeePerformance.map((row) => [row.name, currency(row.total)]),
+        rows: periodReports.dataEmployeePerformance.map((row) => [row.name, currency(row.total)]),
       },
       {
         title: t("manager.topBracelets"),
-        rows: data.topBracelets.map((row) => [row.bracelet, currency(row.total)]),
+        rows: periodReports.topBracelets.map((row) => [row.bracelet, currency(row.total)]),
       },
       {
         title: t("manager.dailySales"),
-        rows: data.dailySales.map((row) => [row.date, currency(row.total)]),
+        rows: periodReports.dailySales.map((row) => [row.date, currency(row.total)]),
       },
     ];
   }
@@ -1508,6 +1595,7 @@ export default function ManagerClient() {
             <div className="muted">{t("manager.reportsExportHint")}</div>
           </div>
           <div className="actions">
+            {renderDateRangePicker()}
             <button className="btn-print" onClick={exportReportsCsv}>{t("manager.exportExcel")}</button>
             <button className="btn-details" onClick={printReportsPdf}>{t("manager.exportPdf")}</button>
           </div>
@@ -1517,34 +1605,34 @@ export default function ManagerClient() {
       <section className={`grid three ${managerTab === "reports" ? "" : "is-hidden"}`}>
         <div className="panel">
           <h3>{t("manager.paymentBreakdown")}</h3>
-          {data.paymentBreakdown.map((row) => (
+          {periodReports.paymentBreakdown.map((row) => (
             <div className="row" key={row.method}><span>{labelMethod(row.method)} ({formatNumber(row.count)})</span><b>{currency(row.total)}</b></div>
           ))}
-          <MiniBars rows={data.paymentBreakdown} labelKey="method" valueKey="total" labelFormatter={labelMethod} valueFormatter={currency} />
+          <MiniBars rows={periodReports.paymentBreakdown} labelKey="method" valueKey="total" labelFormatter={labelMethod} valueFormatter={currency} />
         </div>
         <div className="panel">
           <h3>{t("manager.topProducts")}</h3>
-          {data.topProducts.map((product) => (
+          {periodReports.topProducts.map((product) => (
             <div className="row" key={product.name}><span>{product.name}</span><b>{currency(product.total)}</b></div>
           ))}
         </div>
         <div className="panel">
           <h3>{t("manager.statusBreakdown")}</h3>
-          {data.statusBreakdown.map((row) => (
+          {periodReports.statusBreakdown.map((row) => (
             <div className="row" key={row.status}><span>{labelStatus(row.status)}</span><b>{formatNumber(row.count)}</b></div>
           ))}
         </div>
       </section>
 
       <section className={`grid three ${managerTab === "reports" ? "" : "is-hidden"}`}>
-        <Report title={t("manager.cashierPerformance")} rows={data.cashierPerformance} labelKey="name" valueKey="total" formatValue={currency} emptyLabel={t("common.noData")} />
-        <Report title={t("manager.employees")} rows={data.dataEmployeePerformance} labelKey="name" valueKey="total" formatValue={currency} emptyLabel={t("common.noData")} />
-        <Report title={t("manager.topBracelets")} rows={data.topBracelets} labelKey="bracelet" valueKey="total" formatValue={currency} emptyLabel={t("common.noData")} />
+        <Report title={t("manager.cashierPerformance")} rows={periodReports.cashierPerformance} labelKey="name" valueKey="total" formatValue={currency} emptyLabel={t("common.noData")} />
+        <Report title={t("manager.employees")} rows={periodReports.dataEmployeePerformance} labelKey="name" valueKey="total" formatValue={currency} emptyLabel={t("common.noData")} />
+        <Report title={t("manager.topBracelets")} rows={periodReports.topBracelets} labelKey="bracelet" valueKey="total" formatValue={currency} emptyLabel={t("common.noData")} />
       </section>
 
       <section className={`panel ${managerTab === "reports" ? "" : "is-hidden"}`}>
         <h3>{t("manager.dailySales")}</h3>
-        <MiniBars rows={data.dailySales} labelKey="date" valueKey="total" valueFormatter={currency} />
+        <MiniBars rows={periodReports.dailySales} labelKey="date" valueKey="total" valueFormatter={currency} />
       </section>
 
       <section className={`panel settings-shell ${managerTab === "settings" ? "" : "is-hidden"}`}>
@@ -1956,10 +2044,16 @@ export default function ManagerClient() {
       </section>
 
       <section className={`panel ${managerTab === "activity" ? "" : "is-hidden"}`}>
-        <h3>{t("manager.recentActivity")}</h3>
-        {(data.auditLogs || []).length === 0 ? (
+        <div className="row">
+          <div>
+            <h3>{t("manager.recentActivity")}</h3>
+            <div className="muted">{selectedPeriodLabel()}</div>
+          </div>
+          <div className="actions">{renderDateRangePicker()}</div>
+        </div>
+        {periodAuditLogs.length === 0 ? (
           <div className="muted">{t("manager.noActivity")}</div>
-        ) : data.auditLogs.map((log) => (
+        ) : periodAuditLogs.map((log) => (
           <div className="activity-row" key={log.id}>
             <span className="activity-dot" />
             <div>

@@ -115,7 +115,7 @@ export default function ManagerClient() {
   const [userForm, setUserForm] = useState(emptyUserForm);
   const [viewMode, setViewMode] = useState("TODAY");
   const [dateFilterMode, setDateFilterMode] = useState("DAY");
-  const [dateFilter, setDateFilter] = useState({ day: "", month: "", from: "", to: "", monthFrom: "", monthTo: "" });
+  const [dateFilter, setDateFilter] = useState({ day: "", month: "", year: "", from: "", to: "" });
   const [datePickerOpen, setDatePickerOpen] = useState(false);
   const [calendarMonth, setCalendarMonth] = useState("");
   const [filter, setFilter] = useState("ALL");
@@ -153,8 +153,9 @@ export default function ManagerClient() {
   useEffect(() => {
     if (!data?.reportBusinessDate || dateFilter.day) return;
     const month = String(data.reportBusinessDate).slice(0, 7);
+    const year = String(data.reportBusinessDate).slice(0, 4);
     setCalendarMonth(month);
-    setDateFilter({ day: data.reportBusinessDate, month, from: data.reportBusinessDate, to: data.reportBusinessDate, monthFrom: month, monthTo: month });
+    setDateFilter({ day: data.reportBusinessDate, month, year, from: data.reportBusinessDate, to: data.reportBusinessDate });
   }, [data?.reportBusinessDate, dateFilter.day]);
 
   async function load() {
@@ -429,11 +430,8 @@ export default function ManagerClient() {
     if (dateFilterMode === "MONTH") {
       return dateFilter.month ? businessDate.startsWith(dateFilter.month) : true;
     }
-    if (dateFilterMode === "MONTH_RANGE") {
-      const month = businessDate.slice(0, 7);
-      const from = dateFilter.monthFrom || "0000-01";
-      const to = dateFilter.monthTo || "9999-12";
-      return month >= from && month <= to;
+    if (dateFilterMode === "YEAR") {
+      return dateFilter.year ? businessDate.startsWith(dateFilter.year) : true;
     }
     if (dateFilterMode === "RANGE") {
       const from = dateFilter.from || "0000-01-01";
@@ -445,21 +443,21 @@ export default function ManagerClient() {
 
   function selectedPeriodLabel() {
     if (dateFilterMode === "MONTH") return dateFilter.month || data?.reportBusinessDate?.slice(0, 7) || "";
-    if (dateFilterMode === "MONTH_RANGE") return `${dateFilter.monthFrom || "..."} - ${dateFilter.monthTo || "..."}`;
+    if (dateFilterMode === "YEAR") return dateFilter.year || data?.reportBusinessDate?.slice(0, 4) || "";
     if (dateFilterMode === "RANGE") return `${dateFilter.from || "..."} - ${dateFilter.to || "..."}`;
     return dateFilter.day || data?.reportBusinessDate || "";
+  }
+
+  function dateFromIso(day, offset = 0) {
+    const date = new Date(`${day}T00:00:00`);
+    date.setDate(date.getDate() + offset);
+    return date.toISOString().slice(0, 10);
   }
 
   function monthLabel(monthValue) {
     if (!monthValue) return "";
     const date = new Date(`${monthValue}-01T00:00:00`);
     return date.toLocaleDateString(language === "ar" ? "ar-EG" : "en-US", { month: "long", year: "numeric" });
-  }
-
-  function monthName(monthValue) {
-    if (!monthValue) return "";
-    const date = new Date(`${monthValue}-01T00:00:00`);
-    return date.toLocaleDateString(language === "ar" ? "ar-EG" : "en-US", { month: "long" });
   }
 
   function dayNameLabels() {
@@ -486,17 +484,30 @@ export default function ManagerClient() {
     setCalendarMonth(`${next.getFullYear()}-${String(next.getMonth() + 1).padStart(2, "0")}`);
   }
 
-  function monthOptionsForPicker() {
-    const month = calendarMonth || data?.reportBusinessDate?.slice(0, 7) || new Date().toISOString().slice(0, 7);
-    const [year] = month.split("-").map(Number);
-    return Array.from({ length: 12 }, (_, index) => `${year}-${String(index + 1).padStart(2, "0")}`);
-  }
-
-  function shiftCalendarYear(step) {
-    const month = calendarMonth || data?.reportBusinessDate?.slice(0, 7) || new Date().toISOString().slice(0, 7);
-    const [year, monthNumber] = month.split("-").map(Number);
-    const next = new Date(year + step, monthNumber - 1, 1);
-    setCalendarMonth(`${next.getFullYear()}-${String(next.getMonth() + 1).padStart(2, "0")}`);
+  function applyDatePreset(mode) {
+    const baseDay = data?.reportBusinessDate || new Date().toISOString().slice(0, 10);
+    const targetDay = mode === "YESTERDAY" ? dateFromIso(baseDay, -1) : baseDay;
+    const month = calendarMonth || targetDay.slice(0, 7);
+    const year = month.slice(0, 4);
+    if (mode === "DAY" || mode === "YESTERDAY") {
+      const day = targetDay;
+      setDateFilterMode(mode);
+      setCalendarMonth(day.slice(0, 7));
+      setDateFilter({ day, month: day.slice(0, 7), year: day.slice(0, 4), from: day, to: day });
+      setDatePickerOpen(false);
+      return;
+    }
+    if (mode === "MONTH") {
+      setDateFilterMode("MONTH");
+      setDateFilter((current) => ({ ...current, day: `${month}-01`, month, year, from: `${month}-01`, to: `${month}-31` }));
+      setDatePickerOpen(false);
+      return;
+    }
+    if (mode === "YEAR") {
+      setDateFilterMode("YEAR");
+      setDateFilter((current) => ({ ...current, day: `${year}-01-01`, month: `${year}-01`, year, from: `${year}-01-01`, to: `${year}-12-31` }));
+      setDatePickerOpen(false);
+    }
   }
 
   function selectCalendarDay(day) {
@@ -504,31 +515,15 @@ export default function ManagerClient() {
     const month = day.slice(0, 7);
     if (dateFilterMode === "RANGE") {
       if (!dateFilter.from || (dateFilter.from && dateFilter.to)) {
-        setDateFilter((current) => ({ ...current, from: day, to: "", day, month }));
+        setDateFilter((current) => ({ ...current, from: day, to: "", day, month, year: day.slice(0, 4) }));
         return;
       }
       const from = day < dateFilter.from ? day : dateFilter.from;
       const to = day < dateFilter.from ? dateFilter.from : day;
-      setDateFilter((current) => ({ ...current, from, to, day: from, month: from.slice(0, 7) }));
+      setDateFilter((current) => ({ ...current, from, to, day: from, month: from.slice(0, 7), year: from.slice(0, 4) }));
       return;
     }
-    setDateFilter((current) => ({ ...current, day, month, from: day, to: day, monthFrom: month, monthTo: month }));
-    setDatePickerOpen(false);
-  }
-
-  function selectCalendarMonth(month) {
-    if (!month) return;
-    if (dateFilterMode === "MONTH_RANGE") {
-      if (!dateFilter.monthFrom || (dateFilter.monthFrom && dateFilter.monthTo)) {
-        setDateFilter((current) => ({ ...current, monthFrom: month, monthTo: "", month, day: `${month}-01`, from: `${month}-01`, to: "" }));
-        return;
-      }
-      const monthFrom = month < dateFilter.monthFrom ? month : dateFilter.monthFrom;
-      const monthTo = month < dateFilter.monthFrom ? dateFilter.monthFrom : month;
-      setDateFilter((current) => ({ ...current, monthFrom, monthTo, month: monthFrom, day: `${monthFrom}-01`, from: `${monthFrom}-01`, to: `${monthTo}-31` }));
-      return;
-    }
-    setDateFilter((current) => ({ ...current, month, monthFrom: month, monthTo: month, day: `${month}-01`, from: `${month}-01`, to: `${month}-31` }));
+    setDateFilter((current) => ({ ...current, day, month, year: day.slice(0, 4), from: day, to: day }));
     setDatePickerOpen(false);
   }
 
@@ -542,15 +537,6 @@ export default function ManagerClient() {
     return day === dateFilter.day ? "selected" : "";
   }
 
-  function calendarMonthClass(month) {
-    if (dateFilterMode === "MONTH_RANGE") {
-      if (month === dateFilter.monthFrom || month === dateFilter.monthTo) return "selected";
-      if (dateFilter.monthFrom && dateFilter.monthTo && month > dateFilter.monthFrom && month < dateFilter.monthTo) return "in-range";
-      return "";
-    }
-    return month === dateFilter.month ? "selected" : "";
-  }
-
   function renderDateRangePicker() {
     return (
       <div className="date-range-control">
@@ -562,37 +548,28 @@ export default function ManagerClient() {
           <div className="date-picker-popover">
             <div className="date-picker-tabs">
               {[
-                ["DAY", t("manager.rangeDay")],
-                ["RANGE", t("manager.rangeDays")],
-                ["MONTH", t("manager.rangeMonth")],
-                ["MONTH_RANGE", t("manager.rangeMonths")],
-              ].map(([mode, label]) => (
-                <button key={mode} type="button" className={dateFilterMode === mode ? "secondary" : ""} onClick={() => setDateFilterMode(mode)}>{label}</button>
+                ["DAY", t("manager.rangeToday"), () => applyDatePreset("DAY")],
+                ["YESTERDAY", t("manager.rangeYesterday"), () => applyDatePreset("YESTERDAY")],
+                ["MONTH", t("manager.rangeMonth"), () => applyDatePreset("MONTH")],
+                ["YEAR", t("manager.rangeYear"), () => applyDatePreset("YEAR")],
+                ["RANGE", t("manager.rangeCustom"), () => setDateFilterMode("RANGE")],
+              ].map(([mode, label, onClick]) => (
+                <button key={mode} type="button" className={dateFilterMode === mode ? "secondary" : ""} onClick={onClick}>{label}</button>
               ))}
             </div>
             <div className="date-picker-head">
-              <button type="button" className="icon-step" onClick={() => (dateFilterMode.includes("MONTH") ? shiftCalendarYear(-1) : shiftCalendarMonth(-1))}>‹</button>
-              <b>{dateFilterMode.includes("MONTH") ? String((calendarMonth || "").slice(0, 4)) : monthLabel(calendarMonth || dateFilter.month)}</b>
-              <button type="button" className="icon-step" onClick={() => (dateFilterMode.includes("MONTH") ? shiftCalendarYear(1) : shiftCalendarMonth(1))}>›</button>
+              <button type="button" className="icon-step" onClick={() => shiftCalendarMonth(-1)}>‹</button>
+              <b>{monthLabel(calendarMonth || dateFilter.month)}</b>
+              <button type="button" className="icon-step" onClick={() => shiftCalendarMonth(1)}>›</button>
             </div>
-            {dateFilterMode.includes("MONTH") ? (
-              <div className="month-grid">
-                {monthOptionsForPicker().map((month) => (
-                  <button type="button" key={month} className={calendarMonthClass(month)} onClick={() => selectCalendarMonth(month)}>{monthName(month)}</button>
-                ))}
-              </div>
-            ) : (
-              <>
-                <div className="weekday-grid">{dayNameLabels().map((day) => <span key={day}>{day}</span>)}</div>
-                <div className="calendar-grid">
-                  {calendarDays().map((day, index) => (
-                    <button type="button" key={day || `empty-${index}`} className={calendarDayClass(day)} disabled={!day} onClick={() => selectCalendarDay(day)}>
-                      {day ? Number(day.slice(-2)) : ""}
-                    </button>
-                  ))}
-                </div>
-              </>
-            )}
+            <div className="weekday-grid">{dayNameLabels().map((day) => <span key={day}>{day}</span>)}</div>
+            <div className="calendar-grid">
+              {calendarDays().map((day, index) => (
+                <button type="button" key={day || `empty-${index}`} className={calendarDayClass(day)} disabled={!day} onClick={() => selectCalendarDay(day)}>
+                  {day ? Number(day.slice(-2)) : ""}
+                </button>
+              ))}
+            </div>
             <div className="date-picker-foot">
               <span>{selectedPeriodLabel()}</span>
               <button type="button" className="btn-confirm" onClick={() => setDatePickerOpen(false)}>{t("common.save")}</button>
@@ -1419,7 +1396,7 @@ export default function ManagerClient() {
               setViewMode("TODAY");
               setDateFilterMode("DAY");
               setCalendarMonth(day.slice(0, 7));
-              setDateFilter((current) => ({ ...current, day, month: day.slice(0, 7), from: day, to: day, monthFrom: day.slice(0, 7), monthTo: day.slice(0, 7) }));
+              setDateFilter((current) => ({ ...current, day, month: day.slice(0, 7), year: day.slice(0, 4), from: day, to: day }));
             }}>{t("common.today")}</button>
             <button className={viewMode === "HISTORY" ? "secondary" : ""} onClick={() => setViewMode("HISTORY")}>{t("common.orderHistory")}</button>
           </div>

@@ -520,6 +520,11 @@ html[dir="ltr"] .settings-sidebar button{font-size:13px;line-height:1.15}
 .settings-sidebar button.active{background:var(--bb-purple);border-color:var(--bb-purple);color:#fff}
 .settings-sidebar button:not(:disabled):hover{transform:none;background:#f5edff;border-color:var(--bb-purple);color:var(--bb-purple)}
 .settings-sidebar button.active:not(:disabled):hover{background:var(--bb-purple-2);color:#fff}
+.date-range-control{display:flex;align-items:center;gap:8px;flex-wrap:wrap;background:#fffdf4;border:1px solid var(--bb-line);border-radius:8px;padding:6px 8px}
+.date-range-control select,.date-range-control input{height:36px;min-height:36px;padding:6px 8px;font-size:13px}
+.date-range-icon{width:18px;height:18px;display:inline-block;border:2px solid var(--bb-purple);border-radius:4px;position:relative;background:#fff}
+.date-range-icon::before{content:"";position:absolute;inset-inline:2px;top:4px;border-top:2px solid var(--bb-purple)}
+.date-range-icon::after{content:"";position:absolute;width:3px;height:3px;left:4px;bottom:4px;background:var(--bb-red);box-shadow:5px 0 0 var(--bb-purple),10px 0 0 var(--bb-purple)}
 .settings-content{min-width:0}
 .employee-form-grid{grid-template-columns:minmax(220px,2fr) minmax(170px,1fr) minmax(140px,auto) auto;align-items:center}
 .product-form-grid{grid-template-columns:minmax(220px,1.4fr) minmax(120px,.55fr) minmax(170px,.9fr) minmax(220px,1.2fr);align-items:center}

@@ -114,6 +114,8 @@ export default function ManagerClient() {
   const [productForm, setProductForm] = useState(emptyProductForm);
   const [userForm, setUserForm] = useState(emptyUserForm);
   const [viewMode, setViewMode] = useState("TODAY");
+  const [dateFilterMode, setDateFilterMode] = useState("DAY");
+  const [dateFilter, setDateFilter] = useState({ day: "", month: "", from: "", to: "" });
   const [filter, setFilter] = useState("ALL");
   const [archiveFilter, setArchiveFilter] = useState("ALL");
   const [managerTab, setManagerTab] = useState("orders");
@@ -145,6 +147,12 @@ export default function ManagerClient() {
     setManagerGeideaEmployeeId(selectedOrder.geideaEmployeeId || restaurantEmployees[0]?.id || "");
     setOrderItemForm((current) => ({ productId: current.productId || products[0]?.id || "", qty: current.qty || 1 }));
   }, [selectedOrder, employees, products]);
+
+  useEffect(() => {
+    if (!data?.reportBusinessDate || dateFilter.day) return;
+    const month = String(data.reportBusinessDate).slice(0, 7);
+    setDateFilter({ day: data.reportBusinessDate, month, from: data.reportBusinessDate, to: data.reportBusinessDate });
+  }, [data?.reportBusinessDate, dateFilter.day]);
 
   async function load() {
     const [dashboardRes, employeesRes, productsRes, usersRes, settingsRes, backupsRes] = await Promise.all([
@@ -404,6 +412,34 @@ export default function ManagerClient() {
     return Boolean(currentBusinessDate && order.businessDate && order.businessDate !== currentBusinessDate);
   }
 
+  function orderBusinessDate(order) {
+    return String(order?.businessDate || order?.createdAt || "").slice(0, 10);
+  }
+
+  function isCurrentSelectedDay() {
+    return dateFilterMode === "DAY" && dateFilter.day && dateFilter.day === data?.reportBusinessDate;
+  }
+
+  function isOrderInSelectedPeriod(order) {
+    const businessDate = orderBusinessDate(order);
+    if (!businessDate) return false;
+    if (dateFilterMode === "MONTH") {
+      return dateFilter.month ? businessDate.startsWith(dateFilter.month) : true;
+    }
+    if (dateFilterMode === "RANGE") {
+      const from = dateFilter.from || "0000-01-01";
+      const to = dateFilter.to || "9999-12-31";
+      return businessDate >= from && businessDate <= to;
+    }
+    return dateFilter.day ? businessDate === dateFilter.day : true;
+  }
+
+  function selectedPeriodLabel() {
+    if (dateFilterMode === "MONTH") return dateFilter.month || data?.reportBusinessDate?.slice(0, 7) || "";
+    if (dateFilterMode === "RANGE") return `${dateFilter.from || "..."} - ${dateFilter.to || "..."}`;
+    return dateFilter.day || data?.reportBusinessDate || "";
+  }
+
   const currentArchivedOrders = useMemo(
     () => (data?.orders || []).filter((order) => order.archivedAt).map((order) => ({ ...order, isCurrentArchive: true })),
     [data],
@@ -414,8 +450,20 @@ export default function ManagerClient() {
     [currentArchivedOrders, data],
   );
 
+  const allPeriodRows = useMemo(() => {
+    const seen = new Set();
+    return [...(data?.orders || []), ...(data?.orderHistory || [])].filter((order) => {
+      const key = `${order.id || order.originalOrderId}-${order.businessDate || ""}-${order.isHistory ? "history" : "live"}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+  }, [data]);
+
   const visibleOrders = useMemo(() => {
     let rows = viewMode === "HISTORY" ? historyRows : data?.orders || [];
+    if (viewMode !== "HISTORY" && !isCurrentSelectedDay()) rows = allPeriodRows;
+    rows = rows.filter(isOrderInSelectedPeriod);
 
     if (filter === "UNPAID") rows = rows.filter((order) => order.paymentStatus !== "PAID");
     if (filter === "CASH" || filter === "VISA") rows = rows.filter((order) => order.paymentStatus === "PAID" && order.paymentMethod === filter);
@@ -438,7 +486,7 @@ export default function ManagerClient() {
     }
 
     return rows;
-  }, [data, viewMode, historyRows, filter, archiveFilter, query]);
+  }, [data, viewMode, historyRows, allPeriodRows, filter, archiveFilter, query, dateFilterMode, dateFilter]);
 
   async function payOrder(orderId, paymentMethod, paymentEmployeeId = managerPaymentEmployeeId) {
     const res = await fetch(`/api/orders/${orderUrlId(orderId)}/pay`, {
@@ -896,9 +944,7 @@ export default function ManagerClient() {
   }
 
   function dailyReviewRows() {
-    const orders = data?.orders || [];
-    const currentDate = data?.reportBusinessDate;
-    const dayOrders = currentDate ? orders.filter((order) => order.businessDate === currentDate) : orders;
+    const dayOrders = allPeriodRows.filter(isOrderInSelectedPeriod);
     return {
       orders: dayOrders,
       cash: dayOrders.filter((order) => order.paymentStatus === "PAID" && order.paymentMethod === "CASH").reduce((sum, order) => sum + order.total, 0),
@@ -911,7 +957,7 @@ export default function ManagerClient() {
   function exportDailyCsv() {
     const review = dailyReviewRows();
     const rows = [
-      ["Business Date", data?.reportBusinessDate || ""],
+      ["Business Date", selectedPeriodLabel()],
       ["Cash Total", review.cash],
       ["Visa Total", review.visa],
       ["Not Registered Geidea", review.unregistered.length],
@@ -935,7 +981,7 @@ export default function ManagerClient() {
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;
-    link.download = `billybeez-daily-report-${data?.reportBusinessDate || "today"}.csv`;
+    link.download = `billybeez-daily-report-${selectedPeriodLabel() || "today"}.csv`;
     link.click();
     URL.revokeObjectURL(url);
   }
@@ -956,7 +1002,7 @@ export default function ManagerClient() {
       <html><head><title>Daily Report</title>
       <style>body{font-family:Arial,sans-serif;padding:24px}table{width:100%;border-collapse:collapse}td,th{border:1px solid #ddd;padding:8px;text-align:start}.metrics{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin:16px 0}.metric{border:1px solid #ddd;padding:12px}</style>
       </head><body>
-      <h1>BillyBeez Daily Report - ${escapeHtml(data?.reportBusinessDate || "")}</h1>
+      <h1>BillyBeez Daily Report - ${escapeHtml(selectedPeriodLabel())}</h1>
       <div class="metrics">
         <div class="metric"><b>Cash</b><br>${escapeHtml(review.cash)}</div>
         <div class="metric"><b>Visa</b><br>${escapeHtml(review.visa)}</div>
@@ -1005,7 +1051,7 @@ export default function ManagerClient() {
 
   function exportReportsCsv() {
     const rows = [
-      [t("manager.tabReports"), data?.reportBusinessDate || ""],
+      [t("manager.tabReports"), selectedPeriodLabel()],
       [],
       ...reportSections().flatMap((section) => [
         [section.title],
@@ -1018,7 +1064,7 @@ export default function ManagerClient() {
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;
-    link.download = `billybeez-reports-${data?.reportBusinessDate || "today"}.csv`;
+    link.download = `billybeez-reports-${selectedPeriodLabel() || "today"}.csv`;
     link.click();
     URL.revokeObjectURL(url);
   }
@@ -1047,7 +1093,7 @@ export default function ManagerClient() {
         section{break-inside:avoid}
       </style>
       </head><body>
-      <h1>${escapeHtml(t("manager.tabReports"))} - ${escapeHtml(data?.reportBusinessDate || "")}</h1>
+      <h1>${escapeHtml(t("manager.tabReports"))} - ${escapeHtml(selectedPeriodLabel())}</h1>
       ${sections}
       <script>window.print()</script>
       </body></html>
@@ -1195,7 +1241,32 @@ export default function ManagerClient() {
             </div>
           </div>
           <div className="actions">
-            <button className={viewMode === "TODAY" ? "secondary" : ""} onClick={() => setViewMode("TODAY")}>{t("common.today")}</button>
+            <div className="date-range-control" aria-label={t("manager.dateRange")}>
+              <span className="date-range-icon" aria-hidden="true" />
+              <select value={dateFilterMode} onChange={(event) => setDateFilterMode(event.target.value)}>
+                <option value="DAY">{t("manager.rangeDay")}</option>
+                <option value="MONTH">{t("manager.rangeMonth")}</option>
+                <option value="RANGE">{t("manager.rangeCustom")}</option>
+              </select>
+              {dateFilterMode === "DAY" && (
+                <input type="date" value={dateFilter.day} onChange={(event) => setDateFilter((current) => ({ ...current, day: event.target.value }))} />
+              )}
+              {dateFilterMode === "MONTH" && (
+                <input type="month" value={dateFilter.month} onChange={(event) => setDateFilter((current) => ({ ...current, month: event.target.value }))} />
+              )}
+              {dateFilterMode === "RANGE" && (
+                <>
+                  <input type="date" value={dateFilter.from} onChange={(event) => setDateFilter((current) => ({ ...current, from: event.target.value }))} />
+                  <input type="date" value={dateFilter.to} onChange={(event) => setDateFilter((current) => ({ ...current, to: event.target.value }))} />
+                </>
+              )}
+            </div>
+            <button className={viewMode === "TODAY" ? "secondary" : ""} onClick={() => {
+              const day = data.reportBusinessDate || new Date().toISOString().slice(0, 10);
+              setViewMode("TODAY");
+              setDateFilterMode("DAY");
+              setDateFilter((current) => ({ ...current, day, month: day.slice(0, 7), from: day, to: day }));
+            }}>{t("common.today")}</button>
             <button className={viewMode === "HISTORY" ? "secondary" : ""} onClick={() => setViewMode("HISTORY")}>{t("common.orderHistory")}</button>
           </div>
         </div>

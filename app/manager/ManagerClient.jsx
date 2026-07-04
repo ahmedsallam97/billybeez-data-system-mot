@@ -580,6 +580,21 @@ export default function ManagerClient() {
     [data],
   );
 
+  const duplicateActiveBracelets = useMemo(() => {
+    const bracelets = new Map();
+    (data?.orders || []).forEach((order) => {
+      if (order.archivedAt) return;
+      const bracelet = String(order.braceletNo || "").trim();
+      if (!bracelet) return;
+      const orders = bracelets.get(bracelet) || [];
+      orders.push(order);
+      bracelets.set(bracelet, orders);
+    });
+    return Array.from(bracelets.entries())
+      .filter(([, orders]) => orders.length > 1)
+      .map(([bracelet, orders]) => ({ bracelet, orders }));
+  }, [data]);
+
   const historyRows = useMemo(
     () => [...currentArchivedOrders, ...(data?.orderHistory || [])],
     [currentArchivedOrders, data],
@@ -1502,6 +1517,33 @@ export default function ManagerClient() {
           <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder={t("manager.searchPlaceholder")} />
           <button className="secondary" onClick={() => setQuery("")}>{t("common.clearFilters")}</button>
         </div>
+        {viewMode === "TODAY" && duplicateActiveBracelets.length > 0 && (
+          <div className="duplicate-bracelet-panel">
+            <div>
+              <h3>{t("manager.duplicateBracelets")}</h3>
+              <p>{t("manager.duplicateBraceletsHint")}</p>
+            </div>
+            <div className="duplicate-bracelet-list">
+              {duplicateActiveBracelets.map((group) => (
+                <div className="duplicate-bracelet-row" key={group.bracelet}>
+                  <div>
+                    <b>{group.bracelet}</b>
+                    <span>{t("manager.duplicateBraceletCount", { count: group.orders.length })}</span>
+                  </div>
+                  <div className="duplicate-order-list">
+                    {group.orders.map((order) => (
+                      <button type="button" className="duplicate-order-chip" key={order.id} onClick={() => setSelectedOrder(order)}>
+                        <b>{order.id}</b>
+                        <span>{order.childNames || t("manager.noOrder")}</span>
+                        <small>{currency(order.total)}</small>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
         <div className="row"><span>{t("common.visibleOrders")}</span><b>{formatNumber(visibleOrders.length)}</b></div>
         <div className="grid three honey-grid">
           {visibleOrders.map((order) => (

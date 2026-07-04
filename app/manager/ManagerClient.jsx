@@ -2223,10 +2223,20 @@ export default function ManagerClient() {
                     <option value="">{t("manager.selectReceiver")}</option>
                     {restaurantEmployees().map((employee) => <option className={employeeGenderClass(employee.name)} key={employee.id} value={employee.id}>{employee.name}</option>)}
                   </select>
-                  <button className={paymentButtonClass(selectedOrder, "CASH", "btn-pay-cash")} onClick={() => payOrder(selectedOrder.id, "CASH")}>
+                  <button
+                    className={paymentButtonClass(selectedOrder, "CASH", "btn-pay-cash")}
+                    disabled={selectedOrder.paymentStatus !== "PAID" && selectedOrder.kitchenStatus !== "DELIVERED"}
+                    title={selectedOrder.paymentStatus !== "PAID" && selectedOrder.kitchenStatus !== "DELIVERED" ? t("kitchen.deliverBeforePayment") : ""}
+                    onClick={() => payOrder(selectedOrder.id, "CASH")}
+                  >
                     {selectedOrder.paymentStatus === "PAID" && selectedOrder.paymentMethod === "CASH" ? t("manager.cashPaid") : t("manager.setCashPaid")}
                   </button>
-                  <button className={paymentButtonClass(selectedOrder, "VISA", "btn-pay-visa")} onClick={() => payOrder(selectedOrder.id, "VISA")}>
+                  <button
+                    className={paymentButtonClass(selectedOrder, "VISA", "btn-pay-visa")}
+                    disabled={selectedOrder.paymentStatus !== "PAID" && selectedOrder.kitchenStatus !== "DELIVERED"}
+                    title={selectedOrder.paymentStatus !== "PAID" && selectedOrder.kitchenStatus !== "DELIVERED" ? t("kitchen.deliverBeforePayment") : ""}
+                    onClick={() => payOrder(selectedOrder.id, "VISA")}
+                  >
                     {selectedOrder.paymentStatus === "PAID" && selectedOrder.paymentMethod === "VISA" ? t("manager.visaPaid") : t("manager.setVisaPaid")}
                   </button>
                 </div>

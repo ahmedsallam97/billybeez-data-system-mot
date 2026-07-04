@@ -267,6 +267,10 @@ export default function KitchenClient({ user }) {
   }
 
   function openEmployeeAction(order, type, method) {
+    if (type === "payment" && order.kitchenStatus !== "DELIVERED") {
+      toast(t("kitchen.deliverBeforePayment"), "error");
+      return;
+    }
     if (linkedRestaurantEmployeeId) {
       if (type === "payment") {
         pay(order.id, method || order.paymentMethod || "CASH", !order.paymentStatus || order.paymentStatus !== "PAID");
@@ -419,8 +423,8 @@ export default function KitchenClient({ user }) {
               <div className="actions">
                 <button
                   className="btn-start-prep"
-                  disabled={Boolean(order.kitchenPrintJob)}
-                  title={order.kitchenPrintJob ? formatUiMessage(uiMessages.printJobPending) : ""}
+                  disabled={Boolean(order.kitchenPrintJob) || order.kitchenStatus === "DELIVERED"}
+                  title={order.kitchenStatus === "DELIVERED" ? t("common.delivered") : order.kitchenPrintJob ? formatUiMessage(uiMessages.printJobPending) : ""}
                   onClick={() => startPreparation(order.id)}
                 >
                   {t("kitchen.startPreparation")}
@@ -435,10 +439,20 @@ export default function KitchenClient({ user }) {
                   </button>
                 ) : (
                   <>
-                    <button className={paymentButtonClass(order, "CASH", "btn-pay-cash")} onClick={() => openEmployeeAction(order, "payment", "CASH")}>
+                    <button
+                      className={paymentButtonClass(order, "CASH", "btn-pay-cash")}
+                      disabled={order.kitchenStatus !== "DELIVERED"}
+                      title={order.kitchenStatus !== "DELIVERED" ? t("kitchen.deliverBeforePayment") : ""}
+                      onClick={() => openEmployeeAction(order, "payment", "CASH")}
+                    >
                       {t("common.cash")}
                     </button>
-                    <button className={paymentButtonClass(order, "VISA", "btn-pay-visa")} onClick={() => openEmployeeAction(order, "payment", "VISA")}>
+                    <button
+                      className={paymentButtonClass(order, "VISA", "btn-pay-visa")}
+                      disabled={order.kitchenStatus !== "DELIVERED"}
+                      title={order.kitchenStatus !== "DELIVERED" ? t("kitchen.deliverBeforePayment") : ""}
+                      onClick={() => openEmployeeAction(order, "payment", "VISA")}
+                    >
                       {t("common.visa")}
                     </button>
                   </>

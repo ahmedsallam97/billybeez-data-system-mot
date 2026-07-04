@@ -20,8 +20,9 @@ export default function KitchenClient({ user }) {
   const [employeeEditor, setEmployeeEditor] = useState(null);
   const [printFrameUrl, setPrintFrameUrl] = useState("");
   const [uiMessages, setUiMessages] = useState(normalizeUiMessages());
-  const linkedRestaurantEmployeeId = user?.employee?.department === "RESTAURANT" ? user.employeeId : "";
-  const linkedRestaurantEmployeeName = user?.employee?.department === "RESTAURANT" ? user.employee.name : "";
+  const isLinkedKitchenEmployeeAccount = user?.role === "KITCHEN" && user?.employeeId && user?.employee?.department === "RESTAURANT";
+  const linkedRestaurantEmployeeId = isLinkedKitchenEmployeeAccount ? user.employeeId : "";
+  const linkedRestaurantEmployeeName = isLinkedKitchenEmployeeAccount ? user.employee.name : "";
 
   function orderAlertClass(order) {
     if (order.archivedAt) return "archived-order";

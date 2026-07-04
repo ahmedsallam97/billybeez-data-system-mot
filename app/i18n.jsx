@@ -129,7 +129,7 @@ const dictionaries = {
     "cashier.cancel": "Cancel",
     "cashier.braceletActiveTitle": "Active bracelet found",
     "cashier.braceletActiveOrder": "Bracelet {bracelet} already has an active order: {order}",
-    "cashier.openExistingOrder": "Open existing order",
+    "cashier.openExistingOrder": "Add products to existing order",
     "cashier.editButton": "Edit Order",
     "cashier.customerLeft": "Customer Left",
     "cashier.customerPresent": "Customer Present",
@@ -214,6 +214,9 @@ const dictionaries = {
     "manager.duplicateBracelets": "Duplicate bracelets",
     "manager.duplicateBraceletsHint": "These active orders share the same bracelet. Open the orders and decide which one should be corrected or archived.",
     "manager.duplicateBraceletCount": "{count} active orders",
+    "manager.mergeIntoOrder": "Merge into {order}",
+    "manager.orderMerged": "Orders merged",
+    "manager.mergeOrderFailed": "Merge failed",
     "manager.paymentBreakdown": "Payment Breakdown",
     "manager.topProducts": "Top Products",
     "manager.statusBreakdown": "Status Breakdown",
@@ -425,6 +428,8 @@ const dictionaries = {
     "audit.markedPaidBy": "Marked paid by {method}",
     "audit.addedItemLines": "Added {count} item lines",
     "audit.unarchivedOrder": "Unarchived order",
+    "audit.mergedOrders": "Merged duplicate orders",
+    "audit.mergedSourceOrder": "Merged source order",
     "audit.customerLeft": "Customer left",
     "audit.customerReturned": "Customer returned",
     "audit.createdEmployee": "Created employee {name}",
@@ -568,7 +573,7 @@ const dictionaries = {
     "cashier.cancel": "إلغاء",
     "cashier.braceletActiveTitle": "البريسلت عليه طلب مفتوح",
     "cashier.braceletActiveOrder": "البريسلت {bracelet} عليه طلب مفتوح: {order}",
-    "cashier.openExistingOrder": "فتح الطلب الموجود",
+    "cashier.openExistingOrder": "إضافة منتجات للأوردر الموجود",
     "cashier.editButton": "تعديل على الأوردر",
     "cashier.customerLeft": "تم الخروج",
     "cashier.customerPresent": "موجود",
@@ -653,6 +658,9 @@ const dictionaries = {
     "manager.duplicateBracelets": "بريسلتات مكررة",
     "manager.duplicateBraceletsHint": "طلبات حالية بنفس البريسلت. افتح الطلبات وحدد أنهي واحد محتاج تعديل أو أرشفة.",
     "manager.duplicateBraceletCount": "{count} طلب حالي",
+    "manager.mergeIntoOrder": "دمج في {order}",
+    "manager.orderMerged": "تم دمج الطلبات",
+    "manager.mergeOrderFailed": "فشل دمج الطلبات",
     "manager.paymentBreakdown": "تفاصيل طرق الدفع",
     "manager.topProducts": "أكثر المنتجات مبيعا",
     "manager.statusBreakdown": "تفاصيل الحالات",
@@ -864,6 +872,8 @@ const dictionaries = {
     "audit.markedPaidBy": "تم تسجيل الدفع كـ {method}",
     "audit.addedItemLines": "تم إضافة {count} سطور منتجات",
     "audit.unarchivedOrder": "تم إلغاء أرشفة الطلب",
+    "audit.mergedOrders": "تم دمج الطلبات المكررة",
+    "audit.mergedSourceOrder": "تم دمج طلب مصدر",
     "audit.customerLeft": "تم تسجيل خروج العميل",
     "audit.customerReturned": "تم رجوع العميل لموجود",
     "audit.createdEmployee": "تم إنشاء الموظف {name}",
@@ -997,6 +1007,8 @@ function auditTranslation(text, t, labelMethod) {
   if (text === "Moved order to history") return t("audit.movedToHistory");
   if (text === "Marked delivered") return t("audit.markedDelivered");
   if (text === "Unarchived order") return t("audit.unarchivedOrder");
+  if (text && text.startsWith("Merged orders into ")) return t("audit.mergedOrders");
+  if (text && text.startsWith("Merged order ")) return t("audit.mergedSourceOrder");
   if (text === "Customer left") return t("audit.customerLeft");
   if (text === "Customer returned") return t("audit.customerReturned");
 

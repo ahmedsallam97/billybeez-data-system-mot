@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { authorizeApi } from "@/lib/api-auth";
 import { writeAudit } from "@/lib/audit";
+import { assertActiveBraceletAvailable, isBraceletLockConflict, moveActiveBracelet } from "@/lib/active-bracelets";
 import { ensureBusinessDayState } from "@/lib/business-day";
 import { includeOrderDetails, routeOrderId, serializeOrder, validateBracelet } from "@/lib/orders";
 import { orderAuditSnapshot, restoredStatus } from "@/lib/order-workflow";
@@ -55,20 +56,13 @@ export async function PATCH(request, { params }) {
   }
 
   if (braceletNo !== order.braceletNo) {
-    const duplicateBraceletOrder = await prisma.order.findFirst({
-      where: {
-        braceletNo,
-        archivedAt: null,
-        NOT: { id },
-      },
-      select: { id: true },
-    });
+    const duplicateBraceletOrder = await assertActiveBraceletAvailable(prisma, braceletNo, id);
 
     if (duplicateBraceletOrder) {
       return NextResponse.json({
         success: false,
-        error: `Bracelet ${braceletNo} already has an active order: ${duplicateBraceletOrder.id}`,
-      }, { status: 409 });
+        error: duplicateBraceletOrder.message,
+      }, { status: duplicateBraceletOrder.status });
     }
   }
 
@@ -76,21 +70,38 @@ export async function PATCH(request, { params }) {
     return NextResponse.json({ success: false, error: "Closed or paid orders can only be edited by manager" }, { status: 403 });
   }
 
-  const updatedOrder = await prisma.order.update({
-    where: { id },
-    data: {
-      braceletNo,
-      customerPhone: customerPhone || null,
-      childNames: childNames.join(", "),
-      childrenCount: childNames.length,
-      status: restoredStatus(order),
-      workflowState: restoredStatus(order),
-      geideaRegisteredAt: null,
-      geideaEmployeeId: null,
-      archivedAt: null,
-    },
-    include: includeOrderDetails(),
-  });
+  let updatedOrder;
+  try {
+    updatedOrder = await prisma.$transaction(async (tx) => {
+      const nextOrder = await tx.order.update({
+        where: { id },
+        data: {
+          braceletNo,
+          customerPhone: customerPhone || null,
+          childNames: childNames.join(", "),
+          childrenCount: childNames.length,
+          status: restoredStatus(order),
+          workflowState: restoredStatus(order),
+          geideaRegisteredAt: null,
+          geideaEmployeeId: null,
+          archivedAt: null,
+        },
+        include: includeOrderDetails(),
+      });
+      if (braceletNo !== order.braceletNo || order.archivedAt) {
+        await moveActiveBracelet(tx, braceletNo, id);
+      }
+      return nextOrder;
+    });
+  } catch (error) {
+    if (isBraceletLockConflict(error)) {
+      return NextResponse.json({
+        success: false,
+        error: `Bracelet ${braceletNo} already has an active order`,
+      }, { status: 409 });
+    }
+    throw error;
+  }
 
   await writeAudit({
     action: "ORDER_DETAILS_UPDATED",

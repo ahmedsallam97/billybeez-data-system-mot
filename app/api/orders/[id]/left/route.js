@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { authorizeApi } from "@/lib/api-auth";
 import { writeAudit } from "@/lib/audit";
+import { assertActiveBraceletAvailable, claimActiveBracelet, isBraceletLockConflict, releaseActiveBracelet } from "@/lib/active-bracelets";
 import { ensureBusinessDayState } from "@/lib/business-day";
 import { routeOrderId } from "@/lib/orders";
 import { orderAuditSnapshot } from "@/lib/order-workflow";
@@ -55,16 +56,39 @@ export async function POST(request, { params }) {
   const restoredStatus = current.paymentStatus === "PAID" ? "PAID" : current.kitchenStatus === "DELIVERED" ? "DELIVERED" : "OPEN";
   const archivedAt = shouldArchive ? (current.archivedAt || new Date()) : null;
 
-  const order = await prisma.order.update({
-    where: { id },
-    data: {
-      customerLeft: nextCustomerLeft,
-      exitEmployeeId: nextCustomerLeft ? (exitEmployee?.id || current.exitEmployeeId) : null,
-      status: shouldArchive ? "ARCHIVED" : restoredStatus,
-      workflowState: shouldArchive ? "ARCHIVED" : nextCustomerLeft ? "CUSTOMER_LEFT" : restoredStatus,
-      archivedAt,
-    },
-  });
+  if (!shouldArchive && current.archivedAt) {
+    const duplicateBraceletOrder = await assertActiveBraceletAvailable(prisma, current.braceletNo, id);
+    if (duplicateBraceletOrder) {
+      return NextResponse.json({ success: false, error: duplicateBraceletOrder.message }, { status: duplicateBraceletOrder.status });
+    }
+  }
+
+  let order;
+  try {
+    order = await prisma.$transaction(async (tx) => {
+      const updatedOrder = await tx.order.update({
+        where: { id },
+        data: {
+          customerLeft: nextCustomerLeft,
+          exitEmployeeId: nextCustomerLeft ? (exitEmployee?.id || current.exitEmployeeId) : null,
+          status: shouldArchive ? "ARCHIVED" : restoredStatus,
+          workflowState: shouldArchive ? "ARCHIVED" : nextCustomerLeft ? "CUSTOMER_LEFT" : restoredStatus,
+          archivedAt,
+        },
+      });
+      if (shouldArchive) {
+        await releaseActiveBracelet(tx, id);
+      } else if (current.archivedAt) {
+        await claimActiveBracelet(tx, current.braceletNo, id);
+      }
+      return updatedOrder;
+    });
+  } catch (error) {
+    if (isBraceletLockConflict(error)) {
+      return NextResponse.json({ success: false, error: `Bracelet ${current.braceletNo} already has an active order` }, { status: 409 });
+    }
+    throw error;
+  }
 
   await writeAudit({
     action: nextCustomerLeft ? "CUSTOMER_LEFT" : "CUSTOMER_RETURNED",

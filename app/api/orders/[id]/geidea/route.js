@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { authorizeApi } from "@/lib/api-auth";
 import { writeAudit } from "@/lib/audit";
+import { releaseActiveBracelet } from "@/lib/active-bracelets";
 import { ensureBusinessDayState } from "@/lib/business-day";
 import { routeOrderId } from "@/lib/orders";
 import { orderAuditSnapshot } from "@/lib/order-workflow";
@@ -52,15 +53,21 @@ export async function POST(request, { params }) {
   const shouldArchive = current.customerLeft;
   const archivedAt = shouldArchive ? (current.archivedAt || registeredAt) : current.archivedAt;
 
-  const updatedOrder = await prisma.order.update({
-    where: { id },
-    data: {
-      status: shouldArchive ? "ARCHIVED" : current.status,
-      workflowState: shouldArchive ? "ARCHIVED" : "GEIDEA_REGISTERED",
-      geideaRegisteredAt: registeredAt,
-      geideaEmployeeId: geideaEmployee?.id || current.geideaEmployeeId,
-      archivedAt,
-    },
+  const updatedOrder = await prisma.$transaction(async (tx) => {
+    const order = await tx.order.update({
+      where: { id },
+      data: {
+        status: shouldArchive ? "ARCHIVED" : current.status,
+        workflowState: shouldArchive ? "ARCHIVED" : "GEIDEA_REGISTERED",
+        geideaRegisteredAt: registeredAt,
+        geideaEmployeeId: geideaEmployee?.id || current.geideaEmployeeId,
+        archivedAt,
+      },
+    });
+    if (shouldArchive) {
+      await releaseActiveBracelet(tx, id);
+    }
+    return order;
   });
 
   await writeAudit({

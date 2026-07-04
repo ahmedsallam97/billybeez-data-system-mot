@@ -419,6 +419,8 @@ html[dir="rtl"] .cart-panel h3{text-align:right}
 .duplicate-order-chip b{font-size:13px}
 .duplicate-order-chip span{font-size:12px;font-weight:900;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .duplicate-order-chip small{font-size:12px;font-weight:1000;color:var(--bb-red)}
+.duplicate-merge-actions{grid-column:1 / -1;display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end;border-top:1px solid #f2d2ad;padding-top:8px}
+.duplicate-merge-actions button{min-width:120px}
 .row{display:flex;justify-content:space-between;gap:10px;border-bottom:1px solid var(--bb-line);padding:8px 0}
 .row:last-child{border-bottom:0}
 .order-total-row{

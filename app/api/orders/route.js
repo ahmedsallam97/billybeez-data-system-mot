@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { authorizeApi } from "@/lib/api-auth";
 import { writeAudit } from "@/lib/audit";
+import { assertActiveBraceletAvailable, claimActiveBracelet, isBraceletLockConflict } from "@/lib/active-bracelets";
 import { ensureBusinessDayState } from "@/lib/business-day";
 import { buildOrderId, includeOrderDetails, serializeOrder, validateBracelet } from "@/lib/orders";
 import { enumValue, jsonValidationResponse, optionalString, requireArray, requireString } from "@/lib/validation";
@@ -66,19 +67,13 @@ export async function POST(request) {
     return NextResponse.json({ success: false, error: "Child name is required" }, { status: 400 });
   }
 
-  const duplicateBraceletOrder = await prisma.order.findFirst({
-    where: {
-      braceletNo,
-      archivedAt: null,
-    },
-    select: { id: true },
-  });
+  const duplicateBraceletOrder = await assertActiveBraceletAvailable(prisma, braceletNo);
 
   if (duplicateBraceletOrder) {
     return NextResponse.json({
       success: false,
-      error: `Bracelet ${braceletNo} already has an active order: ${duplicateBraceletOrder.id}`,
-    }, { status: 409 });
+      error: duplicateBraceletOrder.message,
+    }, { status: duplicateBraceletOrder.status });
   }
 
   const dataEmployeeId = user.employee?.department === "OPERATION" ? user.employeeId : body.dataEmployeeId;
@@ -127,23 +122,38 @@ export async function POST(request) {
   });
 
   const orderId = await buildOrderId();
-  const order = await prisma.order.create({
-    data: {
-      id: orderId,
-      businessDate: businessState.businessDate,
-      braceletNo,
-      customerPhone: customerPhone || null,
-      childNames: childNames.join(", "),
-      childrenCount: childNames.length,
-      total,
-      workflowState: "OPEN",
-      paymentMethod: enumValue(body.paymentMethod, ["CASH", "VISA"], "CASH"),
-      cashierId: user.id,
-      dataEmployeeId,
-      items: { create: orderItems },
-    },
-    include: includeOrderDetails(),
-  });
+  let order;
+  try {
+    order = await prisma.$transaction(async (tx) => {
+      const createdOrder = await tx.order.create({
+        data: {
+          id: orderId,
+          businessDate: businessState.businessDate,
+          braceletNo,
+          customerPhone: customerPhone || null,
+          childNames: childNames.join(", "),
+          childrenCount: childNames.length,
+          total,
+          workflowState: "OPEN",
+          paymentMethod: enumValue(body.paymentMethod, ["CASH", "VISA"], "CASH"),
+          cashierId: user.id,
+          dataEmployeeId,
+          items: { create: orderItems },
+        },
+        include: includeOrderDetails(),
+      });
+      await claimActiveBracelet(tx, braceletNo, createdOrder.id);
+      return createdOrder;
+    });
+  } catch (error) {
+    if (isBraceletLockConflict(error)) {
+      return NextResponse.json({
+        success: false,
+        error: `Bracelet ${braceletNo} already has an active order`,
+      }, { status: 409 });
+    }
+    throw error;
+  }
 
   await writeAudit({
     action: "ORDER_CREATED",

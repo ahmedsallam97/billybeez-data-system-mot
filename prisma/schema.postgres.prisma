@@ -146,20 +146,32 @@ model Order {
   createdAt          DateTime      @default(now())
   updatedAt          DateTime      @updatedAt
 
-  cashier          User?       @relation("CashierOrders", fields: [cashierId], references: [id])
-  dataEmployee     Employee?   @relation("OrderDataEmployee", fields: [dataEmployeeId], references: [id])
-  deliveryEmployee Employee?   @relation("OrderDeliveryEmployee", fields: [deliveryEmployeeId], references: [id])
-  geideaEmployee   Employee?   @relation("OrderGeideaEmployee", fields: [geideaEmployeeId], references: [id])
-  paymentEmployee  Employee?   @relation("OrderPaymentEmployee", fields: [paymentEmployeeId], references: [id])
-  exitEmployee     Employee?   @relation("OrderExitEmployee", fields: [exitEmployeeId], references: [id])
-  items            OrderItem[]
-  auditLogs        AuditLog[]
-  printJobs        PrintJob[]
+  cashier            User?               @relation("CashierOrders", fields: [cashierId], references: [id])
+  dataEmployee       Employee?           @relation("OrderDataEmployee", fields: [dataEmployeeId], references: [id])
+  deliveryEmployee   Employee?           @relation("OrderDeliveryEmployee", fields: [deliveryEmployeeId], references: [id])
+  geideaEmployee     Employee?           @relation("OrderGeideaEmployee", fields: [geideaEmployeeId], references: [id])
+  paymentEmployee    Employee?           @relation("OrderPaymentEmployee", fields: [paymentEmployeeId], references: [id])
+  exitEmployee       Employee?           @relation("OrderExitEmployee", fields: [exitEmployeeId], references: [id])
+  items              OrderItem[]
+  auditLogs          AuditLog[]
+  printJobs          PrintJob[]
+  activeBraceletLock ActiveBraceletLock?
 
   @@index([businessDate])
   @@index([workflowState])
   @@index([archivedAt])
   @@index([geideaRegisteredAt])
+}
+
+model ActiveBraceletLock {
+  braceletNo String   @id
+  orderId    String   @unique
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  order Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@index([updatedAt])
 }
 
 model OrderItem {

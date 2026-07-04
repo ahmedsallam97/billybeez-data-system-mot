@@ -768,6 +768,25 @@ export default function ManagerClient() {
     await refreshAfterOrderChange(orderId, closeModal);
   }
 
+  async function mergeDuplicateOrders(targetOrder, sourceOrders) {
+    if (!targetOrder || !sourceOrders.length || !confirmDanger()) return;
+
+    const res = await fetch(`/api/orders/${orderUrlId(targetOrder.id)}/merge`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ sourceOrderIds: sourceOrders.map((order) => order.id) }),
+    });
+    const result = await res.json();
+
+    if (!result.success) {
+      toast(result.error || t("manager.mergeOrderFailed"), "error");
+      return;
+    }
+
+    toast(t("manager.orderMerged"), "info");
+    await refreshAfterOrderChange(targetOrder.id);
+  }
+
   async function addOrderItem(orderId) {
     if (!orderItemForm.productId) {
       toast(t("manager.selectProductFirst"), "error");
@@ -1536,6 +1555,18 @@ export default function ManagerClient() {
                         <b>{order.id}</b>
                         <span>{order.childNames || t("manager.noOrder")}</span>
                         <small>{currency(order.total)}</small>
+                      </button>
+                    ))}
+                  </div>
+                  <div className="duplicate-merge-actions">
+                    {group.orders.map((order) => (
+                      <button
+                        type="button"
+                        className="btn-confirm"
+                        key={`merge-${order.id}`}
+                        onClick={() => mergeDuplicateOrders(order, group.orders.filter((sourceOrder) => sourceOrder.id !== order.id))}
+                      >
+                        {t("manager.mergeIntoOrder", { order: order.id })}
                       </button>
                     ))}
                   </div>

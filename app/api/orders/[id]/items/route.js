@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { authorizeApi } from "@/lib/api-auth";
 import { writeAudit } from "@/lib/audit";
+import { assertActiveBraceletAvailable, claimActiveBracelet, isBraceletLockConflict } from "@/lib/active-bracelets";
 import { ensureBusinessDayState } from "@/lib/business-day";
 import { routeOrderId } from "@/lib/orders";
 import { orderAuditSnapshot, restoredStatus } from "@/lib/order-workflow";
@@ -30,6 +31,13 @@ export async function POST(request, { params }) {
     return NextResponse.json({ success: false, error: "Paid orders can only be edited by manager" }, { status: 403 });
   }
 
+  if (order.archivedAt) {
+    const duplicateBraceletOrder = await assertActiveBraceletAvailable(prisma, order.braceletNo, id);
+    if (duplicateBraceletOrder) {
+      return NextResponse.json({ success: false, error: duplicateBraceletOrder.message }, { status: duplicateBraceletOrder.status });
+    }
+  }
+
   const products = await prisma.product.findMany({
     where: { id: { in: items.map((item) => item.productId) } },
   });
@@ -54,20 +62,29 @@ export async function POST(request, { params }) {
     });
   });
 
-  const [, updatedOrder] = await prisma.$transaction([
-    prisma.orderItem.createMany({ data: orderItems }),
-    prisma.order.update({
-      where: { id },
-      data: {
-        total: { increment: addedTotal },
-        status: restoredStatus(order),
-        workflowState: restoredStatus(order),
-        geideaRegisteredAt: null,
-        geideaEmployeeId: null,
-        archivedAt: null,
-      },
-    }),
-  ]);
+  let updatedOrder;
+  try {
+    [, updatedOrder] = await prisma.$transaction([
+      prisma.orderItem.createMany({ data: orderItems }),
+      prisma.order.update({
+        where: { id },
+        data: {
+          total: { increment: addedTotal },
+          status: restoredStatus(order),
+          workflowState: restoredStatus(order),
+          geideaRegisteredAt: null,
+          geideaEmployeeId: null,
+          archivedAt: null,
+        },
+      }),
+      ...(order.archivedAt ? [prisma.activeBraceletLock.create({ data: { braceletNo: order.braceletNo, orderId: id } })] : []),
+    ]);
+  } catch (error) {
+    if (isBraceletLockConflict(error)) {
+      return NextResponse.json({ success: false, error: `Bracelet ${order.braceletNo} already has an active order` }, { status: 409 });
+    }
+    throw error;
+  }
 
   await writeAudit({
     action: "ORDER_ITEMS_ADDED",
@@ -110,6 +127,13 @@ export async function DELETE(request, { params }) {
     return NextResponse.json({ success: false, error: "Order not found" }, { status: 404 });
   }
 
+  if (order.archivedAt) {
+    const duplicateBraceletOrder = await assertActiveBraceletAvailable(prisma, order.braceletNo, id);
+    if (duplicateBraceletOrder) {
+      return NextResponse.json({ success: false, error: duplicateBraceletOrder.message }, { status: duplicateBraceletOrder.status });
+    }
+  }
+
   const item = order.items.find((line) => line.id === itemId);
 
   if (!item) {
@@ -118,20 +142,29 @@ export async function DELETE(request, { params }) {
 
   const nextTotal = Math.max(0, Number(order.total || 0) - Number(item.total || 0));
 
-  const [, updatedOrder] = await prisma.$transaction([
-    prisma.orderItem.delete({ where: { id: itemId } }),
-    prisma.order.update({
-      where: { id },
-      data: {
-        total: nextTotal,
-        status: restoredStatus(order),
-        workflowState: restoredStatus(order),
-        geideaRegisteredAt: null,
-        geideaEmployeeId: null,
-        archivedAt: null,
-      },
-    }),
-  ]);
+  let updatedOrder;
+  try {
+    [, updatedOrder] = await prisma.$transaction([
+      prisma.orderItem.delete({ where: { id: itemId } }),
+      prisma.order.update({
+        where: { id },
+        data: {
+          total: nextTotal,
+          status: restoredStatus(order),
+          workflowState: restoredStatus(order),
+          geideaRegisteredAt: null,
+          geideaEmployeeId: null,
+          archivedAt: null,
+        },
+      }),
+      ...(order.archivedAt ? [prisma.activeBraceletLock.create({ data: { braceletNo: order.braceletNo, orderId: id } })] : []),
+    ]);
+  } catch (error) {
+    if (isBraceletLockConflict(error)) {
+      return NextResponse.json({ success: false, error: `Bracelet ${order.braceletNo} already has an active order` }, { status: 409 });
+    }
+    throw error;
+  }
 
   await writeAudit({
     action: "ORDER_ITEM_REMOVED",

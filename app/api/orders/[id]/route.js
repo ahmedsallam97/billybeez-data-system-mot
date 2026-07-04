@@ -54,20 +54,22 @@ export async function PATCH(request, { params }) {
     return NextResponse.json({ success: false, error: "Order not found" }, { status: 404 });
   }
 
-  const duplicateBraceletOrder = await prisma.order.findFirst({
-    where: {
-      braceletNo,
-      archivedAt: null,
-      NOT: { id },
-    },
-    select: { id: true },
-  });
+  if (braceletNo !== order.braceletNo) {
+    const duplicateBraceletOrder = await prisma.order.findFirst({
+      where: {
+        braceletNo,
+        archivedAt: null,
+        NOT: { id },
+      },
+      select: { id: true },
+    });
 
-  if (duplicateBraceletOrder) {
-    return NextResponse.json({
-      success: false,
-      error: `Bracelet ${braceletNo} already has an active order: ${duplicateBraceletOrder.id}`,
-    }, { status: 409 });
+    if (duplicateBraceletOrder) {
+      return NextResponse.json({
+        success: false,
+        error: `Bracelet ${braceletNo} already has an active order: ${duplicateBraceletOrder.id}`,
+      }, { status: 409 });
+    }
   }
 
   if ((order.paymentStatus === "PAID" || order.customerLeft) && !(await canUserEditPaidOrder(user))) {

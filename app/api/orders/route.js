@@ -15,12 +15,14 @@ export async function GET(request) {
   const { searchParams } = new URL(request.url);
   const paymentStatus = searchParams.get("paymentStatus");
   const archived = searchParams.get("archived");
+  const braceletNo = searchParams.get("braceletNo");
 
   const where = {};
 
   if (paymentStatus) where.paymentStatus = paymentStatus;
   if (archived === "true") where.archivedAt = { not: null };
   if (archived === "false") where.archivedAt = null;
+  if (braceletNo) where.braceletNo = braceletNo.trim();
 
   const orders = await prisma.order.findMany({
     where,

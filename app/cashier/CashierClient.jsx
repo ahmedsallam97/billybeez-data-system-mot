@@ -24,6 +24,7 @@ export default function CashierClient({ user }) {
   const [paymentMethod, setPaymentMethod] = useState("CASH");
   const [message, setMessage] = useState("");
   const [editingOrder, setEditingOrder] = useState(null);
+  const [activeBraceletOrder, setActiveBraceletOrder] = useState(null);
   const [cashierView, setCashierView] = useState("orders");
   const [showArchived, setShowArchived] = useState(false);
   const [ordersQuery, setOrdersQuery] = useState("");
@@ -39,6 +40,37 @@ export default function CashierClient({ user }) {
     load(showArchived);
     loadUiMessages();
   }, [showArchived]);
+
+  useEffect(() => {
+    const nextBracelet = braceletNo.trim();
+    if (!/^[0-3][0-9]{5}$/.test(nextBracelet)) {
+      setActiveBraceletOrder(null);
+      return;
+    }
+
+    if (editingOrder?.braceletNo === nextBracelet) {
+      setActiveBraceletOrder(null);
+      return;
+    }
+
+    const controller = new AbortController();
+    const timer = window.setTimeout(async () => {
+      try {
+        const res = await fetch(`/api/orders?archived=false&braceletNo=${encodeURIComponent(nextBracelet)}`, { signal: controller.signal });
+        if (!res.ok) return;
+        const matches = await res.json();
+        const existing = matches.find((order) => order.id !== editingOrder?.id) || null;
+        setActiveBraceletOrder(existing);
+      } catch (error) {
+        if (error.name !== "AbortError") setActiveBraceletOrder(null);
+      }
+    }, 250);
+
+    return () => {
+      window.clearTimeout(timer);
+      controller.abort();
+    };
+  }, [braceletNo, editingOrder]);
 
   async function loadUiMessages() {
     const res = await fetch("/api/settings").catch(() => null);
@@ -231,6 +263,7 @@ export default function CashierClient({ user }) {
     setChildNames(names);
     setCart([]);
     setMessage("");
+    setActiveBraceletOrder(null);
     window.history.replaceState(null, "", "#edit-order");
     scrollToSection(formRef);
   }
@@ -244,6 +277,12 @@ export default function CashierClient({ user }) {
 
   async function saveOrder() {
     setMessage("");
+    if (activeBraceletOrder) {
+      const error = t("cashier.braceletActiveOrder", { bracelet: braceletNo.trim(), order: activeBraceletOrder.id });
+      setMessage(error);
+      toast(error, "error");
+      return;
+    }
     const res = await fetch("/api/orders", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -284,6 +323,12 @@ export default function CashierClient({ user }) {
     }
 
     setMessage("");
+    if (activeBraceletOrder) {
+      const error = t("cashier.braceletActiveOrder", { bracelet: braceletNo.trim(), order: activeBraceletOrder.id });
+      setMessage(error);
+      toast(error, "error");
+      return;
+    }
     const detailsRes = await fetch(`/api/orders/${orderUrlId(editingOrder.id)}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
@@ -454,6 +499,15 @@ export default function CashierClient({ user }) {
                 />
               ))}
             </div>
+            {activeBraceletOrder && (
+              <div className="bracelet-conflict-alert">
+                <div>
+                  <b>{t("cashier.braceletActiveTitle")}</b>
+                  <span>{t("cashier.braceletActiveOrder", { bracelet: activeBraceletOrder.braceletNo, order: activeBraceletOrder.id })}</span>
+                </div>
+                <button className="btn-details" onClick={() => startEdit(activeBraceletOrder)}>{t("cashier.openExistingOrder")}</button>
+              </div>
+            )}
             <div className="panel existing-order-items">
               {editingOrder.items.map((item) => (
                 <div className="row" key={item.id}><span>{item.name} x {item.qty}</span><b>{currency(item.total)}</b></div>
@@ -511,9 +565,18 @@ export default function CashierClient({ user }) {
                 />
               ))}
             </div>
+            {activeBraceletOrder && (
+              <div className="bracelet-conflict-alert">
+                <div>
+                  <b>{t("cashier.braceletActiveTitle")}</b>
+                  <span>{t("cashier.braceletActiveOrder", { bracelet: activeBraceletOrder.braceletNo, order: activeBraceletOrder.id })}</span>
+                </div>
+                <button className="btn-details" onClick={() => startEdit(activeBraceletOrder)}>{t("cashier.openExistingOrder")}</button>
+              </div>
+            )}
           </>
         )}
-          </div>
+      </div>
           <div className="new-order-products">
         <div className="tabs">
           {categories.map((item) => (

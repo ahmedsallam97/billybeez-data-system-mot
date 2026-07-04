@@ -400,6 +400,11 @@ html[dir="rtl"] .cart-panel h3{text-align:right}
 .muted{color:var(--bb-muted)}
 .block{display:block}
 .employee-fixed-value{min-height:44px;display:flex;align-items:center;justify-content:center;border:1px solid var(--bb-line);border-radius:8px;background:#f7fbff;font-weight:900}
+.bracelet-conflict-alert{display:flex;align-items:center;justify-content:space-between;gap:12px;background:#fff3e8;border:1px solid #e66b00;border-inline-start:5px solid var(--bb-orange);border-radius:8px;padding:10px 12px;color:#8f3400}
+.bracelet-conflict-alert div{display:grid;gap:3px}
+.bracelet-conflict-alert b{font-size:15px}
+.bracelet-conflict-alert span{font-size:13px;font-weight:900}
+.bracelet-conflict-alert button{min-width:150px}
 .row{display:flex;justify-content:space-between;gap:10px;border-bottom:1px solid var(--bb-line);padding:8px 0}
 .row:last-child{border-bottom:0}
 .order-total-row{

@@ -6,6 +6,29 @@ import { ensureBusinessDayState } from "@/lib/business-day";
 import { includeOrderDetails, routeOrderId, serializeOrder } from "@/lib/orders";
 import { orderAuditSnapshot, restoredStatus, workflowStateFromOrder } from "@/lib/order-workflow";
 
+function splitChildNames(value) {
+  return String(value || "")
+    .split(",")
+    .map((name) => name.trim())
+    .filter(Boolean);
+}
+
+function mergeChildNames(orders) {
+  const seen = new Set();
+  const names = [];
+
+  orders.forEach((order) => {
+    splitChildNames(order.childNames).forEach((name) => {
+      const key = name.toLowerCase();
+      if (seen.has(key)) return;
+      seen.add(key);
+      names.push(name);
+    });
+  });
+
+  return names;
+}
+
 export async function POST(request, { params }) {
   const { user, error } = await authorizeApi("ORDER_MERGE");
   if (error) return error;
@@ -47,6 +70,7 @@ export async function POST(request, { params }) {
 
   const mergedAt = new Date();
   const sourceTotal = sourceOrders.reduce((sum, order) => sum + Number(order.total || 0), 0);
+  const mergedChildNames = mergeChildNames([target, ...sourceOrders]);
   const beforeTarget = orderAuditSnapshot(target);
   const beforeSources = sourceOrders.map(orderAuditSnapshot);
 
@@ -86,6 +110,8 @@ export async function POST(request, { params }) {
       where: { id: targetId },
       data: {
         total: { increment: sourceTotal },
+        childNames: mergedChildNames.join(", "),
+        childrenCount: mergedChildNames.length || target.childrenCount,
         status: restoredStatus(target),
         workflowState: workflowStateFromOrder({ ...target, total: target.total + sourceTotal, geideaRegisteredAt: null, archivedAt: null }),
         geideaRegisteredAt: null,
@@ -106,6 +132,7 @@ export async function POST(request, { params }) {
       sourceOrderIds,
       braceletNo: target.braceletNo,
       mergedTotal: sourceTotal,
+      mergedChildNames,
       sourceSnapshots: beforeSources,
     },
     before: beforeTarget,

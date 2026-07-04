@@ -30,7 +30,7 @@ export default function ToastProvider({ children }) {
       {children}
       <div className="toast-stack">
         {toasts.map((toast) => (
-          <div className={`toast ${toast.type}`} style={toast.style || undefined} key={toast.id}>
+          <div className={`toast ${toast.type}`} style={toast.type === "error" ? undefined : toast.style || undefined} key={toast.id}>
             {toast.message}
           </div>
         ))}

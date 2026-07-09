@@ -1,6 +1,7 @@
 const fs = require("fs");
 const path = require("path");
 const { PrismaClient } = require("@prisma/client");
+const bcrypt = require("bcryptjs");
 const { ensureFallbackImage, ensureProductImage, productImagePath } = require("./product-images");
 
 const prisma = new PrismaClient();
@@ -52,6 +53,43 @@ function textValue(value, fallback = "") {
   return fallback;
 }
 
+function normalizeProductName(value) {
+  return String(value || "").trim().replace(/\s+/g, " ").toLowerCase();
+}
+
+function productRank(product) {
+  const semanticId = /^pr\d+$/i.test(product.id) ? 0 : 1;
+  return [
+    product._count?.items || 0,
+    product.popular ? 1 : 0,
+    semanticId,
+    Number(product.price) || 0,
+    -(Number(product.sortOrder) || 100),
+  ];
+}
+
+function compareRank(a, b) {
+  const aRank = productRank(a);
+  const bRank = productRank(b);
+
+  for (let index = 0; index < aRank.length; index++) {
+    if (aRank[index] !== bRank[index]) return bRank[index] - aRank[index];
+  }
+
+  return a.id.localeCompare(b.id);
+}
+
+async function findCanonicalProduct(productName) {
+  const normalizedName = normalizeProductName(productName);
+  const products = await prisma.product.findMany({
+    include: { _count: { select: { items: true } } },
+  });
+
+  return products
+    .filter((product) => normalizeProductName(product.name) === normalizedName)
+    .sort(compareRank)[0];
+}
+
 function mapPaymentMethod(value) {
   return String(value || "").toLowerCase() === "visa" ? "VISA" : "CASH";
 }
@@ -84,21 +122,23 @@ function customerPhoneFor(order) {
   return textValue(order.customerPhone || order.phone || order.mobile || order.customerMobile, null) || null;
 }
 
-async function ensureImportedCashier(name) {
-  const cashierName = String(name || "Imported Cashier").trim() || "Imported Cashier";
-  const username = `cashier_${Buffer.from(cashierName).toString("base64url").slice(0, 24)}`;
+async function ensureImportedDataUser(name) {
+  const dataName = String(name || "Imported Data").trim() || "Imported Data";
+  const username = `data_${Buffer.from(dataName).toString("base64url").slice(0, 24)}`;
+
+  const password = await bcrypt.hash("imported123", 12);
 
   return prisma.user.upsert({
     where: { username },
     create: {
-      name: cashierName,
+      name: dataName,
       username,
-      password: "imported123",
-      role: "CASHIER",
+      password,
+      role: "DATA",
     },
     update: {
-      name: cashierName,
-      role: "CASHIER",
+      name: dataName,
+      role: "DATA",
       active: true,
     },
   });
@@ -109,10 +149,12 @@ async function ensureProduct(product) {
   const categoryName = textValue(product.categoryName, textValue(product.categoryId, "Imported"));
   const productName = textValue(product.productName, textValue(product.name, "Imported Product"));
   const productId = cleanId(product.productId || productName, `IMP_${Date.now()}`);
-  const productImageUrl = productImagePath(productId);
+  const canonicalProduct = await findCanonicalProduct(productName);
+  const targetProductId = canonicalProduct?.id || productId;
+  const productImageUrl = productImagePath(targetProductId);
 
   ensureProductImage({
-    id: productId,
+    id: targetProductId,
     name: productName,
     categoryName,
   });
@@ -124,9 +166,9 @@ async function ensureProduct(product) {
   });
 
   return prisma.product.upsert({
-    where: { id: productId },
+    where: { id: targetProductId },
     create: {
-      id: productId,
+      id: targetProductId,
       categoryId,
       name: productName,
       price: Number(product.price) || 0,
@@ -178,8 +220,8 @@ async function importEmployees(apiUrl) {
 
     await prisma.employee.upsert({
       where: { name },
-      create: { name, active: employee.active !== false },
-      update: { active: employee.active !== false },
+      create: { name, department: "OPERATION", active: employee.active !== false },
+      update: { department: "OPERATION", active: employee.active !== false },
     });
   }
 
@@ -194,15 +236,16 @@ async function importOrders(apiUrl) {
     const orderId = order.orderId || order.id;
     if (!orderId) continue;
 
-    const cashier = await ensureImportedCashier(order.cashier);
+    const cashier = await ensureImportedDataUser(order.cashier);
     const dataEmployeeName = order.dataEmployee || "Unassigned";
     const dataEmployee = await prisma.employee.upsert({
       where: { name: dataEmployeeName },
-      create: { name: dataEmployeeName },
-      update: { active: true },
+      create: { name: dataEmployeeName, department: "OPERATION" },
+      update: { active: true, department: "OPERATION" },
     });
     const createdAt = parseDate(order.time || order.createdAt);
     const archivedAt = parseDate(order.archivedAt);
+    const geideaRegisteredAt = parseDate(order.geideaRegisteredAt) || archivedAt;
 
     await prisma.order.upsert({
       where: { id: orderId },
@@ -218,6 +261,7 @@ async function importOrders(apiUrl) {
         paymentStatus: mapPaymentStatus(order.paymentStatus),
         paymentMethod: mapPaymentMethod(order.paymentMethod),
         customerLeft: parseBoolean(order.customerLeft),
+        geideaRegisteredAt,
         archivedAt,
         cashierId: cashier.id,
         dataEmployeeId: dataEmployee.id,
@@ -234,6 +278,7 @@ async function importOrders(apiUrl) {
         paymentStatus: mapPaymentStatus(order.paymentStatus),
         paymentMethod: mapPaymentMethod(order.paymentMethod),
         customerLeft: parseBoolean(order.customerLeft),
+        geideaRegisteredAt,
         archivedAt,
         cashierId: cashier.id,
         dataEmployeeId: dataEmployee.id,

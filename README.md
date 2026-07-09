@@ -1,107 +1,279 @@
 # BillyBeez Data System MOT
 
-## Next.js Version
+Next.js + Prisma POS/data system for BillyBeez daily operations.
 
-The new version is a Next.js app with Prisma. The old Google Apps Script files are still kept in the repo while the migration is completed.
+The current active system is the Next.js app. The old Google Apps Script/static HTML files are still kept in the repository as legacy migration references only.
 
-### Run Locally
+## Current Stack
+
+- Next.js 16
+- React 19
+- Prisma 6
+- SQLite for local operation
+- PostgreSQL schema prepared for the next production level
+- bcrypt password hashing
+- Signed cookie sessions
+- Role based API permissions
+- Local product images inside `public/products`
+
+## Main Interfaces
+
+| Interface | URL | Purpose |
+| --- | --- | --- |
+| Login | `http://127.0.0.1:3000/login` | User login |
+| Data | `http://127.0.0.1:3000/data` | Add/edit orders, customer exit |
+| Kitchen | `http://127.0.0.1:3000/kitchen` | Preparation, delivery, payment, Geidea |
+| Manager | `http://127.0.0.1:3000/manager` | Orders, reports, records, settings, activity |
+| Database Studio | `http://127.0.0.1:5555` | Prisma Studio database browser |
+
+`/cashier` now redirects to `/data`.
+
+## Roles
+
+Current roles in the database:
+
+- `ADMIN`
+- `MANAGER`
+- `CASHIER`
+- `KITCHEN`
+- `DATA`
+
+`DATA` is the main role for the data interface. `CASHIER` remains available as a separate role for future cashier-specific users.
+
+## Departments
+
+Current employee departments:
+
+- `OPERATION`
+- `CASHIER`
+- `KITCHEN`
+
+Old `RESTAURANT` values are mapped/migrated to `KITCHEN`.
+
+## Seed Users
+
+| Role | Username | Password |
+| --- | --- | --- |
+| Admin | `admin` | `admin123` |
+| Manager | `manager` | `manager123` |
+| Data | `data` | `data112411` |
+| Cashier | `cashier` | `cashier112411` |
+| Kitchen | `kitchen` | `kitchen123` |
+
+Passwords are hashed in the Prisma database.
+
+## Run Locally
+
+Install dependencies:
 
 ```bash
 npm install
-npx prisma db push
+```
+
+Sync the local SQLite database:
+
+```bash
+npm run db:push
+```
+
+Seed users, employees, products, and settings:
+
+```bash
 npm run db:seed
+```
+
+Build production assets:
+
+```bash
+npm run build
+```
+
+Run the production server:
+
+```bash
+npm run start
+```
+
+Open:
+
+```text
+http://127.0.0.1:3000/login
+```
+
+## Database Studio
+
+Start Prisma Studio:
+
+```bash
+npm run db:studio
+```
+
+Open:
+
+```text
+http://127.0.0.1:5555
+```
+
+## Development Mode
+
+For development only:
+
+```bash
 npm run dev
 ```
 
-Open `http://localhost:3000`.
-
-To import the current Google Apps Script data into the local Prisma database:
+Production testing should use:
 
 ```bash
-npm run db:import:apps-script
+npm run build
+npm run start
 ```
 
-The importer reads the Apps Script URL from `config.js` and upserts products, employees, orders, and order items.
+This avoids the Next.js dev indicator and gives a more accurate speed test.
 
-Seed users:
+## Validation
 
-| Role | Username | Password |
-| ---- | -------- | -------- |
-| Manager | manager | manager123 |
-| Cashier | cashier | cashier123 |
-| Kitchen | kitchen | kitchen123 |
-| Admin | admin | admin123 |
+Run UI/static audit:
 
-The local dev database uses SQLite from `DATABASE_URL` in `.env`. For production, switch `DATABASE_URL` to PostgreSQL and run the same Prisma setup commands.
+```bash
+npm run lint
+```
 
-Simple cashier, delivery, invoice, and manager dashboard system backed by Google Sheets and Google Apps Script.
+Run workflow tests:
 
-## Files
+```bash
+npm test
+```
 
-- `index.html`: login page
-- `cashier.html`: create orders
-- `delivery.html`: mark orders as delivered or paid
-- `invoice.html`: printable invoice
-- `dashboard.html`: manager dashboard
-- `orders.html`: order history and invoice reprint
-- `config.js`: Google Apps Script Web App URL
-- `code.gs`: Apps Script backend
+Validate PostgreSQL schema:
 
-## Google Sheet Setup
+```bash
+$env:POSTGRES_DATABASE_URL="postgresql://user:pass@localhost:5432/billybeez"
+npm run db:pg:validate
+```
 
-Create a Google Sheet with these tabs and columns.
+## Backup And Restore
 
-### Users
+Create a manual database backup:
 
-| id  | name | username | password | role |
-| --- | ---- | -------- | -------- | ---- |
+```bash
+npm run db:backup
+```
 
-Supported roles are `Manager`, `Cashier`, and `Delivery`. `Admin` is also treated like a manager.
+Backups are created in:
 
-### Products
+```text
+backups/
+```
 
-| productId | categoryId | productName | price | imageUrl | categoryName |
-| --------- | ---------- | ----------- | ----- | -------- | ------------ |
+Restore a backup:
 
-### Orders
+```bash
+npm run db:restore
+```
 
-| orderId | braceletNo | childName | cashierName | time | status | total |
-| ------- | ---------- | --------- | ----------- | ---- | ------ | ----- |
+Verify a backup:
 
-### OrderItems
+```bash
+npm run db:verify-backup
+```
 
-| itemId | orderId | productId | productName | qty | price | total |
-| ------ | ------- | --------- | ----------- | --- | ----- | ----- |
+For USB transfer, create a ZIP that excludes:
 
-### Employees
+- `node_modules`
+- `.next`
+- `.git`
+- `tmp`
+- `backups`
 
-| employeeId | employeeName | active |
-| ---------- | ------------ | ------ |
+and include the latest database backup as:
 
-## Apps Script Setup
+```text
+prisma/dev.db
+```
 
-1. Open the Google Sheet.
-2. Go to `Extensions` > `Apps Script`.
-3. Paste the contents of `code.gs`.
-4. Confirm `SHEET_ID` matches your Google Sheet ID.
-5. Run `setupSheets()` once from Apps Script to create missing tabs and headers.
-6. Deploy as a Web App:
-   - Execute as: `Me`
-   - Who has access: `Anyone`
-7. Copy the Web App URL.
-8. Paste it into `config.js` as `API_URL`.
+Latest USB backup created during this update:
 
-## Main Flow
+```text
+C:\Users\asall\Documents\Codex\2026-06-17\https-chatgpt-com-c-6a2f0385-ba30\work\billybeez-website-usb-backup-20260710-021322.zip
+```
 
-1. Login from `index.html`.
-2. Create an order from `cashier.html`.
-3. Mark it delivered or paid from `delivery.html`.
-4. When paid, `invoice.html` opens for printing.
-5. Review totals from `dashboard.html`.
-6. Search old orders and reprint invoices from `orders.html`.
+## GitHub
 
-## Notes
+Current working branch:
 
-- `BB Logo.png` is referenced by `index.html`; add this image to the repo if the logo should appear.
-- Passwords are currently stored in plain text in the `Users` sheet. For production, add stronger authentication or at least a shared API token.
-- Anyone with the Apps Script URL can call the API if the Web App is public.
+```text
+ui-redesign-work-20260701-044749
+```
+
+Repository:
+
+```text
+https://github.com/ahmedsallam97/billybeez-data-system-mot
+```
+
+Latest implementation commit before this README update:
+
+```text
+c81fefc fix: center order item row content
+```
+
+## Features
+
+- Data interface for order creation and editing
+- Kitchen interface for preparation, delivery, payment, and Geidea registration
+- Manager interface with orders, reports, records, settings, activity, and health checks
+- Business day open/close workflow
+- Order history and archive/unarchive
+- Duplicate bracelet protection for active orders
+- Order merge tools for managers
+- Transaction records for order lifecycle events
+- Alerts configurable from manager settings
+- Employee styling configurable from manager settings
+- Product/category management
+- User management with general and employee-linked accounts
+- Kitchen ticket print flow
+- Invoice print flow
+- Daily reports and export support
+- Local product images, no random external image URLs
+
+## Important Workflow Rules
+
+- Payment is blocked until delivery unless workflow settings allow otherwise.
+- Geidea registration can auto-archive an order only after the customer has left.
+- Orders should not archive before data marks customer exit.
+- Active bracelet numbers are protected to avoid duplicate current orders.
+- Manager/Admin have broader permissions for editing, archive control, and settings.
+
+## Legacy Files
+
+These files remain for migration/reference:
+
+- `index.html`
+- `cashier.html`
+- `delivery.html`
+- `invoice.html`
+- `dashboard.html`
+- `orders.html`
+- `config.js`
+- `code.gs`
+- `appsscript.json`
+
+The active app is under:
+
+```text
+app/
+lib/
+prisma/
+scripts/
+tests/
+public/
+```
+
+## Notes For Next Level
+
+- PostgreSQL migration is prepared through `prisma/schema.postgres.prisma`.
+- Production should use PostgreSQL instead of SQLite.
+- Silent printing to a specific remote printer will require a local print agent/service.
+- Keep `.env` private and never upload real secrets.
+- Do not commit runtime database files, backups, logs, `node_modules`, or `.next`.

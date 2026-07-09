@@ -6,7 +6,7 @@ export default async function ManagerPage() {
   const user = await requireUser(["ADMIN", "MANAGER"]);
 
   return (
-    <AppShell title="Manager Dashboard" user={user}>
+    <AppShell title="title.manager" user={user}>
       <ManagerClient />
     </AppShell>
   );

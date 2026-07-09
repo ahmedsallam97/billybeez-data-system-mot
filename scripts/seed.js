@@ -1,4 +1,5 @@
 const { PrismaClient } = require("@prisma/client");
+const bcrypt = require("bcryptjs");
 const { ensureFallbackImage, ensureProductImage, productImagePath } = require("./product-images");
 
 const prisma = new PrismaClient();
@@ -16,6 +17,12 @@ const employees = [
   "مهرا سمير",
   "الاء نصار",
   "سلمي سلطان",
+];
+
+const restaurantEmployees = [
+  "موظف مطعم 1",
+  "موظف مطعم 2",
+  "موظف مطعم 3",
 ];
 
 const categories = [
@@ -37,9 +44,22 @@ const products = [
 const users = [
   { name: "Admin", username: "admin", password: "admin123", role: "ADMIN" },
   { name: "Manager", username: "manager", password: "manager123", role: "MANAGER" },
-  { name: "Cashier", username: "cashier", password: "cashier123", role: "CASHIER" },
+  { name: "Data", username: "data", password: "data112411", role: "DATA" },
+  { name: "Cashier", username: "cashier", password: "cashier112411", role: "CASHIER" },
   { name: "Kitchen", username: "kitchen", password: "kitchen123", role: "KITCHEN" },
 ];
+
+function normalizeProductName(value) {
+  return String(value || "").trim().replace(/\s+/g, " ").toLowerCase();
+}
+
+async function existingProductIdByName(name) {
+  const normalizedName = normalizeProductName(name);
+  const products = await prisma.product.findMany();
+  const existing = products.find((product) => normalizeProductName(product.name) === normalizedName);
+
+  return existing?.id;
+}
 
 async function main() {
   ensureFallbackImage();
@@ -54,32 +74,46 @@ async function main() {
 
   for (const product of products) {
     const category = categories.find((item) => item.id === product.categoryId);
+    const productId = await existingProductIdByName(product.name) || product.id;
+    const productData = { ...product, id: productId };
+
     ensureProductImage({
-      id: product.id,
+      id: productId,
       name: product.name,
       categoryName: category?.name || product.categoryId,
     });
 
     await prisma.product.upsert({
-      where: { id: product.id },
-      create: { ...product, imageUrl: productImagePath(product.id) },
-      update: { ...product, imageUrl: productImagePath(product.id) },
+      where: { id: productId },
+      create: { ...productData, imageUrl: productImagePath(productId) },
+      update: { ...productData, imageUrl: productImagePath(productId) },
     });
   }
 
   for (const employee of employees) {
     await prisma.employee.upsert({
       where: { name: employee },
-      create: { name: employee },
-      update: { active: true },
+      create: { name: employee, department: "OPERATION" },
+      update: { active: true, department: "OPERATION" },
+    });
+  }
+
+  for (const employee of restaurantEmployees) {
+    await prisma.employee.upsert({
+      where: { name: employee },
+      create: { name: employee, department: "KITCHEN" },
+      update: { active: true, department: "KITCHEN" },
     });
   }
 
   for (const user of users) {
+    const password = await bcrypt.hash(user.password, 12);
+    const secureUser = { ...user, password };
+
     await prisma.user.upsert({
       where: { username: user.username },
-      create: user,
-      update: user,
+      create: secureUser,
+      update: secureUser,
     });
   }
 }

@@ -1,12 +1,20 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
-import { getCurrentUser } from "@/lib/auth";
+import { authorizeApi } from "@/lib/api-auth";
 import { writeAudit } from "@/lib/audit";
+import { releaseActiveBracelet } from "@/lib/active-bracelets";
 import { ensureBusinessDayState } from "@/lib/business-day";
+import { upsertOrderRecord } from "@/lib/order-records";
+import { includeOrderDetails, routeOrderId, serializeOrder } from "@/lib/orders";
+import { orderAuditSnapshot } from "@/lib/order-workflow";
+import { loadWorkflowRules, validateArchiveAllowed } from "@/lib/workflow-rules";
 
 export async function POST(_request, { params }) {
-  const { id } = await params;
-  const user = await getCurrentUser();
+  const { user, error } = await authorizeApi("ORDER_ARCHIVE");
+  if (error) return error;
+
+  const { id: rawId } = await params;
+  const id = routeOrderId(rawId);
   await ensureBusinessDayState();
 
   const current = await prisma.order.findUnique({ where: { id } });
@@ -15,16 +23,23 @@ export async function POST(_request, { params }) {
     return NextResponse.json({ success: false, error: "Order not found" }, { status: 404 });
   }
 
-  if (current.kitchenStatus !== "DELIVERED" || current.paymentStatus !== "PAID") {
-    return NextResponse.json({ success: false, error: "Order must be delivered and paid first" }, { status: 400 });
+  const archiveError = validateArchiveAllowed(current, await loadWorkflowRules());
+  if (archiveError) {
+    return NextResponse.json({ success: false, error: archiveError.message }, { status: archiveError.status });
   }
 
-  await prisma.order.update({
-    where: { id },
-    data: {
-      status: "ARCHIVED",
-      archivedAt: new Date(),
-    },
+  const updatedOrder = await prisma.$transaction(async (tx) => {
+    const order = await tx.order.update({
+      where: { id },
+      data: {
+        status: "ARCHIVED",
+        workflowState: "ARCHIVED",
+        archivedAt: new Date(),
+      },
+    });
+    await releaseActiveBracelet(tx, id);
+    await upsertOrderRecord(tx, order, { archivedAt: order.archivedAt });
+    return order;
   });
 
   await writeAudit({
@@ -32,8 +47,20 @@ export async function POST(_request, { params }) {
     orderId: id,
     user,
     summary: "Archived order",
-    metadata: { total: current.total, paymentMethod: current.paymentMethod },
+    metadata: {
+      total: current.total,
+      paymentMethod: current.paymentMethod,
+      geideaRegisteredAt: current.geideaRegisteredAt,
+    },
+    before: orderAuditSnapshot(current),
+    after: orderAuditSnapshot(updatedOrder),
+    reason: "Manual archive after Geidea and customer left",
   });
 
-  return NextResponse.json({ success: true });
+  const freshOrder = await prisma.order.findUnique({
+    where: { id },
+    include: includeOrderDetails(),
+  });
+
+  return NextResponse.json({ success: true, order: serializeOrder(freshOrder) });
 }

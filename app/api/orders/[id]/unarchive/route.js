@@ -4,7 +4,8 @@ import { authorizeApi } from "@/lib/api-auth";
 import { writeAudit } from "@/lib/audit";
 import { assertActiveBraceletAvailable, isBraceletLockConflict, claimActiveBracelet } from "@/lib/active-bracelets";
 import { ensureBusinessDayState } from "@/lib/business-day";
-import { routeOrderId } from "@/lib/orders";
+import { upsertOrderRecord } from "@/lib/order-records";
+import { includeOrderDetails, routeOrderId, serializeOrder } from "@/lib/orders";
 import { orderAuditSnapshot, restoredStatus, workflowStateFromOrder } from "@/lib/order-workflow";
 
 export async function POST(_request, { params }) {
@@ -42,6 +43,7 @@ export async function POST(_request, { params }) {
         },
       });
       await claimActiveBracelet(tx, current.braceletNo, id);
+      await upsertOrderRecord(tx, updatedOrder, { archivedAt: null });
       return updatedOrder;
     });
   } catch (error) {
@@ -62,5 +64,10 @@ export async function POST(_request, { params }) {
     reason: "Manager unarchived order",
   });
 
-  return NextResponse.json({ success: true });
+  const freshOrder = await prisma.order.findUnique({
+    where: { id },
+    include: includeOrderDetails(),
+  });
+
+  return NextResponse.json({ success: true, order: serializeOrder(freshOrder) });
 }

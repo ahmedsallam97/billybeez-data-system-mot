@@ -122,22 +122,22 @@ function customerPhoneFor(order) {
   return textValue(order.customerPhone || order.phone || order.mobile || order.customerMobile, null) || null;
 }
 
-async function ensureImportedCashier(name) {
-  const cashierName = String(name || "Imported Cashier").trim() || "Imported Cashier";
-  const username = `cashier_${Buffer.from(cashierName).toString("base64url").slice(0, 24)}`;
+async function ensureImportedDataUser(name) {
+  const dataName = String(name || "Imported Data").trim() || "Imported Data";
+  const username = `data_${Buffer.from(dataName).toString("base64url").slice(0, 24)}`;
 
   const password = await bcrypt.hash("imported123", 12);
 
   return prisma.user.upsert({
     where: { username },
     create: {
-      name: cashierName,
+      name: dataName,
       username,
       password,
       role: "CASHIER",
     },
     update: {
-      name: cashierName,
+      name: dataName,
       role: "CASHIER",
       active: true,
     },
@@ -236,7 +236,7 @@ async function importOrders(apiUrl) {
     const orderId = order.orderId || order.id;
     if (!orderId) continue;
 
-    const cashier = await ensureImportedCashier(order.cashier);
+    const cashier = await ensureImportedDataUser(order.cashier);
     const dataEmployeeName = order.dataEmployee || "Unassigned";
     const dataEmployee = await prisma.employee.upsert({
       where: { name: dataEmployeeName },

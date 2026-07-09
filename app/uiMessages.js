@@ -27,7 +27,7 @@ const defaultUiMessageTextEn = {
   businessClosed: "Business day closed",
   leftUnpaid: "Customer left without paying",
   leftNeedsGeidea: "Customer left and is not registered on Geidea",
-  exitEmployee: "Exit employee\n{employee}",
+  exitEmployee: "Exit employee\n{employee} · {time}",
   archivedAt: "Archived at: {time}",
   closedAt: "Closed: {time}",
   printJobPrinted: "Kitchen ticket printed",
@@ -60,9 +60,9 @@ export const defaultUiMessages = {
   geideaRegistered: {
     label: "Geidea registered alert",
     text: "تم التسجيل على جيديا بواسطة\n{employee} · {time}",
-    backgroundColor: "#e8f8ff",
-    textColor: "#005eb8",
-    borderColor: "#b8d7f7",
+    backgroundColor: "#ffe2c2",
+    textColor: "#8f3400",
+    borderColor: "#e66b00",
     fontSize: 12,
     fontWeight: 900,
     minHeight: 41,
@@ -323,10 +323,10 @@ export const defaultUiMessages = {
   },
   exitEmployee: {
     label: "Exit employee alert",
-    text: "موظف تسجيل الخروج\n{employee}",
-    backgroundColor: "#fff3e8",
-    textColor: "#c55100",
-    borderColor: "#ffd2ad",
+    text: "تم الخروج بواسطة\n{employee} · {time}",
+    backgroundColor: "#fde5eb",
+    textColor: "#8f061f",
+    borderColor: "#f3a2b2",
     fontSize: 13,
     fontWeight: 900,
     minHeight: 41,
@@ -394,14 +394,20 @@ export function normalizeUiMessages(value) {
     messages[key] = {
       ...defaultUiMessages[key],
       textEn: defaultUiMessageTextEn[key] || defaultUiMessages[key].text,
+      textAlign: "center",
       ...(parsed?.[key] || {}),
     };
+    if (key === "exitEmployee" && messages[key].text === "موظف تسجيل الخروج\n{employee} · {time}") {
+      messages[key].text = defaultUiMessages.exitEmployee.text;
+    }
     return messages;
   }, {});
 }
 
 export function uiMessageStyle(message) {
   if (!message) return {};
+  const textAlign = ["left", "center", "right"].includes(message.textAlign) ? message.textAlign : "center";
+  const justifyValue = textAlign === "left" ? "flex-start" : textAlign === "right" ? "flex-end" : "center";
   return {
     backgroundColor: message.backgroundColor,
     color: message.textColor,
@@ -413,6 +419,9 @@ export function uiMessageStyle(message) {
     fontSize: `${Number(message.fontSize) || 12}px`,
     fontWeight: Number(message.fontWeight) || 900,
     minHeight: `${Number(message.minHeight) || 34}px`,
+    textAlign,
+    justifyContent: justifyValue,
+    justifyItems: textAlign,
   };
 }
 

@@ -3,8 +3,19 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useToast } from "../ToastProvider";
 import { useI18n } from "../i18n";
+import OrderAlerts from "../OrderAlerts";
+import OrderItemsSummary from "../OrderItemsSummary";
 import { applyEmployeeNameStyles, employeeGenderClass } from "../employeeDisplay";
 import { formatUiMessage, normalizeUiMessages, uiMessageStyle } from "../uiMessages";
+
+function isValidBracelet(value) {
+  return /^(0[0-9]{4}|[0-3][0-9]{5})$/.test(String(value || "").trim());
+}
+
+function isValidCustomerPhone(value) {
+  const phone = String(value || "").trim();
+  return !phone || /^01[012][0-9]{8}$/.test(phone);
+}
 
 export default function CashierClient({ user }) {
   const toast = useToast();
@@ -15,6 +26,7 @@ export default function CashierClient({ user }) {
   const [products, setProducts] = useState([]);
   const [employees, setEmployees] = useState([]);
   const [orders, setOrders] = useState([]);
+  const [childNameHistory, setChildNameHistory] = useState([]);
   const [cart, setCart] = useState([]);
   const [braceletNo, setBraceletNo] = useState("");
   const [customerPhone, setCustomerPhone] = useState("");
@@ -28,22 +40,50 @@ export default function CashierClient({ user }) {
   const [cashierView, setCashierView] = useState("orders");
   const [showArchived, setShowArchived] = useState(false);
   const [ordersQuery, setOrdersQuery] = useState("");
+  const [orderRenderLimit, setOrderRenderLimit] = useState(30);
   const [exitEmployeeByOrder, setExitEmployeeByOrder] = useState({});
   const [defaultExitEmployeeId, setDefaultExitEmployeeId] = useState("");
   const [employeeEditor, setEmployeeEditor] = useState(null);
   const [entryPassword, setEntryPassword] = useState("");
   const [uiMessages, setUiMessages] = useState(normalizeUiMessages());
-  const linkedOperationEmployeeId = user?.employee?.department === "OPERATION" ? user.employeeId : "";
-  const linkedOperationEmployeeName = user?.employee?.department === "OPERATION" ? user.employee.name : "";
+  const [uiPrefsReady, setUiPrefsReady] = useState(false);
+  const linkedOperationEmployeeId = user?.role === "CASHIER" && user?.employeeId && user?.employee?.department !== "RESTAURANT" ? user.employeeId : "";
+  const linkedOperationEmployeeName = linkedOperationEmployeeId ? user.employee.name : "";
 
   useEffect(() => {
-    load(showArchived);
-    loadUiMessages();
+    const savedView = localStorage.getItem("cashierView");
+    const savedArchive = localStorage.getItem("cashierShowArchived");
+    if (["orders", "form"].includes(savedView)) setCashierView(savedView);
+    if (savedArchive === "true" || savedArchive === "false") setShowArchived(savedArchive === "true");
+    setUiPrefsReady(true);
+  }, []);
+
+  useEffect(() => {
+    if (!uiPrefsReady) return;
+    localStorage.setItem("cashierView", cashierView);
+  }, [cashierView, uiPrefsReady]);
+
+  useEffect(() => {
+    if (!uiPrefsReady) return;
+    localStorage.setItem("cashierShowArchived", String(showArchived));
+  }, [showArchived, uiPrefsReady]);
+
+  useEffect(() => {
+    setOrderRenderLimit(30);
+  }, [showArchived, ordersQuery]);
+
+  useEffect(() => {
+    loadOrders(showArchived);
   }, [showArchived]);
 
   useEffect(() => {
+    loadStaticData();
+    loadUiMessages();
+  }, []);
+
+  useEffect(() => {
     const nextBracelet = braceletNo.trim();
-    if (!/^[0-3][0-9]{5}$/.test(nextBracelet)) {
+    if (!isValidBracelet(nextBracelet)) {
       setActiveBraceletOrder(null);
       return;
     }
@@ -56,7 +96,7 @@ export default function CashierClient({ user }) {
     const controller = new AbortController();
     const timer = window.setTimeout(async () => {
       try {
-        const res = await fetch(`/api/orders?archived=false&braceletNo=${encodeURIComponent(nextBracelet)}`, { signal: controller.signal });
+        const res = await fetch(`/api/orders?archived=false&compact=1&braceletNo=${encodeURIComponent(nextBracelet)}`, { signal: controller.signal });
         if (!res.ok) return;
         const matches = await res.json();
         const existing = matches.find((order) => order.id !== editingOrder?.id) || null;
@@ -82,32 +122,25 @@ export default function CashierClient({ user }) {
     applyEmployeeNameStyles(employeeStyleSetting?.value);
   }
 
-  async function load(archived = showArchived) {
-    const [productsRes, employeesRes, ordersRes] = await Promise.all([
+  async function loadStaticData() {
+    const [productsRes, employeesRes, childNamesRes] = await Promise.all([
       fetch("/api/products"),
-      fetch("/api/employees"),
-      fetch(`/api/orders?archived=${archived}`),
+      fetch("/api/employees?department=ALL"),
+      fetch("/api/child-names"),
     ]);
-    const [productsData, employeesData, ordersData] = await Promise.all([
+    const [productsData, employeesData, childNamesData] = await Promise.all([
       productsRes.json(),
       employeesRes.json(),
-      ordersRes.json(),
+      childNamesRes.ok ? childNamesRes.json() : { names: [] },
     ]);
     setProducts(productsData);
     setEmployees(employeesData);
-    setOrders(ordersData);
-    setExitEmployeeByOrder((current) => {
-      const next = { ...current };
-      ordersData.forEach((order) => {
-        if (!next[order.id] && order.exitEmployeeId) next[order.id] = order.exitEmployeeId;
-      });
-      return next;
-    });
+    setChildNameHistory(Array.isArray(childNamesData.names) ? childNamesData.names : []);
 
     const lastEmployee = localStorage.getItem("lastDataEmployeeId");
     setDataEmployeeId(linkedOperationEmployeeId || lastEmployee || employeesData[0]?.id || "");
 
-    const operationEmployees = employeesData.filter((employee) => employee.department === "OPERATION");
+    const operationEmployees = employeesData.filter((employee) => employee.department !== "RESTAURANT");
     const lastExitEmployee = localStorage.getItem("lastExitEmployeeId") || "";
     setDefaultExitEmployeeId(
       linkedOperationEmployeeId
@@ -118,8 +151,48 @@ export default function CashierClient({ user }) {
     );
   }
 
+  async function loadOrders(archived = showArchived) {
+    const ordersRes = await fetch(`/api/orders?archived=${archived}`);
+    const ordersData = await ordersRes.json();
+    setOrders(ordersData);
+    setExitEmployeeByOrder((current) => {
+      const next = { ...current };
+      ordersData.forEach((order) => {
+        if (!next[order.id] && order.exitEmployeeId) next[order.id] = order.exitEmployeeId;
+      });
+      return next;
+    });
+  }
+
+  async function load(archived = showArchived) {
+    await Promise.all([loadStaticData(), loadOrders(archived)]);
+  }
+
+  function applyOrderUpdate(updatedOrder, archived = showArchived) {
+    if (!updatedOrder) return false;
+
+    setOrders((current) => {
+      const shouldKeep = archived ? Boolean(updatedOrder.archivedAt) : !updatedOrder.archivedAt;
+      const exists = current.some((order) => order.id === updatedOrder.id);
+
+      if (!shouldKeep) return current.filter((order) => order.id !== updatedOrder.id);
+      if (exists) return current.map((order) => order.id === updatedOrder.id ? updatedOrder : order);
+      return [updatedOrder, ...current];
+    });
+
+    if (updatedOrder.exitEmployeeId) {
+      setExitEmployeeByOrder((current) => ({ ...current, [updatedOrder.id]: updatedOrder.exitEmployeeId }));
+    }
+
+    return true;
+  }
+
+  async function refreshOrderFallback(data, archived = showArchived) {
+    if (!applyOrderUpdate(data?.order, archived)) await loadOrders(archived);
+  }
+
   const categories = useMemo(() => ["All", ...new Set(products.map((product) => product.categoryName))], [products]);
-  const operationEmployees = useMemo(() => employees.filter((employee) => employee.department === "OPERATION"), [employees]);
+  const operationEmployees = useMemo(() => employees.filter((employee) => employee.department !== "RESTAURANT"), [employees]);
   const [category, setCategory] = useState("All");
   const visibleProducts = products.filter((product) => category === "All" || product.categoryName === category);
   const visibleOrders = useMemo(() => {
@@ -132,10 +205,32 @@ export default function CashierClient({ user }) {
       order.childNames,
     ].some((value) => String(value || "").toLowerCase().includes(search)));
   }, [orders, ordersQuery]);
+  const renderedOrders = useMemo(
+    () => visibleOrders.slice(0, orderRenderLimit),
+    [visibleOrders, orderRenderLimit],
+  );
+  const activeBraceletSuggestions = useMemo(() => {
+    const search = braceletNo.trim();
+    if (!search) return [];
+
+    return orders
+      .filter((order) => !order.archivedAt && order.id !== editingOrder?.id)
+      .filter((order) => String(order.braceletNo || "").includes(search))
+      .slice(0, 6);
+  }, [braceletNo, editingOrder, orders]);
   const unpaidCount = orders.filter((order) => order.paymentStatus !== "PAID").length;
   const unregisteredCount = orders.filter((order) => !order.geideaRegisteredAt).length;
   const total = cart.reduce((sum, item) => sum + item.price * item.qty, 0);
   const orderTotalPreview = editingOrder ? Number(editingOrder.total || 0) + total : total;
+
+  function categoryTone(categoryName) {
+    const value = String(categoryName || "").toLowerCase();
+    if (value === "all") return "category-all";
+    if (["drink", "juice", "water", "pepsi", "coffee", "latte", "cappuccino", "hot", "cold"].some((word) => value.includes(word))) {
+      return "category-drink";
+    }
+    return "category-food";
+  }
 
   function orderAlertClass(order) {
     if (order.archivedAt) return "archived-order";
@@ -171,7 +266,7 @@ export default function CashierClient({ user }) {
     if (order.geideaRegisteredAt) return "meta-system";
     if (order.paymentStatus === "PAID") return order.paymentMethod === "VISA" ? "meta-visa" : "meta-cash";
     if (order.kitchenStatus === "DELIVERED") return "meta-delivered";
-    return "meta-pending";
+    return order.kitchenPrintJob ? "meta-preparing" : "meta-pending";
   }
 
   function scrollToSection(ref) {
@@ -268,6 +363,10 @@ export default function CashierClient({ user }) {
     scrollToSection(formRef);
   }
 
+  function orderCreatedLine(order) {
+    return formatDateTime(order.createdAt);
+  }
+
   function cancelEdit() {
     setEditingOrder(null);
     setCart([]);
@@ -277,6 +376,18 @@ export default function CashierClient({ user }) {
 
   async function saveOrder() {
     setMessage("");
+    if (!isValidBracelet(braceletNo)) {
+      const error = t("cashier.invalidBracelet");
+      setMessage(error);
+      toast(error, "error");
+      return;
+    }
+    if (!isValidCustomerPhone(customerPhone)) {
+      const error = t("cashier.invalidPhone");
+      setMessage(error);
+      toast(error, "error");
+      return;
+    }
     if (activeBraceletOrder) {
       const error = t("cashier.braceletActiveOrder", { bracelet: braceletNo.trim(), order: activeBraceletOrder.id });
       setMessage(error);
@@ -312,7 +423,8 @@ export default function CashierClient({ user }) {
     setChildren(1);
     setPaymentMethod("CASH");
     setCart([]);
-    await load(false);
+    applyOrderUpdate(data.order, false);
+    setChildNameHistory((current) => [...new Set([...childNames.filter(Boolean), ...current])]);
     showOrders(false);
   }
 
@@ -323,6 +435,18 @@ export default function CashierClient({ user }) {
     }
 
     setMessage("");
+    if (!isValidBracelet(braceletNo)) {
+      const error = t("cashier.invalidBracelet");
+      setMessage(error);
+      toast(error, "error");
+      return;
+    }
+    if (!isValidCustomerPhone(customerPhone)) {
+      const error = t("cashier.invalidPhone");
+      setMessage(error);
+      toast(error, "error");
+      return;
+    }
     if (activeBraceletOrder) {
       const error = t("cashier.braceletActiveOrder", { bracelet: braceletNo.trim(), order: activeBraceletOrder.id });
       setMessage(error);
@@ -346,6 +470,7 @@ export default function CashierClient({ user }) {
       return;
     }
 
+    let latestOrder = detailsData.order;
     if (cart.length) {
       const res = await fetch(`/api/orders/${orderUrlId(editingOrder.id)}/items`, {
       method: "POST",
@@ -359,6 +484,7 @@ export default function CashierClient({ user }) {
         toast(data.error || t("cashier.updateFailed"), "error");
         return;
       }
+      latestOrder = data.order || latestOrder;
     }
 
     showUiToast("orderUpdated");
@@ -368,7 +494,8 @@ export default function CashierClient({ user }) {
     setChildNames([""]);
     setChildren(1);
     setCart([]);
-    await load(showArchived);
+    applyOrderUpdate(latestOrder, showArchived);
+    setChildNameHistory((current) => [...new Set([...childNames.filter(Boolean), ...current])]);
     showOrders();
   }
 
@@ -395,7 +522,7 @@ export default function CashierClient({ user }) {
     showUiToast("customerLeft");
     localStorage.setItem("lastExitEmployeeId", exitEmployeeId);
     setEmployeeEditor(null);
-    await load(showArchived);
+    await refreshOrderFallback(data, showArchived);
   }
 
   async function markCustomerPresent(orderId) {
@@ -414,7 +541,7 @@ export default function CashierClient({ user }) {
     showUiToast("customerPresent");
     setEntryPassword("");
     setEmployeeEditor(null);
-    await load(showArchived);
+    await refreshOrderFallback(data, showArchived);
   }
 
   function openExitFlow(order) {
@@ -477,15 +604,35 @@ export default function CashierClient({ user }) {
       {(cashierView === "form" || editingOrder) && (
       <section className="panel stack new-order-panel" id="new-order" ref={formRef}>
         <h2>{editingOrder ? t("cashier.editOrder") : t("cashier.addNewOrder")}</h2>
+        <datalist id="child-name-history">
+          {childNameHistory.map((name) => <option key={name} value={name} />)}
+        </datalist>
         <div className="new-order-layout">
           <div className="new-order-details">
         {editingOrder ? (
           <div className="summary edit-order-summary">
             <div className="meta-line"><span>{t("common.order")}</span><b>{editingOrder.id}</b></div>
             <div className="form-grid new-order-fields">
-              <input value={braceletNo} onChange={(event) => setBraceletNo(event.target.value)} placeholder={t("cashier.braceletPlaceholder")} />
+              <div className="bracelet-live-field">
+                <input value={braceletNo} onChange={(event) => setBraceletNo(event.target.value)} placeholder={t("cashier.braceletPlaceholder")} />
+                {activeBraceletSuggestions.length > 0 && (
+                  <div className="bracelet-suggestions">
+                    {activeBraceletSuggestions.map((order) => (
+                      <button type="button" key={order.id} onClick={() => startEdit(order)}>
+                        <b>{order.braceletNo}</b>
+                        <span>{order.id}</span>
+                        <small>{order.childNames}</small>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
               <input value={customerPhone} onChange={(event) => setCustomerPhone(event.target.value)} placeholder={t("cashier.phonePlaceholder")} />
-              <select value={childCount} onChange={(event) => setChildren(Number(event.target.value))}>
+              <select
+                aria-label={t("common.children")}
+                value={childCount}
+                onChange={(event) => setChildren(Number(event.target.value))}
+              >
                 {[1, 2, 3, 4, 5, 6].map((count) => <option key={count} value={count}>{t("cashier.childCount", { count })}</option>)}
               </select>
             </div>
@@ -496,6 +643,7 @@ export default function CashierClient({ user }) {
                   value={name}
                   onChange={(event) => setChildNames((current) => current.map((item, itemIndex) => itemIndex === index ? event.target.value : item))}
                   placeholder={t("cashier.childName", { count: index + 1 })}
+                  list="child-name-history"
                 />
               ))}
             </div>
@@ -518,7 +666,20 @@ export default function CashierClient({ user }) {
         ) : (
           <>
             <div className="form-grid new-order-fields">
-              <input value={braceletNo} onChange={(event) => setBraceletNo(event.target.value)} placeholder={t("cashier.braceletPlaceholder")} />
+              <div className="bracelet-live-field">
+                <input value={braceletNo} onChange={(event) => setBraceletNo(event.target.value)} placeholder={t("cashier.braceletPlaceholder")} />
+                {activeBraceletSuggestions.length > 0 && (
+                  <div className="bracelet-suggestions">
+                    {activeBraceletSuggestions.map((order) => (
+                      <button type="button" key={order.id} onClick={() => startEdit(order)}>
+                        <b>{order.braceletNo}</b>
+                        <span>{order.id}</span>
+                        <small>{order.childNames}</small>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
               <input value={customerPhone} onChange={(event) => setCustomerPhone(event.target.value)} placeholder={t("cashier.phonePlaceholder")} />
               <div className="payment-radios" role="radiogroup" aria-label={t("common.paymentMethod")}>
                 {[
@@ -537,7 +698,11 @@ export default function CashierClient({ user }) {
                   </label>
                 ))}
               </div>
-              <select value={childCount} onChange={(event) => setChildren(Number(event.target.value))}>
+              <select
+                aria-label={t("common.children")}
+                value={childCount}
+                onChange={(event) => setChildren(Number(event.target.value))}
+              >
                 {[1, 2, 3, 4, 5, 6].map((count) => <option key={count} value={count}>{t("cashier.childCount", { count })}</option>)}
               </select>
               {linkedOperationEmployeeId ? (
@@ -546,6 +711,7 @@ export default function CashierClient({ user }) {
                 </div>
               ) : (
                 <select
+                  aria-label={t("common.employee")}
                   className={employeeGenderClass(employees.find((employee) => employee.id === dataEmployeeId)?.name)}
                   value={dataEmployeeId}
                   onChange={(event) => setDataEmployeeId(event.target.value)}
@@ -562,6 +728,7 @@ export default function CashierClient({ user }) {
                   value={name}
                   onChange={(event) => setChildNames((current) => current.map((item, itemIndex) => itemIndex === index ? event.target.value : item))}
                   placeholder={t("cashier.childName", { count: index + 1 })}
+                  list="child-name-history"
                 />
               ))}
             </div>
@@ -578,9 +745,9 @@ export default function CashierClient({ user }) {
         )}
       </div>
           <div className="new-order-products">
-        <div className="tabs">
+        <div className="tabs category-tabs">
           {categories.map((item) => (
-            <button key={item} className={category === item ? "active" : ""} onClick={() => setCategory(item)}>{labelCategory(item)}</button>
+            <button key={item} className={`${categoryTone(item)} ${category === item ? "active" : ""}`} onClick={() => setCategory(item)}>{labelCategory(item)}</button>
           ))}
         </div>
         <div className="products">
@@ -592,6 +759,10 @@ export default function CashierClient({ user }) {
                   <img
                     src={product.imageUrl || fallbackImage}
                     alt={product.name}
+                    width="320"
+                    height="220"
+                    loading="lazy"
+                    decoding="async"
                     onError={(event) => { event.currentTarget.src = fallbackImage; }}
                   />
                   <div className="product-name">{product.name}</div>
@@ -622,15 +793,15 @@ export default function CashierClient({ user }) {
       )}
 
       <section className="panel" id="orders" ref={ordersRef}>
+        <div className="tabs order-tabs orders-top-tabs">
+          <button className={!showArchived ? "active" : ""} onClick={() => showOrdersTab(false)}>{t("common.active")}</button>
+          <button className={showArchived ? "active" : ""} onClick={() => showOrdersTab(true)}>{t("common.archive")}</button>
+        </div>
         <div className="row">
           <h2>{showArchived ? t("common.archivedOrders") : t("common.currentOrders")}</h2>
         </div>
         <div className="orders-layout">
           <aside className="orders-sidebar">
-            <div className="tabs order-tabs">
-              <button className={!showArchived ? "active" : ""} onClick={() => showOrdersTab(false)}>{t("common.currentOrders")}</button>
-              <button className={showArchived ? "active" : ""} onClick={() => showOrdersTab(true)}>{t("common.archivedOrders")}</button>
-            </div>
             <div className="orders-sidebar-metrics">
               <Metric label={t("common.visibleOrders")} value={formatNumber(visibleOrders.length)} />
               <Metric label={t("common.unpaid")} value={formatNumber(unpaidCount)} />
@@ -648,10 +819,11 @@ export default function CashierClient({ user }) {
           </aside>
           <div className="orders-content">
             <div className="grid three honey-grid">
-              {visibleOrders.map((order) => (
+              {renderedOrders.map((order) => (
                 <div className={`card order-cell ${orderAlertClass(order)}`} key={order.id}>
               <div className="row order-head"><b>{order.id}</b><span className={`badge ${order.paymentStatus === "PAID" ? "paid" : "unpaid"}`}>{labelStatus(order.paymentStatus)}</span></div>
               <div className="order-info">
+                <div className="meta-line"><span>{t("common.date")}</span><b>{orderCreatedLine(order)}</b></div>
                 <div className="meta-line"><span>{t("common.bracelet")}</span><b>{order.braceletNo}</b></div>
                 {order.customerPhone && <div className="meta-line"><span>{t("common.phone")}</span><b>{order.customerPhone}</b></div>}
                 <div className="meta-line"><span>{t("common.children")}</span><b>{order.childNames}</b></div>
@@ -660,52 +832,17 @@ export default function CashierClient({ user }) {
                 <div className="meta-line"><span>{t("common.status")}</span><b className={`meta-value ${orderStageClass(order)}`}>{labelOrderStage(order)}</b></div>
                 {order.paymentStatus !== "PAID" && <div className="meta-line"><span>{t("common.paymentMethod")}</span><b className={`meta-value ${order.paymentMethod === "VISA" ? "meta-visa" : "meta-cash"}`}>{labelMethod(order.paymentMethod)}</b></div>}
               </div>
-              <div className="summary">
-                <div className="order-items">
-                  {order.items.length === 0 ? (
-                    <div className="muted">{t("common.noItems")}</div>
-                  ) : order.items.map((item) => (
-                    <div className="row" key={item.id}>
-                      <span>{item.name} x {item.qty}</span>
-                      <b>{currency(item.total)}</b>
-                    </div>
-                  ))}
-                </div>
-                <div className="row order-total-row"><span>{t("common.orderTotal")}</span><b>{currency(order.total)}</b></div>
-              </div>
+              <OrderItemsSummary order={order} t={t} currency={currency} />
               <div className="order-alerts">
-                {order.customerLeft && order.paymentStatus !== "PAID" && (
-                  <div className="warning" style={uiMessageStyle(uiMessages.leftUnpaid)}>
-                    {formatUiMessage(uiMessages.leftUnpaid)}
-                  </div>
-                )}
-                {order.customerLeft && order.paymentStatus === "PAID" && !order.geideaRegisteredAt && (
-                  <div className="warning warning-orange" style={uiMessageStyle(uiMessages.leftNeedsGeidea)}>
-                    {formatUiMessage(uiMessages.leftNeedsGeidea)}
-                  </div>
-                )}
-                {order.geideaRegisteredAt && (
-                  <div className="geidea-alert-line" style={uiMessageStyle(uiMessages.geideaRegistered)}>
-                    {formatUiMessage(uiMessages.geideaRegistered, {
-                      employee: order.geideaEmployee || "-",
-                      time: formatDateTime(order.geideaRegisteredAt),
-                    }).split("\n").map((line, index) => (
-                      <span className={index === 1 ? employeeGenderClass(order.geideaEmployee) : ""} key={index}>{line}</span>
-                    ))}
-                  </div>
-                )}
-                {showArchived && (
-                  <div className="archive-alert-line" style={uiMessageStyle(uiMessages.archivedAt)}>
-                    {formatUiMessage(uiMessages.archivedAt, { time: formatDateTime(order.archivedAt) })}
-                  </div>
-                )}
-                {!showArchived && order.customerLeft && (
-                  <div className="meta-line exit-employee-line" style={uiMessageStyle(uiMessages.exitEmployee)}>
-                    {formatUiMessage(uiMessages.exitEmployee, { employee: exitEmployeeName(order) || "-" }).split("\n").map((line, index) => (
-                      <span className={index === 1 ? employeeGenderClass(exitEmployeeName(order)) : ""} key={index}>{line}</span>
-                    ))}
-                  </div>
-                )}
+                <OrderAlerts
+                  order={order}
+                  uiMessages={uiMessages}
+                  formatDateTime={formatDateTime}
+                  exitEmployeeName={exitEmployeeName}
+                  labelMethod={labelMethod}
+                  actionLabels={{ delivered: t("common.delivered"), geidea: "تسجيل جيديا", exit: "خروج", archive: "أرشفة", closed: t("common.closed") }}
+                  showArchive={showArchived}
+                />
               </div>
               {!showArchived && (
                   <div className="actions">
@@ -727,6 +864,13 @@ export default function CashierClient({ user }) {
                 </div>
               ))}
             </div>
+            {renderedOrders.length < visibleOrders.length && (
+              <div className="load-more-row">
+                <button className="secondary" onClick={() => setOrderRenderLimit((current) => current + 30)}>
+                  {t("common.showMore")} · {formatNumber(visibleOrders.length - renderedOrders.length)}
+                </button>
+              </div>
+            )}
           </div>
         </div>
       </section>
@@ -762,6 +906,7 @@ export default function CashierClient({ user }) {
                 </div>
               ) : (
                 <select
+                  aria-label={t("cashier.selectExitEmployee")}
                   className={`employee-select-line modal-select ${employeeGenderClass(operationEmployees.find((employee) => employee.id === selectedExitEmployeeId(employeeEditor.id))?.name)}`}
                   value={selectedExitEmployeeId(employeeEditor.id)}
                   disabled={operationEmployees.length === 0}

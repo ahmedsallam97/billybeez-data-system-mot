@@ -3,6 +3,8 @@ import { authorizeApi } from "@/lib/api-auth";
 import { createBackup, listBackups, restoreBackup } from "@/lib/db-backups";
 import { writeAudit } from "@/lib/audit";
 import { prisma } from "@/lib/db";
+import { clearBusinessDayStateCache } from "@/lib/business-day";
+import { clearSettingsCache } from "@/lib/settings";
 
 export async function GET() {
   const { error } = await authorizeApi("BACKUP_MANAGE");
@@ -28,6 +30,8 @@ export async function POST(request) {
       reason: "Manager restored database backup from admin settings",
     });
     const result = restoreBackup(name);
+    clearSettingsCache();
+    clearBusinessDayStateCache();
     await prisma.$disconnect();
     return NextResponse.json({ success: true, ...result });
   }

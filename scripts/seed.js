@@ -44,7 +44,7 @@ const products = [
 const users = [
   { name: "Admin", username: "admin", password: "admin123", role: "ADMIN" },
   { name: "Manager", username: "manager", password: "manager123", role: "MANAGER" },
-  { name: "Cashier", username: "cashier", password: "cashier123", role: "CASHIER" },
+  { name: "Data", username: "data", password: "data112411", role: "CASHIER" },
   { name: "Kitchen", username: "kitchen", password: "kitchen123", role: "KITCHEN" },
 ];
 

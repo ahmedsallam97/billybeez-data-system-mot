@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { authorizeApi } from "@/lib/api-auth";
 import { writeAudit } from "@/lib/audit";
-import { ensureDefaultSettings } from "@/lib/settings";
+import { clearSettingsCache, ensureDefaultSettings, getSettingsRows } from "@/lib/settings";
 
 const editableKeys = new Set([
   "BUSINESS_DAY_PASSWORD",
@@ -24,6 +24,7 @@ const editableKeys = new Set([
   "INVOICE_WEBSITE",
   "INVOICE_PRINTER_NAME",
   "KITCHEN_PRINTER_NAME",
+  "PRINT_AGENT_URL",
   "PRINT_COPIES_INVOICE",
   "PRINT_COPIES_KITCHEN",
   "PRINT_AUTO_INVOICE",
@@ -33,6 +34,7 @@ const editableKeys = new Set([
   "WORKFLOW_ALLOW_PAID_ORDER_EDIT_ROLES",
   "WORKFLOW_ALLOW_PAYMENT_BEFORE_DELIVERY",
   "WORKFLOW_REQUIRE_GEIDEA_BEFORE_ARCHIVE",
+  "WORKFLOW_REQUIRE_PAYMENT_BEFORE_ARCHIVE",
   "WORKFLOW_ALLOW_EXIT_BEFORE_PAYMENT",
   "REPORT_DEFAULT_TAB",
   "REPORT_SHOW_CASH_VISA_GEIDEA",
@@ -44,6 +46,8 @@ const editableKeys = new Set([
   "BACKUP_RETENTION_DAYS",
   "UI_MESSAGE_CONFIG",
   "EMPLOYEE_NAME_STYLE_CONFIG",
+  "EMPLOYEE_DEPARTMENT_CONFIG",
+  "RECORD_TABLE_STYLE_CONFIG",
   "ROLE_PERMISSION_CONFIG",
 ]);
 
@@ -62,7 +66,7 @@ export async function GET() {
   if (error) return error;
 
   await ensureDefaultSettings();
-  const settings = await prisma.systemSetting.findMany({ orderBy: { key: "asc" } });
+  const settings = await getSettingsRows();
 
   return NextResponse.json({ success: true, settings: settings.map(serializeSetting) });
 }
@@ -97,6 +101,8 @@ export async function PATCH(request) {
     after: serializeSetting(setting),
     reason: "Manager updated system setting",
   });
+
+  clearSettingsCache();
 
   return NextResponse.json({ success: true, setting: serializeSetting(setting) });
 }

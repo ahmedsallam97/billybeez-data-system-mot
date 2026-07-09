@@ -7,6 +7,7 @@ import { filterKitchenTicketItems } from "../../../lib/kitchen-ticket-rules";
 export default function KitchenTicketPrint({ order, ticketRules }) {
   const { t, formatNumber, formatDateTime } = useI18n();
   const { matchedItems, items } = filterKitchenTicketItems(order.items || [], ticketRules);
+  const ticketDate = order.kitchenPrintJob?.createdAt || order.createdAt;
 
   useEffect(() => {
     const timer = setTimeout(() => window.print(), 700);
@@ -16,7 +17,7 @@ export default function KitchenTicketPrint({ order, ticketRules }) {
   return (
     <div className="invoice kitchen-ticket">
       <div className="receipt-center">
-        <img src="/bb-logo.png" alt="Billy Beez" className="kitchen-ticket-logo" />
+        <img src="/bb-logo.png" alt="Billy Beez" className="kitchen-ticket-logo" width="456" height="140" />
         <h1>{t("kitchenTicket.title")}</h1>
         <b>{order.id}</b>
       </div>
@@ -26,7 +27,7 @@ export default function KitchenTicketPrint({ order, ticketRules }) {
       <div className="receipt-meta">
         <span>{t("common.bracelet")}</span><b>{order.braceletNo}</b>
         <span>{t("common.children")}</span><b>{order.childNames}</b>
-        <span>{t("invoice.date")}</span><b>{formatDateTime(new Date())}</b>
+        <span>{t("invoice.date")}</span><b>{formatDateTime(ticketDate)}</b>
         <span>{t("common.cashier")}</span><b>{order.cashier || "-"}</b>
       </div>
 

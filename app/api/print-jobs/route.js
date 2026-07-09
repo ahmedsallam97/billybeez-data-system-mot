@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { authorizeApi } from "@/lib/api-auth";
 import { writeAudit } from "@/lib/audit";
+import { actorFields, upsertOrderRecord } from "@/lib/order-records";
 import { includeOrderDetails, routeOrderId, serializeOrder } from "@/lib/orders";
 import { nextSequence } from "@/lib/numbering";
 import { nextWorkflowState, orderAuditSnapshot } from "@/lib/order-workflow";
@@ -65,7 +66,12 @@ export async function POST(request) {
   });
 
   if (existingPending) {
-    return NextResponse.json({ success: true, job: serializePrintJob(existingPending), reused: true });
+    return NextResponse.json({
+      success: true,
+      job: serializePrintJob(existingPending),
+      order: serializeOrder(order),
+      reused: true,
+    });
   }
 
   const serializedOrder = serializeOrder(order);
@@ -102,6 +108,13 @@ export async function POST(request) {
     },
   });
 
+  if (type === "KITCHEN") {
+    await upsertOrderRecord(prisma, updatedOrder, {
+      preparationStartedAt: job.createdAt,
+      ...actorFields("preparationStarted", user, user.employee?.department === "RESTAURANT" ? user.employee : null),
+    });
+  }
+
   await writeAudit({
     action: "PRINT_JOB_CREATED",
     orderId,
@@ -117,5 +130,10 @@ export async function POST(request) {
     reason: "Restaurant started preparation and queued kitchen ticket",
   });
 
-  return NextResponse.json({ success: true, job: serializePrintJob(job) });
+  const freshOrder = await prisma.order.findUnique({
+    where: { id: orderId },
+    include: includeOrderDetails(),
+  });
+
+  return NextResponse.json({ success: true, job: serializePrintJob(job), order: serializeOrder(freshOrder) });
 }

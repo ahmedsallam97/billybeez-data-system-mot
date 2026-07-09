@@ -36,10 +36,10 @@ export default function LoginForm() {
   }
 
   return (
-    <div className="login-page">
+    <main className="login-page">
       <PreferenceIconButtons className="login-tools" />
       <form className="login-box stack" onSubmit={submit}>
-        <img src="/bb-logo.png" alt="BillyBeez" className="logo" />
+        <img src="/bb-logo-web.png" alt="BillyBeez" className="logo" width="456" height="140" fetchPriority="high" />
         <h1>{t("login.title")}</h1>
         <input
           value={username}
@@ -59,6 +59,6 @@ export default function LoginForm() {
         <button type="submit" disabled={loading}>{loading ? t("common.loading") : t("login.submit")}</button>
         <div className="message">{message}</div>
       </form>
-    </div>
+    </main>
   );
 }

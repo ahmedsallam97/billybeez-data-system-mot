@@ -1,13 +1,5 @@
-import { requireUser } from "@/lib/auth";
-import AppShell from "../AppShell";
-import CashierClient from "./CashierClient";
+import { redirect } from "next/navigation";
 
-export default async function CashierPage() {
-  const user = await requireUser(["ADMIN", "CASHIER"]);
-
-  return (
-    <AppShell title="title.cashier" user={user}>
-      <CashierClient user={user} />
-    </AppShell>
-  );
+export default function CashierRedirectPage() {
+  redirect("/data");
 }

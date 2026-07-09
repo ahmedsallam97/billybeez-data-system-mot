@@ -4,7 +4,7 @@ import { authorizeApi } from "@/lib/api-auth";
 import { writeAudit } from "@/lib/audit";
 import { assertActiveBraceletAvailable, isBraceletLockConflict, moveActiveBracelet } from "@/lib/active-bracelets";
 import { ensureBusinessDayState } from "@/lib/business-day";
-import { includeOrderDetails, routeOrderId, serializeOrder, validateBracelet } from "@/lib/orders";
+import { includeOrderDetails, routeOrderId, serializeOrder, validateBracelet, validateCustomerPhone } from "@/lib/orders";
 import { orderAuditSnapshot, restoredStatus } from "@/lib/order-workflow";
 import { canUserEditPaidOrder } from "@/lib/workflow-rules";
 
@@ -42,7 +42,11 @@ export async function PATCH(request, { params }) {
   const childNames = (body.childNames || []).map((name) => String(name || "").trim()).filter(Boolean);
 
   if (!validateBracelet(braceletNo)) {
-    return NextResponse.json({ success: false, error: "Bracelet must be 6 digits and start with 0, 1, 2, or 3" }, { status: 400 });
+    return NextResponse.json({ success: false, error: "Bracelet must be 5 digits starting with 0, or 6 digits starting with 0, 1, 2, or 3" }, { status: 400 });
+  }
+
+  if (!validateCustomerPhone(customerPhone)) {
+    return NextResponse.json({ success: false, error: "Phone must be 11 digits and start with 010, 011, or 012" }, { status: 400 });
   }
 
   if (!childNames.length) {

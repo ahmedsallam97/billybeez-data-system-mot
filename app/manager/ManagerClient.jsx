@@ -3,8 +3,12 @@
 import { useEffect, useMemo, useState } from "react";
 import { useToast } from "../ToastProvider";
 import { useI18n } from "../i18n";
+import OrderAlerts from "../OrderAlerts";
+import OrderItemsSummary from "../OrderItemsSummary";
 import { applyEmployeeNameStyles, employeeGenderClass, normalizeEmployeeNameStyles } from "../employeeDisplay";
+import { applyRecordTableStyles, normalizeRecordTableStyles, recordTableStylePresets } from "../recordTableStyles";
 import { formatUiMessage, normalizeUiMessages, uiMessageStyle } from "../uiMessages";
+import { formatCairoDateLabel, formatCairoTime } from "../dateTime";
 import { kitchenTicketRuleValue, parseKitchenTicketRules } from "../../lib/kitchen-ticket-rules";
 
 const roles = ["ADMIN", "MANAGER", "CASHIER", "KITCHEN"];
@@ -125,7 +129,11 @@ export default function ManagerClient() {
   const [employeeFilter, setEmployeeFilter] = useState({ query: "", department: "ALL", status: "ALL" });
   const [productFilter, setProductFilter] = useState({ query: "", category: "ALL", status: "ALL", popular: "ALL" });
   const [userFilter, setUserFilter] = useState({ query: "", role: "ALL", status: "ALL" });
+  const [healthFilter, setHealthFilter] = useState("ALL");
+  const [recordQuery, setRecordQuery] = useState("");
+  const [settingsSearch, setSettingsSearch] = useState("");
   const [query, setQuery] = useState("");
+  const [orderRenderLimit, setOrderRenderLimit] = useState(30);
   const [selectedOrder, setSelectedOrder] = useState(null);
   const [orderItemForm, setOrderItemForm] = useState({ productId: "", qty: 1 });
   const [managerPaymentEmployeeId, setManagerPaymentEmployeeId] = useState("");
@@ -134,21 +142,118 @@ export default function ManagerClient() {
   const [reportPrintHtml, setReportPrintHtml] = useState("");
   const [uiMessages, setUiMessages] = useState(normalizeUiMessages());
   const [employeeNameStyles, setEmployeeNameStyles] = useState(normalizeEmployeeNameStyles());
+  const [recordTableStyles, setRecordTableStyles] = useState(normalizeRecordTableStyles());
   const [settingsMap, setSettingsMap] = useState({});
   const [backups, setBackups] = useState([]);
   const [rolePermissions, setRolePermissions] = useState(normalizeRolePermissions());
+  const [dashboardMode, setDashboardMode] = useState("light");
+  const [resourceStatus, setResourceStatus] = useState({
+    employees: "idle",
+    products: "idle",
+    users: "idle",
+    backups: "idle",
+  });
+  const [loadError, setLoadError] = useState("");
+  const [uiPrefsReady, setUiPrefsReady] = useState(false);
 
   useEffect(() => {
     load();
   }, []);
 
   useEffect(() => {
+    const savedManagerTab = localStorage.getItem("managerTab");
+    const savedSettingsTab = localStorage.getItem("managerSettingsTab");
+    const savedViewMode = localStorage.getItem("managerViewMode");
+    const savedFilter = localStorage.getItem("managerPaymentFilter");
+    const savedArchiveFilter = localStorage.getItem("managerArchiveFilter");
+    const savedDateFilterMode = localStorage.getItem("managerDateFilterMode");
+    const savedDateFilter = localStorage.getItem("managerDateFilter");
+
+    if (["orders", "review", "reports", "settings", "records", "activity"].includes(savedManagerTab)) setManagerTab(savedManagerTab);
+    if (["employees", "products", "users", "branch", "invoice", "printing", "business", "workflow", "reports", "recordsStyle", "auditBackup", "backupRestore", "messages"].includes(savedSettingsTab)) setSettingsTab(savedSettingsTab);
+    if (["TODAY", "HISTORY"].includes(savedViewMode)) setViewMode(savedViewMode);
+    if (["ALL", "CASH", "VISA", "UNPAID"].includes(savedFilter)) setFilter(savedFilter);
+    if (["ALL", "ACTIVE", "ARCHIVED", "UNREGISTERED"].includes(savedArchiveFilter)) setArchiveFilter(savedArchiveFilter);
+    if (["DAY", "YESTERDAY", "MONTH", "YEAR", "RANGE"].includes(savedDateFilterMode)) setDateFilterMode(savedDateFilterMode);
+    if (savedDateFilter) {
+      try {
+        const parsedDateFilter = JSON.parse(savedDateFilter);
+        if (parsedDateFilter && typeof parsedDateFilter === "object") {
+          setDateFilter({
+            day: parsedDateFilter.day || "",
+            month: parsedDateFilter.month || "",
+            year: parsedDateFilter.year || "",
+            from: parsedDateFilter.from || "",
+            to: parsedDateFilter.to || "",
+          });
+          if (parsedDateFilter.month) setCalendarMonth(parsedDateFilter.month);
+          else if (parsedDateFilter.day) setCalendarMonth(String(parsedDateFilter.day).slice(0, 7));
+        }
+      } catch {}
+    }
+    setUiPrefsReady(true);
+  }, []);
+
+  useEffect(() => {
+    if (!uiPrefsReady) return;
+    localStorage.setItem("managerTab", managerTab);
+  }, [managerTab, uiPrefsReady]);
+
+  useEffect(() => {
+    if (!uiPrefsReady) return;
+    localStorage.setItem("managerSettingsTab", settingsTab);
+  }, [settingsTab, uiPrefsReady]);
+
+  useEffect(() => {
+    if (!uiPrefsReady) return;
+    localStorage.setItem("managerViewMode", viewMode);
+  }, [viewMode, uiPrefsReady]);
+
+  useEffect(() => {
+    if (!uiPrefsReady) return;
+    localStorage.setItem("managerPaymentFilter", filter);
+  }, [filter, uiPrefsReady]);
+
+  useEffect(() => {
+    if (!uiPrefsReady) return;
+    localStorage.setItem("managerArchiveFilter", archiveFilter);
+  }, [archiveFilter, uiPrefsReady]);
+
+  useEffect(() => {
+    if (!uiPrefsReady) return;
+    localStorage.setItem("managerDateFilterMode", dateFilterMode);
+    localStorage.setItem("managerDateFilter", JSON.stringify(dateFilter));
+  }, [dateFilterMode, dateFilter, uiPrefsReady]);
+
+  useEffect(() => {
+    setOrderRenderLimit(30);
+  }, [viewMode, filter, archiveFilter, healthFilter, query, dateFilterMode, dateFilter.day, dateFilter.month, dateFilter.year, dateFilter.from, dateFilter.to]);
+
+  useEffect(() => {
     if (!selectedOrder) return;
+    ensureEmployeesLoaded();
+    ensureProductsLoaded();
     const restaurantEmployees = employees.filter((employee) => employee.department === "RESTAURANT" && employee.active);
     setManagerPaymentEmployeeId(selectedOrder.paymentEmployeeId || restaurantEmployees[0]?.id || "");
     setManagerGeideaEmployeeId(selectedOrder.geideaEmployeeId || restaurantEmployees[0]?.id || "");
     setOrderItemForm((current) => ({ productId: current.productId || products[0]?.id || "", qty: current.qty || 1 }));
   }, [selectedOrder, employees, products]);
+
+  useEffect(() => {
+    if (managerTab !== "settings") return;
+    if (["employees", "users"].includes(settingsTab)) ensureEmployeesLoaded();
+    if (["products", "printing"].includes(settingsTab)) ensureProductsLoaded();
+    if (settingsTab === "users") ensureUsersLoaded();
+    if (settingsTab === "backupRestore") ensureBackupsLoaded();
+  }, [managerTab, settingsTab]);
+
+  useEffect(() => {
+    if (!data || dashboardMode === "full") return;
+    const selectedDifferentDay = dateFilterMode === "DAY" && dateFilter.day && data?.reportBusinessDate && dateFilter.day !== data.reportBusinessDate;
+    if (["reports", "records", "activity"].includes(managerTab) || viewMode === "HISTORY" || dateFilterMode !== "DAY" || selectedDifferentDay) {
+      loadDashboardFull();
+    }
+  }, [data, dashboardMode, managerTab, viewMode, dateFilterMode, dateFilter.day]);
 
   useEffect(() => {
     if (!data?.reportBusinessDate || dateFilter.day) return;
@@ -159,27 +264,33 @@ export default function ManagerClient() {
   }, [data?.reportBusinessDate, dateFilter.day]);
 
   async function load() {
-    const [dashboardRes, employeesRes, productsRes, usersRes, settingsRes, backupsRes] = await Promise.all([
-      fetch("/api/dashboard"),
-      fetch("/api/employees?department=ALL&includeInactive=true"),
-      fetch("/api/products?includeInactive=true"),
-      fetch("/api/users"),
-      fetch("/api/settings"),
-      fetch("/api/backups"),
-    ]);
-    const [dashboardData, employeesData, productsData, usersData, settingsData, backupsData] = await Promise.all([
+    setLoadError("");
+    const fetchOptions = { cache: "no-store", credentials: "include" };
+    let dashboardRes;
+    let settingsRes;
+
+    try {
+      [dashboardRes, settingsRes] = await Promise.all([
+        fetch("/api/dashboard?light=1", fetchOptions),
+        fetch("/api/settings", fetchOptions),
+      ]);
+    } catch (error) {
+      setLoadError(error?.message || t("common.loading"));
+      return;
+    }
+
+    if (![dashboardRes, settingsRes].every((res) => res.ok)) {
+      setLoadError("Failed to load manager data");
+      return;
+    }
+
+    const [dashboardData, settingsData] = await Promise.all([
       dashboardRes.json(),
-      employeesRes.json(),
-      productsRes.json(),
-      usersRes.json(),
       settingsRes.json(),
-      backupsRes.json(),
     ]);
 
     setData(dashboardData);
-    setEmployees(employeesData);
-    setProducts(productsData);
-    setUsers(Array.isArray(usersData) ? usersData : []);
+    setDashboardMode("light");
     const nextSettingsMap = Object.fromEntries((settingsData.settings || []).map((setting) => [setting.key, setting.value]));
     setSettingsMap(nextSettingsMap);
     setUiMessages(normalizeUiMessages(nextSettingsMap.UI_MESSAGE_CONFIG));
@@ -188,7 +299,96 @@ export default function ManagerClient() {
     const normalizedEmployeeStyles = normalizeEmployeeNameStyles(employeeStyleSetting?.value);
     setEmployeeNameStyles(normalizedEmployeeStyles);
     applyEmployeeNameStyles(normalizedEmployeeStyles);
-    setBackups(Array.isArray(backupsData.backups) ? backupsData.backups : []);
+    const recordStyleSetting = settingsData.settings?.find((item) => item.key === "RECORD_TABLE_STYLE_CONFIG");
+    const normalizedRecordStyles = normalizeRecordTableStyles(recordStyleSetting?.value);
+    setRecordTableStyles(normalizedRecordStyles);
+    applyRecordTableStyles(normalizedRecordStyles);
+  }
+
+  async function loadDashboardFull() {
+    const res = await fetch("/api/dashboard", { cache: "no-store", credentials: "include" });
+    if (!res.ok) return;
+    setData(await res.json());
+    setDashboardMode("full");
+  }
+
+  async function loadSettingsOnly() {
+    const res = await fetch("/api/settings", { cache: "no-store", credentials: "include" });
+    if (!res.ok) return;
+    const settingsData = await res.json();
+    const nextSettingsMap = Object.fromEntries((settingsData.settings || []).map((setting) => [setting.key, setting.value]));
+    setSettingsMap(nextSettingsMap);
+    setUiMessages(normalizeUiMessages(nextSettingsMap.UI_MESSAGE_CONFIG));
+    setRolePermissions(normalizeRolePermissions(nextSettingsMap.ROLE_PERMISSION_CONFIG));
+  }
+
+  async function loadEmployees() {
+    setResourceStatus((current) => ({ ...current, employees: "loading" }));
+    const res = await fetch("/api/employees?department=ALL&includeInactive=true", { cache: "no-store", credentials: "include" });
+    if (!res.ok) {
+      setResourceStatus((current) => ({ ...current, employees: "error" }));
+      return;
+    }
+    setEmployees(await res.json());
+    setResourceStatus((current) => ({ ...current, employees: "loaded" }));
+  }
+
+  async function loadProducts() {
+    setResourceStatus((current) => ({ ...current, products: "loading" }));
+    const res = await fetch("/api/products?includeInactive=true", { cache: "no-store", credentials: "include" });
+    if (!res.ok) {
+      setResourceStatus((current) => ({ ...current, products: "error" }));
+      return;
+    }
+    setProducts(await res.json());
+    setResourceStatus((current) => ({ ...current, products: "loaded" }));
+  }
+
+  async function loadUsers() {
+    setResourceStatus((current) => ({ ...current, users: "loading" }));
+    const res = await fetch("/api/users", { cache: "no-store", credentials: "include" });
+    if (!res.ok) {
+      setResourceStatus((current) => ({ ...current, users: "error" }));
+      return;
+    }
+    const usersData = await res.json();
+    setUsers(Array.isArray(usersData) ? usersData : []);
+    setResourceStatus((current) => ({ ...current, users: "loaded" }));
+  }
+
+  async function loadBackups() {
+    setResourceStatus((current) => ({ ...current, backups: "loading" }));
+    const res = await fetch("/api/backups", { cache: "no-store", credentials: "include" });
+    if (!res.ok) {
+      setResourceStatus((current) => ({ ...current, backups: "error" }));
+      return;
+    }
+    const result = await res.json();
+    setBackups(Array.isArray(result.backups) ? result.backups : []);
+    setResourceStatus((current) => ({ ...current, backups: "loaded" }));
+  }
+
+  function ensureEmployeesLoaded() {
+    if (resourceStatus.employees === "idle" || resourceStatus.employees === "error") loadEmployees();
+  }
+
+  function ensureProductsLoaded() {
+    if (resourceStatus.products === "idle" || resourceStatus.products === "error") loadProducts();
+  }
+
+  function ensureUsersLoaded() {
+    if (resourceStatus.users === "idle" || resourceStatus.users === "error") loadUsers();
+  }
+
+  function ensureBackupsLoaded() {
+    if (resourceStatus.backups === "idle" || resourceStatus.backups === "error") loadBackups();
+  }
+
+  function clearOrderFilters() {
+    setQuery("");
+    setFilter("ALL");
+    setArchiveFilter("ALL");
+    setHealthFilter("ALL");
   }
 
   function orderAlertClass(order) {
@@ -243,7 +443,7 @@ export default function ManagerClient() {
     }
 
     showUiToast("settingsSaved");
-    await load();
+    await loadSettingsOnly();
   }
 
   function renderSettingsFields(fields) {
@@ -325,7 +525,11 @@ export default function ManagerClient() {
           <label className="admin-setting-field" key={field.key}>
             <span>{field.label}</span>
             {field.type === "select" ? (
-              <select value={settingsMap[field.key] ?? field.defaultValue ?? ""} onChange={(event) => updateSettingValue(field.key, event.target.value)}>
+              <select
+                aria-label={field.label}
+                value={settingsMap[field.key] ?? field.defaultValue ?? ""}
+                onChange={(event) => updateSettingValue(field.key, event.target.value)}
+              >
                 {field.options.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
               </select>
             ) : field.type === "checkbox" ? (
@@ -352,8 +556,10 @@ export default function ManagerClient() {
   }
 
   function settingsSection(tab, title, hint, fields) {
+    if (settingsTab !== tab) return null;
+
     return (
-      <section className={`employee-manager ${settingsTab === tab ? "" : "is-hidden"}`}>
+      <section className="employee-manager">
         <div className="row">
           <div>
             <h3>{title}</h3>
@@ -374,7 +580,7 @@ export default function ManagerClient() {
     if (order.geideaRegisteredAt) return "meta-system";
     if (order.paymentStatus === "PAID") return order.paymentMethod === "VISA" ? "meta-visa" : "meta-cash";
     if (order.kitchenStatus === "DELIVERED") return "meta-delivered";
-    return "meta-pending";
+    return order.kitchenPrintJob ? "meta-preparing" : "meta-pending";
   }
 
   function filterLabel(item) {
@@ -398,13 +604,31 @@ export default function ManagerClient() {
     return window.confirm(message);
   }
 
-  async function refreshAfterOrderChange(orderId, closeModal = false) {
-    await load();
+  function applyOrderUpdate(updatedOrder) {
+    if (!updatedOrder) return false;
+
+    setData((current) => {
+      if (!current?.orders) return current;
+      const exists = current.orders.some((order) => order.id === updatedOrder.id);
+      const nextOrders = exists
+        ? current.orders.map((order) => order.id === updatedOrder.id ? updatedOrder : order)
+        : [updatedOrder, ...current.orders];
+      return { ...current, orders: nextOrders };
+    });
+
+    setSelectedOrder((current) => current?.id === updatedOrder.id ? updatedOrder : current);
+    return true;
+  }
+
+  async function refreshAfterOrderChange(orderId, closeModal = false, updatedOrder = null) {
+    if (!applyOrderUpdate(updatedOrder)) await load();
 
     if (closeModal) {
       setSelectedOrder(null);
       return;
     }
+
+    if (updatedOrder) return;
 
     const res = await fetch(`/api/orders/${orderUrlId(orderId)}`);
     const result = await res.json();
@@ -595,6 +819,40 @@ export default function ManagerClient() {
       .map(([bracelet, orders]) => ({ bracelet, orders }));
   }, [data]);
 
+  const healthRows = useMemo(() => {
+    const activeOrders = (data?.orders || []).filter((order) => !order.archivedAt);
+    const duplicateCount = duplicateActiveBracelets.reduce((sum, group) => sum + group.orders.length, 0);
+    const paidNotGeidea = activeOrders.filter((order) => order.paymentStatus === "PAID" && !order.geideaRegisteredAt);
+    const leftUnpaidOrders = activeOrders.filter((order) => order.customerLeft && order.paymentStatus !== "PAID");
+    const oldOpenOrders = activeOrders.filter((order) => data?.reportBusinessDate && order.businessDate && order.businessDate !== data.reportBusinessDate);
+    const printFailed = activeOrders.filter((order) => order.kitchenPrintJob?.status === "FAILED");
+
+    return [
+      { key: "duplicates", label: t("manager.healthDuplicates"), value: duplicateCount, tone: duplicateCount ? "danger" : "ok", variant: "health-duplicates" },
+      { key: "paidNotGeidea", label: t("manager.healthPaidNotGeidea"), value: paidNotGeidea.length, tone: paidNotGeidea.length ? "warning" : "ok", variant: "health-geidea" },
+      { key: "leftUnpaid", label: t("manager.healthLeftUnpaid"), value: leftUnpaidOrders.length, tone: leftUnpaidOrders.length ? "danger" : "ok", variant: "health-unpaid" },
+      { key: "oldOpen", label: t("manager.healthOldOpen"), value: oldOpenOrders.length, tone: oldOpenOrders.length ? "warning" : "ok", variant: "health-old" },
+      { key: "printFailed", label: t("manager.healthPrintFailed"), value: printFailed.length, tone: printFailed.length ? "danger" : "ok", variant: "health-print" },
+    ];
+  }, [data, duplicateActiveBracelets, t]);
+
+  const cleanupIssueGroups = useMemo(() => {
+    const activeOrders = (data?.orders || []).filter((order) => !order.archivedAt);
+    const duplicateOrders = duplicateActiveBracelets.flatMap((group) => group.orders.map((order) => ({ ...order, cleanupBraceletGroup: group.bracelet })));
+    const paidNotGeidea = activeOrders.filter((order) => order.paymentStatus === "PAID" && !order.geideaRegisteredAt);
+    const leftUnpaidOrders = activeOrders.filter((order) => order.customerLeft && order.paymentStatus !== "PAID");
+    const oldOpenOrders = activeOrders.filter((order) => data?.reportBusinessDate && order.businessDate && order.businessDate !== data.reportBusinessDate);
+    const printFailed = activeOrders.filter((order) => order.kitchenPrintJob?.status === "FAILED");
+
+    return [
+      { key: "duplicates", label: t("manager.healthDuplicates"), tone: "danger", rows: duplicateOrders },
+      { key: "paidNotGeidea", label: t("manager.healthPaidNotGeidea"), tone: "warning", rows: paidNotGeidea },
+      { key: "leftUnpaid", label: t("manager.healthLeftUnpaid"), tone: "danger", rows: leftUnpaidOrders },
+      { key: "oldOpen", label: t("manager.healthOldOpen"), tone: "warning", rows: oldOpenOrders },
+      { key: "printFailed", label: t("manager.healthPrintFailed"), tone: "danger", rows: printFailed },
+    ].filter((group) => group.rows.length > 0);
+  }, [data, duplicateActiveBracelets, t]);
+
   const historyRows = useMemo(
     () => [...currentArchivedOrders, ...(data?.orderHistory || [])],
     [currentArchivedOrders, data],
@@ -623,6 +881,17 @@ export default function ManagerClient() {
     if (viewMode === "TODAY" && archiveFilter === "ACTIVE") rows = rows.filter((order) => !order.archivedAt && (!currentSelectedDay || !isUnclosedOrder(order)));
     if (viewMode === "TODAY" && archiveFilter === "ARCHIVED") rows = rows.filter((order) => order.archivedAt && (!currentSelectedDay || !isUnclosedOrder(order)));
     if (viewMode === "TODAY" && archiveFilter === "UNREGISTERED") rows = rows.filter((order) => !order.geideaRegisteredAt);
+    if (healthFilter !== "ALL") {
+      const duplicateBracelets = new Set(duplicateActiveBracelets.map((group) => group.bracelet));
+      rows = rows.filter((order) => {
+        if (healthFilter === "duplicates") return duplicateBracelets.has(String(order.braceletNo || "").trim());
+        if (healthFilter === "paidNotGeidea") return order.paymentStatus === "PAID" && !order.geideaRegisteredAt;
+        if (healthFilter === "leftUnpaid") return order.customerLeft && order.paymentStatus !== "PAID";
+        if (healthFilter === "oldOpen") return data?.reportBusinessDate && order.businessDate && order.businessDate !== data.reportBusinessDate && !order.archivedAt;
+        if (healthFilter === "printFailed") return order.kitchenPrintJob?.status === "FAILED";
+        return true;
+      });
+    }
 
     const search = query.trim().toLowerCase();
     if (search) {
@@ -638,7 +907,12 @@ export default function ManagerClient() {
     }
 
     return rows;
-  }, [data, viewMode, historyRows, allPeriodRows, filter, archiveFilter, query, dateFilterMode, dateFilter]);
+  }, [data, viewMode, historyRows, allPeriodRows, filter, archiveFilter, healthFilter, duplicateActiveBracelets, query, dateFilterMode, dateFilter]);
+
+  const renderedOrders = useMemo(
+    () => visibleOrders.slice(0, orderRenderLimit),
+    [visibleOrders, orderRenderLimit],
+  );
 
   const periodOrders = useMemo(
     () => allPeriodRows.filter(isOrderInSelectedPeriod),
@@ -651,6 +925,16 @@ export default function ManagerClient() {
       return isDateInSelectedPeriod(logDate);
     });
   }, [data, dateFilterMode, dateFilter]);
+
+  const periodOrderRecords = useMemo(() => {
+    const search = recordQuery.trim().toLowerCase();
+    return (data?.orderRecords || []).filter((record) => {
+      const recordDate = record.businessDate || String(record.orderCreatedAt || record.createdAt || "").slice(0, 10);
+      if (!isDateInSelectedPeriod(recordDate)) return false;
+      if (!search) return true;
+      return [record.braceletNo, record.orderId, record.childNames].some((value) => String(value || "").toLowerCase().includes(search));
+    });
+  }, [data, dateFilterMode, dateFilter, recordQuery]);
 
   const periodReports = useMemo(() => buildPeriodReports(periodOrders), [periodOrders]);
 
@@ -730,6 +1014,89 @@ export default function ManagerClient() {
     };
   }
 
+  function recordActor(record, prefix) {
+    return record[`${prefix}ByEmployeeName`] || record[`${prefix}ByUserName`] || "-";
+  }
+
+  function recordActorClass(record, prefix) {
+    const employeeName = record[`${prefix}ByEmployeeName`];
+    if (employeeName) return employeeGenderClass(employeeName);
+    return record[`${prefix}ByUserName`] ? "general-account-name" : "";
+  }
+
+  function recordStep(record, prefix, dateKey, labelKey, extra = "") {
+    const dateValue = record[dateKey];
+    return (
+      <div className={`record-step ${dateValue ? "done" : ""}`}>
+        <b>{t(labelKey)}</b>
+        <span>{dateValue ? formatDateTime(dateValue) : "-"}</span>
+        <small>{dateValue ? `${recordActor(record, prefix)}${extra ? ` · ${extra}` : ""}` : "-"}</small>
+      </div>
+    );
+  }
+
+  function recordStepText(record, prefix, dateKey, extra = "") {
+    const dateValue = record[dateKey];
+    if (!dateValue) return "-";
+    const actor = recordActor(record, prefix);
+    return `${formatRecordTime(dateValue)} - ${actor}${extra ? ` - ${extra}` : ""}`;
+  }
+
+  function recordStepCell(record, prefix, dateKey, extra = "", extraClassName = "") {
+    const dateValue = record[dateKey];
+    if (!dateValue) return <span className="record-step-empty">-</span>;
+    const actor = recordActor(record, prefix);
+    return (
+      <span className="record-step-cell">
+        <b>{formatRecordTime(dateValue)}</b>
+        <small>
+          <span className={recordActorClass(record, prefix)}>{actor}</span>
+          {extra ? <em className={extraClassName}> - {extra}</em> : null}
+        </small>
+      </span>
+    );
+  }
+
+  function archiveStepCell(record) {
+    if (!record.archivedAt) return <span className="record-step-empty">-</span>;
+    return (
+      <span className="record-step-cell">
+        <b>{formatRecordTime(record.archivedAt)}</b>
+      </span>
+    );
+  }
+
+  function recordLastActivity(record) {
+    return (data?.auditLogs || []).find((log) => log.orderId === record.orderId);
+  }
+
+  function recordActivityCell(record) {
+    const activity = recordLastActivity(record);
+    if (!activity) return <span className="record-step-empty">-</span>;
+    return (
+      <span className="record-step-cell record-activity-cell">
+        <b>{formatRecordTime(activity.createdAt)}</b>
+        <small><span className="general-account-name">{activity.user || "System"}</span></small>
+        <em>{labelAudit(activity.summary || activity.action)}</em>
+      </span>
+    );
+  }
+
+  function formatRecordTime(dateValue) {
+    return formatCairoTime(dateValue);
+  }
+
+  function formatRecordDateHeading(dateValue) {
+    if (!dateValue) return "";
+    return formatCairoDateLabel(`${String(dateValue).slice(0, 10)}T00:00:00`);
+  }
+
+  function recordDateHeading() {
+    const dateValue = periodOrderRecords[0]?.businessDate || dateFilter.day || data?.reportBusinessDate || "";
+    const formatted = formatRecordDateHeading(dateValue);
+    return formatted ? ` - ${formatted}` : "";
+  }
+
   async function payOrder(orderId, paymentMethod, paymentEmployeeId = managerPaymentEmployeeId) {
     const res = await fetch(`/api/orders/${orderUrlId(orderId)}/pay`, {
       method: "POST",
@@ -743,7 +1110,7 @@ export default function ManagerClient() {
         "info",
         uiMessageStyle(uiMessages.paymentSaved)
       );
-      await refreshAfterOrderChange(orderId);
+      await refreshAfterOrderChange(orderId, false, result.order);
     } else {
       toast(result.error || t("manager.paymentUpdateFailed"), "error");
     }
@@ -765,7 +1132,7 @@ export default function ManagerClient() {
     }
 
     showUiToast("orderUpdated");
-    await refreshAfterOrderChange(orderId, closeModal);
+    await refreshAfterOrderChange(orderId, closeModal, result.order);
   }
 
   async function mergeDuplicateOrders(targetOrder, sourceOrders) {
@@ -806,7 +1173,7 @@ export default function ManagerClient() {
     }
 
     showUiToast("itemAdded");
-    await refreshAfterOrderChange(orderId);
+    await refreshAfterOrderChange(orderId, false, result.order);
   }
 
   async function removeOrderItem(orderId, itemId) {
@@ -825,7 +1192,7 @@ export default function ManagerClient() {
     }
 
     showUiToast("itemRemoved");
-    await refreshAfterOrderChange(orderId);
+    await refreshAfterOrderChange(orderId, false, result.order);
   }
 
   function resetEmployeeForm() {
@@ -892,7 +1259,7 @@ export default function ManagerClient() {
 
     showUiToast("employeeSaved");
     resetEmployeeForm();
-    await load();
+    await loadEmployees();
   }
 
   async function toggleEmployee(employee) {
@@ -916,7 +1283,7 @@ export default function ManagerClient() {
     }
 
     showUiToast("employeeSaved");
-    await load();
+    await loadEmployees();
   }
 
   async function saveProduct() {
@@ -935,7 +1302,7 @@ export default function ManagerClient() {
 
     showUiToast("productSaved");
     resetProductForm();
-    await load();
+    await loadProducts();
   }
 
   async function toggleProduct(product) {
@@ -954,7 +1321,7 @@ export default function ManagerClient() {
     }
 
     showUiToast("productSaved");
-    await load();
+    await loadProducts();
   }
 
   async function saveUser() {
@@ -973,7 +1340,7 @@ export default function ManagerClient() {
 
     showUiToast("userSaved");
     resetUserForm();
-    await load();
+    await loadUsers();
   }
 
   async function toggleUser(user) {
@@ -992,7 +1359,7 @@ export default function ManagerClient() {
     }
 
     showUiToast("userSaved");
-    await load();
+    await loadUsers();
   }
 
   function updateUiMessage(key, field, value) {
@@ -1059,6 +1426,47 @@ export default function ManagerClient() {
     setEmployeeNameStyles(normalized);
     applyEmployeeNameStyles(normalized);
     showUiToast("employeeStyleSaved");
+  }
+
+  function updateRecordTableStyle(field, value) {
+    setRecordTableStyles((current) => {
+      const next = {
+        ...current,
+        [field]: ["timeFontSize", "actorFontSize", "actorFontWeight", "cellPaddingY", "cellPaddingX", "minWidth"].includes(field) ? Number(value) : value,
+      };
+      applyRecordTableStyles(next);
+      return next;
+    });
+  }
+
+  function applyRecordPreset(name) {
+    const preset = recordTableStylePresets[name];
+    if (!preset) return;
+    const normalized = normalizeRecordTableStyles(preset);
+    setRecordTableStyles(normalized);
+    applyRecordTableStyles(normalized);
+  }
+
+  async function saveRecordTableStyles() {
+    const res = await fetch("/api/settings", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        key: "RECORD_TABLE_STYLE_CONFIG",
+        value: JSON.stringify(recordTableStyles),
+      }),
+    });
+    const result = await res.json();
+
+    if (!result.success) {
+      toast(result.error || t("manager.recordStyleSaveFailed"), "error");
+      return;
+    }
+
+    const normalized = normalizeRecordTableStyles(result.setting?.value);
+    setRecordTableStyles(normalized);
+    applyRecordTableStyles(normalized);
+    showUiToast("settingsSaved");
   }
 
   async function refreshBackups() {
@@ -1154,6 +1562,7 @@ export default function ManagerClient() {
           <label>
             <span>{t("manager.messageTextArabic")}</span>
             <textarea
+              aria-label={t("manager.messageTextArabic")}
               value={message.text}
               onChange={(event) => updateUiMessage(key, "text", event.target.value)}
               rows={3}
@@ -1163,6 +1572,7 @@ export default function ManagerClient() {
           <label>
             <span>{t("manager.messageTextEnglish")}</span>
             <textarea
+              aria-label={t("manager.messageTextEnglish")}
               value={message.textEn || ""}
               onChange={(event) => updateUiMessage(key, "textEn", event.target.value)}
               rows={3}
@@ -1183,6 +1593,18 @@ export default function ManagerClient() {
           <label>
             <span>{t("manager.borderColor")}</span>
             <input type="color" value={message.borderColor} onChange={(event) => updateUiMessage(key, "borderColor", event.target.value)} />
+          </label>
+          <label>
+            <span>{t("manager.textAlign")}</span>
+            <select
+              aria-label={t("manager.textAlign")}
+              value={message.textAlign || "center"}
+              onChange={(event) => updateUiMessage(key, "textAlign", event.target.value)}
+            >
+              <option value="right">{t("manager.alignRight")}</option>
+              <option value="center">{t("manager.alignCenter")}</option>
+              <option value="left">{t("manager.alignLeft")}</option>
+            </select>
           </label>
           <label>
             <span>{t("manager.fontSize")}</span>
@@ -1371,7 +1793,110 @@ export default function ManagerClient() {
     window.setTimeout(() => setReportPrintHtml(""), 5000);
   }
 
-  if (!data) return <div className="panel">{t("common.loading")}</div>;
+  function recordExportRows() {
+    return periodOrderRecords.map((record) => [
+      record.orderId,
+      record.braceletNo,
+      record.childNames || "",
+      record.orderTotal,
+      recordStepText(record, "orderCreated", "orderCreatedAt"),
+      recordStepText(record, "preparationStarted", "preparationStartedAt"),
+      recordStepText(record, "delivered", "deliveredAt"),
+      recordStepText(record, "paid", "paidAt", record.paymentMethod ? labelMethod(record.paymentMethod) : ""),
+      recordStepText(record, "geidea", "geideaRegisteredAt"),
+      recordStepText(record, "customerLeft", "customerLeftAt"),
+      record.archivedAt ? formatRecordTime(record.archivedAt) : "-",
+      recordLastActivity(record)?.summary || recordLastActivity(record)?.action || "-",
+    ]);
+  }
+
+  function exportRecordsCsv() {
+    const rows = [
+      [t("manager.orderRecords"), selectedPeriodLabel()],
+      [],
+      [
+        t("common.order"),
+        t("common.bracelet"),
+        t("common.children"),
+        t("common.orderTotal"),
+        `${t("manager.recordCreated")}${recordDateHeading()}`,
+        `${t("manager.recordPreparation")}${recordDateHeading()}`,
+        `${t("manager.recordDelivered")}${recordDateHeading()}`,
+        `${t("manager.recordPaid")}${recordDateHeading()}`,
+        `${t("manager.recordGeidea")}${recordDateHeading()}`,
+        `${t("manager.recordLeft")}${recordDateHeading()}`,
+        `${t("manager.recordArchived")}${recordDateHeading()}`,
+        t("manager.recordLastActivity"),
+      ],
+      ...recordExportRows(),
+    ];
+    const csv = rows.map((row) => row.map((cell) => `"${String(cell ?? "").replace(/"/g, '""')}"`).join(",")).join("\n");
+    const blob = new Blob([`\uFEFF${csv}`], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `billybeez-order-records-${selectedPeriodLabel() || "today"}.csv`;
+    link.click();
+    URL.revokeObjectURL(url);
+  }
+
+  function printRecordsPdf() {
+    const dir = document.documentElement.dir || "rtl";
+    const rows = recordExportRows().map((row) => `
+      <tr>${row.map((cell) => `<td>${escapeHtml(cell)}</td>`).join("")}</tr>
+    `).join("");
+    setReportPrintHtml(`
+      <html dir="${escapeHtml(dir)}"><head><title>${escapeHtml(t("manager.orderRecords"))}</title>
+      <style>
+        body{font-family:Arial,Tahoma,sans-serif;padding:16px;color:#210b3c}
+        h1{font-size:20px;margin:0 0 10px}
+        table{width:100%;border-collapse:collapse;font-size:10px}
+        th,td{border:1px solid #ddd;padding:6px;text-align:start;vertical-align:top;white-space:nowrap}
+        th{background:#301848;color:#fff}
+      </style>
+      </head><body>
+      <h1>${escapeHtml(t("manager.orderRecords"))} - ${escapeHtml(selectedPeriodLabel())}</h1>
+      <table>
+        <thead><tr>
+          <th>${escapeHtml(t("common.order"))}</th>
+          <th>${escapeHtml(t("common.bracelet"))}</th>
+          <th>${escapeHtml(t("common.children"))}</th>
+          <th>${escapeHtml(t("common.orderTotal"))}</th>
+          <th>${escapeHtml(`${t("manager.recordCreated")}${recordDateHeading()}`)}</th>
+          <th>${escapeHtml(`${t("manager.recordPreparation")}${recordDateHeading()}`)}</th>
+          <th>${escapeHtml(`${t("manager.recordDelivered")}${recordDateHeading()}`)}</th>
+          <th>${escapeHtml(`${t("manager.recordPaid")}${recordDateHeading()}`)}</th>
+          <th>${escapeHtml(`${t("manager.recordGeidea")}${recordDateHeading()}`)}</th>
+          <th>${escapeHtml(`${t("manager.recordLeft")}${recordDateHeading()}`)}</th>
+          <th>${escapeHtml(`${t("manager.recordArchived")}${recordDateHeading()}`)}</th>
+          <th>${escapeHtml(t("manager.recordLastActivity"))}</th>
+        </tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+      <script>window.print()</script>
+      </body></html>
+    `);
+    window.setTimeout(() => setReportPrintHtml(""), 5000);
+  }
+
+  if (!data) {
+    return (
+      <div className="manager-skeleton" aria-busy="true">
+        <section className="grid five">
+          {[1, 2, 3, 4, 5].map((item) => <div className="card metric skeleton-card" key={item} />)}
+        </section>
+        <section className="panel manager-main-tabs skeleton-tabs" />
+        <section className="panel skeleton-orders">
+          <div className="skeleton-line" />
+          <div className="skeleton-line wide" />
+          <div className="grid three honey-grid">
+            {[1, 2, 3].map((item) => <div className="card order-cell skeleton-order-cell" key={item} />)}
+          </div>
+          <div className="muted">{loadError || t("common.loading")}</div>
+        </section>
+      </div>
+    );
+  }
 
   const selectedIsEditableOrder = selectedOrder && !selectedOrder.isHistory;
   const selectedIsActiveOrder = selectedIsEditableOrder;
@@ -1425,6 +1950,7 @@ export default function ManagerClient() {
     printing: [
       { key: "INVOICE_PRINTER_NAME", label: t("settings.invoicePrinter") },
       { key: "KITCHEN_PRINTER_NAME", label: t("settings.kitchenPrinter") },
+      { key: "PRINT_AGENT_URL", label: t("settings.printAgentUrl") },
       { key: "PRINT_COPIES_INVOICE", label: t("settings.invoiceCopies"), type: "number", min: 1 },
       { key: "PRINT_COPIES_KITCHEN", label: t("settings.kitchenCopies"), type: "number", min: 1 },
       { key: "PRINT_AUTO_INVOICE", label: t("settings.autoInvoicePrint"), type: "checkbox" },
@@ -1442,6 +1968,7 @@ export default function ManagerClient() {
       { key: "WORKFLOW_ALLOW_PAID_ORDER_EDIT_ROLES", label: t("settings.paidOrderEditRoles") },
       { key: "WORKFLOW_ALLOW_PAYMENT_BEFORE_DELIVERY", label: t("settings.allowPaymentBeforeDelivery"), type: "checkbox" },
       { key: "WORKFLOW_REQUIRE_GEIDEA_BEFORE_ARCHIVE", label: t("settings.requireGeideaBeforeArchive"), type: "checkbox" },
+      { key: "WORKFLOW_REQUIRE_PAYMENT_BEFORE_ARCHIVE", label: t("settings.requirePaymentBeforeArchive"), type: "checkbox" },
       { key: "WORKFLOW_ALLOW_EXIT_BEFORE_PAYMENT", label: t("settings.allowExitBeforePayment"), type: "checkbox" },
     ],
     reports: [
@@ -1458,6 +1985,31 @@ export default function ManagerClient() {
     ],
   };
 
+  const settingsTabOptions = [
+    ["employees", t("manager.employeeManagement")],
+    ["products", t("manager.productManagement")],
+    ["users", t("manager.userManagement")],
+    ["branch", t("settings.branchSettings")],
+    ["invoice", t("settings.invoiceSettings")],
+    ["printing", t("settings.printSettings")],
+    ["business", t("settings.businessSettings")],
+    ["workflow", t("settings.workflowSettings")],
+    ["reports", t("settings.reportSettings")],
+    ["recordsStyle", t("settings.recordTableSettings")],
+    ["auditBackup", t("settings.auditBackupSettings")],
+    ["backupRestore", t("manager.backupRestore")],
+    ["messages", t("manager.uiMessages")],
+  ];
+  const visibleSettingsTabOptions = settingsTabOptions.filter(([tab, label]) => {
+    const search = settingsSearch.trim().toLowerCase();
+    if (!search) return true;
+    const fieldMatches = (settingsGroups[tab] || []).some((field) => [
+      field.key,
+      field.label,
+    ].some((value) => String(value || "").toLowerCase().includes(search)));
+    return String(label || "").toLowerCase().includes(search) || fieldMatches;
+  });
+
   return (
     <>
       <section className="grid five">
@@ -1468,6 +2020,37 @@ export default function ManagerClient() {
         <Metric label={t("manager.history")} value={formatNumber(historyRows.length)} />
       </section>
 
+      <section className="panel health-panel">
+        <div className="row">
+          <div>
+            <h3>{t("manager.healthPanel")}</h3>
+            <div className="muted">{t("manager.healthPanelHint")}</div>
+          </div>
+          <div className="actions">
+            {healthFilter !== "ALL" && <button className="danger" onClick={clearOrderFilters}>{t("common.clearFilters")}</button>}
+            <button className="secondary" onClick={load}>{t("common.refresh")}</button>
+          </div>
+        </div>
+        <div className="health-grid">
+          {healthRows.map((item) => (
+            <button
+              type="button"
+              className={`health-card ${item.tone} ${item.variant} ${healthFilter === item.key ? "active" : ""}`}
+              key={item.key}
+              onClick={() => {
+                setManagerTab("orders");
+                setHealthFilter(item.key);
+                if (item.key === "paidNotGeidea") setArchiveFilter("UNREGISTERED");
+                if (item.key === "leftUnpaid") setFilter("UNPAID");
+              }}
+            >
+              <span>{item.label}</span>
+              <b>{formatNumber(item.value)}</b>
+            </button>
+          ))}
+        </div>
+      </section>
+
       <section className="panel manager-main-tabs">
         <div className="tabs">
           {[
@@ -1475,6 +2058,7 @@ export default function ManagerClient() {
             ["review", t("manager.tabReview")],
             ["reports", t("manager.tabReports")],
             ["settings", t("manager.tabSettings")],
+            ["records", t("manager.tabRecords")],
             ["activity", t("manager.tabActivity")],
           ].map(([tab, label]) => (
             <button key={tab} className={managerTab === tab ? "active" : ""} onClick={() => setManagerTab(tab)}>{label}</button>
@@ -1482,7 +2066,7 @@ export default function ManagerClient() {
         </div>
       </section>
 
-      <section className={`panel ${managerTab === "review" ? "" : "is-hidden"}`}>
+      {managerTab === "review" && <section className="panel">
         <div className="row">
           <div>
             <h2>{t("manager.dayReview")}</h2>
@@ -1499,9 +2083,9 @@ export default function ManagerClient() {
           <Metric label={t("manager.notRegisteredGeidea")} value={formatNumber(dailyReviewRows().unregistered.length)} />
           <Metric label={t("manager.leftUnpaid")} value={formatNumber(dailyReviewRows().leftUnpaid.length)} />
         </div>
-      </section>
+      </section>}
 
-      <section className={`panel ${managerTab === "orders" ? "" : "is-hidden"}`}>
+      {managerTab === "orders" && <section className="panel">
         <div className="row">
           <div>
             <h2>{viewMode === "HISTORY" ? t("common.orderHistory") : t("manager.todayOrders")}</h2>
@@ -1534,8 +2118,40 @@ export default function ManagerClient() {
         </div>}
         <div className="form-grid manager-filter-grid">
           <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder={t("manager.searchPlaceholder")} />
-          <button className="secondary" onClick={() => setQuery("")}>{t("common.clearFilters")}</button>
+          <button className="secondary" onClick={clearOrderFilters}>{t("common.clearFilters")}</button>
         </div>
+        {cleanupIssueGroups.length > 0 && (
+          <div className="cleanup-panel">
+            <div className="row">
+              <div>
+                <h3>{t("manager.cleanupTool")}</h3>
+                <div className="muted">{t("manager.cleanupToolHint")}</div>
+              </div>
+              <button className="secondary" onClick={clearOrderFilters}>{t("common.clearFilters")}</button>
+            </div>
+            <div className="cleanup-grid">
+              {cleanupIssueGroups.map((group) => (
+                <section className={`cleanup-group ${group.tone}`} key={group.key}>
+                  <div className="cleanup-group-head">
+                    <b>{group.label}</b>
+                    <span>{formatNumber(group.rows.length)}</span>
+                  </div>
+                  <div className="cleanup-list">
+                    {group.rows.slice(0, 8).map((order) => (
+                      <button type="button" className="cleanup-row" key={`${group.key}-${order.id}`} onClick={() => setSelectedOrder(order)}>
+                        <b>{order.id}</b>
+                        <span>{order.braceletNo}</span>
+                        <small>{order.childNames || "-"}</small>
+                        <em>{currency(order.total)}</em>
+                      </button>
+                    ))}
+                  </div>
+                  {group.rows.length > 8 && <div className="muted">{t("manager.cleanupMore", { count: group.rows.length - 8 })}</div>}
+                </section>
+              ))}
+            </div>
+          </div>
+        )}
         {viewMode === "TODAY" && duplicateActiveBracelets.length > 0 && (
           <div className="duplicate-bracelet-panel">
             <div>
@@ -1577,7 +2193,7 @@ export default function ManagerClient() {
         )}
         <div className="row"><span>{t("common.visibleOrders")}</span><b>{formatNumber(visibleOrders.length)}</b></div>
         <div className="grid three honey-grid">
-          {visibleOrders.map((order) => (
+          {renderedOrders.map((order) => (
             <div className={`card order-cell ${orderAlertClass(order)}`} key={order.id}>
               <div className="row order-head">
                 <b>{order.id}</b>
@@ -1585,6 +2201,7 @@ export default function ManagerClient() {
               </div>
               <div className="order-info">
                 {viewMode === "HISTORY" && <div className="meta-line"><span>{t("common.businessDay")}</span><b>{order.businessDate}</b></div>}
+                <div className="meta-line"><span>{t("common.date")}</span><b>{formatDateTime(order.createdAt)}</b></div>
                 <div className="meta-line"><span>{t("common.bracelet")}</span><b>{order.braceletNo}</b></div>
                 {order.customerPhone && <div className="meta-line"><span>{t("common.phone")}</span><b>{order.customerPhone}</b></div>}
                 <div className="meta-line"><span>{t("common.children")}</span><b>{order.childNames}</b></div>
@@ -1592,62 +2209,17 @@ export default function ManagerClient() {
                 {order.paymentStatus !== "PAID" && <div className="meta-line"><span>{t("common.method")}</span><b className={`meta-value ${order.paymentMethod === "VISA" ? "meta-visa" : "meta-cash"}`}>{labelMethod(order.paymentMethod)}</b></div>}
                 {order.paymentEmployee && <div className="meta-line"><span>{t("common.paymentEmployee")}</span><b className={`meta-value meta-payment-employee ${employeeGenderClass(order.paymentEmployee)}`}>{order.paymentEmployee}</b></div>}
               </div>
-              <div className="summary">
-                <div className="order-items">
-                  {(order.items || []).length === 0 ? (
-                    <div className="muted">{t("common.noItems")}</div>
-                  ) : order.items.map((item) => (
-                    <div className="row" key={item.id}>
-                      <span>{item.name} x {item.qty}</span>
-                      <b>{currency(item.total)}</b>
-                    </div>
-                  ))}
-                </div>
-                <div className="row order-total-row"><span>{t("common.orderTotal")}</span><b>{currency(order.total)}</b></div>
-              </div>
+              <OrderItemsSummary order={order} t={t} currency={currency} />
               <div className="order-alerts">
-                {order.customerLeft && order.paymentStatus !== "PAID" && (
-                  <div className="warning" style={uiMessageStyle(uiMessages.leftUnpaid)}>
-                    {formatUiMessage(uiMessages.leftUnpaid)}
-                  </div>
-                )}
-                {order.customerLeft && order.paymentStatus === "PAID" && !order.geideaRegisteredAt && (
-                  <div className="warning warning-orange" style={uiMessageStyle(uiMessages.leftNeedsGeidea)}>
-                    {formatUiMessage(uiMessages.leftNeedsGeidea)}
-                  </div>
-                )}
-                {order.geideaRegisteredAt && (
-                  <div className="geidea-alert-line" style={uiMessageStyle(uiMessages.geideaRegistered)}>
-                    {formatUiMessage(uiMessages.geideaRegistered, {
-                      employee: order.geideaEmployee || "-",
-                      time: formatDateTime(order.geideaRegisteredAt),
-                    }).split("\n").map((line, index) => (
-                      <span className={index === 1 ? employeeGenderClass(order.geideaEmployee) : ""} key={index}>{line}</span>
-                    ))}
-                  </div>
-                )}
-                {order.exitEmployee && !order.archivedAt && (
-                  <div className="meta-line exit-employee-line" style={uiMessageStyle(uiMessages.exitEmployee)}>
-                    {formatUiMessage(uiMessages.exitEmployee, { employee: order.exitEmployee }).split("\n").map((line, index) => (
-                      <span className={index === 1 ? employeeGenderClass(order.exitEmployee) : ""} key={index}>{line}</span>
-                    ))}
-                  </div>
-                )}
-                {order.archivedAt && !order.isHistory && (
-                  <div className="archive-alert-line" style={uiMessageStyle(uiMessages.archivedAt)}>
-                    {formatUiMessage(uiMessages.archivedAt, { time: formatDateTime(order.archivedAt) })}
-                  </div>
-                )}
-                {viewMode === "HISTORY" && order.isHistory && order.closedAt && (
-                  <div className="archive-alert-line" style={uiMessageStyle(uiMessages.closedAt)}>
-                    {formatUiMessage(uiMessages.closedAt, { time: formatDateTime(order.closedAt) })}
-                  </div>
-                )}
-                {viewMode === "HISTORY" && order.isHistory && !order.closedAt && order.archivedAt && (
-                  <div className="archive-alert-line" style={uiMessageStyle(uiMessages.archivedAt)}>
-                    {formatUiMessage(uiMessages.archivedAt, { time: formatDateTime(order.archivedAt) })}
-                  </div>
-                )}
+                <OrderAlerts
+                  order={order}
+                  uiMessages={uiMessages}
+                  formatDateTime={formatDateTime}
+                  labelMethod={labelMethod}
+                  actionLabels={{ delivered: t("common.delivered"), geidea: "تسجيل جيديا", exit: "خروج", archive: "أرشفة", closed: t("common.closed") }}
+                  showArchive={Boolean(order.archivedAt && (!order.isHistory || !order.closedAt))}
+                  showClosed={Boolean(viewMode === "HISTORY" && order.isHistory && order.closedAt)}
+                />
               </div>
               <div className="actions">
                 <button className="btn-details" onClick={() => setSelectedOrder(order)}>{t("manager.details")}</button>
@@ -1659,9 +2231,17 @@ export default function ManagerClient() {
             </div>
           ))}
         </div>
-      </section>
+        {renderedOrders.length < visibleOrders.length && (
+          <div className="load-more-row">
+            <button className="secondary" onClick={() => setOrderRenderLimit((current) => current + 30)}>
+              {t("common.showMore")} · {formatNumber(visibleOrders.length - renderedOrders.length)}
+            </button>
+          </div>
+        )}
+      </section>}
 
-      <section className={`panel ${managerTab === "reports" ? "" : "is-hidden"}`}>
+      {managerTab === "reports" && <>
+      <section className="panel">
         <div className="row">
           <div>
             <h2>{t("manager.tabReports")}</h2>
@@ -1675,7 +2255,7 @@ export default function ManagerClient() {
         </div>
       </section>
 
-      <section className={`grid three ${managerTab === "reports" ? "" : "is-hidden"}`}>
+      <section className="grid three">
         <div className="panel">
           <h3>{t("manager.paymentBreakdown")}</h3>
           {periodReports.paymentBreakdown.map((row) => (
@@ -1697,38 +2277,32 @@ export default function ManagerClient() {
         </div>
       </section>
 
-      <section className={`grid three ${managerTab === "reports" ? "" : "is-hidden"}`}>
+      <section className="grid three">
         <Report title={t("manager.cashierPerformance")} rows={periodReports.cashierPerformance} labelKey="name" valueKey="total" formatValue={currency} emptyLabel={t("common.noData")} />
         <Report title={t("manager.employees")} rows={periodReports.dataEmployeePerformance} labelKey="name" valueKey="total" formatValue={currency} emptyLabel={t("common.noData")} />
         <Report title={t("manager.topBracelets")} rows={periodReports.topBracelets} labelKey="bracelet" valueKey="total" formatValue={currency} emptyLabel={t("common.noData")} />
       </section>
 
-      <section className={`panel ${managerTab === "reports" ? "" : "is-hidden"}`}>
+      <section className="panel">
         <h3>{t("manager.dailySales")}</h3>
         <MiniBars rows={periodReports.dailySales} labelKey="date" valueKey="total" valueFormatter={currency} />
       </section>
+      </>}
 
-      <section className={`panel settings-shell ${managerTab === "settings" ? "" : "is-hidden"}`}>
+      {managerTab === "settings" && <section className="panel settings-shell">
         <aside className="settings-sidebar">
-          {[
-            ["employees", t("manager.employeeManagement")],
-            ["products", t("manager.productManagement")],
-            ["users", t("manager.userManagement")],
-            ["branch", t("settings.branchSettings")],
-            ["invoice", t("settings.invoiceSettings")],
-            ["printing", t("settings.printSettings")],
-            ["business", t("settings.businessSettings")],
-            ["workflow", t("settings.workflowSettings")],
-            ["reports", t("settings.reportSettings")],
-            ["auditBackup", t("settings.auditBackupSettings")],
-            ["backupRestore", t("manager.backupRestore")],
-            ["messages", t("manager.uiMessages")],
-          ].map(([tab, label]) => (
+          <input
+            className="settings-search"
+            value={settingsSearch}
+            onChange={(event) => setSettingsSearch(event.target.value)}
+            placeholder={t("settings.searchPlaceholder")}
+          />
+          {visibleSettingsTabOptions.map(([tab, label]) => (
             <button key={tab} className={settingsTab === tab ? "active" : ""} onClick={() => setSettingsTab(tab)}>{label}</button>
           ))}
         </aside>
         <div className="settings-content">
-      <section className={`employee-manager ${settingsTab === "employees" ? "" : "is-hidden"}`}>
+      {settingsTab === "employees" && <section className="employee-manager">
         <div className="row">
           <div>
             <h3>{t("manager.employeeManagement")}</h3>
@@ -1743,6 +2317,7 @@ export default function ManagerClient() {
             placeholder={t("manager.employeeName")}
           />
           <select
+            aria-label={t("common.department")}
             value={employeeForm.department}
             onChange={(event) => setEmployeeForm((current) => ({ ...current, department: event.target.value }))}
           >
@@ -1771,15 +2346,28 @@ export default function ManagerClient() {
             {[
               ["male", t("manager.maleEmployeeStyle"), "محمد أمين"],
               ["female", t("manager.femaleEmployeeStyle"), "سلمى سلطان"],
+              ["general", t("manager.generalAccountStyle"), "Admin"],
             ].map(([group, label, preview]) => (
               <div className="employee-style-card" key={group}>
                 <b>{label}</b>
-                <div className={`employee-style-preview employee-name-${group}`}>{preview}</div>
+                <div className={`employee-style-preview ${group === "general" ? "general-account-name" : `employee-name-${group}`}`}>{preview}</div>
                 <div className="ui-message-fields">
                   <label>
                     <span>{t("manager.textColor")}</span>
                     <input type="color" value={employeeNameStyles[group].color} onChange={(event) => updateEmployeeNameStyle(group, "color", event.target.value)} />
                   </label>
+                  {group === "general" && (
+                    <>
+                      <label>
+                        <span>{t("manager.backgroundColor")}</span>
+                        <input type="color" value={employeeNameStyles[group].backgroundColor} onChange={(event) => updateEmployeeNameStyle(group, "backgroundColor", event.target.value)} />
+                      </label>
+                      <label>
+                        <span>{t("manager.borderColor")}</span>
+                        <input type="color" value={employeeNameStyles[group].borderColor} onChange={(event) => updateEmployeeNameStyle(group, "borderColor", event.target.value)} />
+                      </label>
+                    </>
+                  )}
                   <label>
                     <span>{t("manager.fontSize")}</span>
                     <input type="number" min="10" max="28" value={employeeNameStyles[group].fontSize} onChange={(event) => updateEmployeeNameStyle(group, "fontSize", event.target.value)} />
@@ -1790,14 +2378,22 @@ export default function ManagerClient() {
                   </label>
                   <label>
                     <span>{t("manager.fontStyle")}</span>
-                    <select value={employeeNameStyles[group].fontStyle} onChange={(event) => updateEmployeeNameStyle(group, "fontStyle", event.target.value)}>
+                    <select
+                      aria-label={`${label} - ${t("manager.fontStyle")}`}
+                      value={employeeNameStyles[group].fontStyle}
+                      onChange={(event) => updateEmployeeNameStyle(group, "fontStyle", event.target.value)}
+                    >
                       <option value="normal">{t("manager.fontStyleNormal")}</option>
                       <option value="italic">{t("manager.fontStyleItalic")}</option>
                     </select>
                   </label>
                   <label>
                     <span>{t("manager.fontFamily")}</span>
-                    <select value={employeeNameStyles[group].fontFamily} onChange={(event) => updateEmployeeNameStyle(group, "fontFamily", event.target.value)}>
+                    <select
+                      aria-label={`${label} - ${t("manager.fontFamily")}`}
+                      value={employeeNameStyles[group].fontFamily}
+                      onChange={(event) => updateEmployeeNameStyle(group, "fontFamily", event.target.value)}
+                    >
                       <option value="">{t("manager.fontFamilyDefault")}</option>
                       <option value="Tajawal">Tajawal</option>
                       <option value="Arial">Arial</option>
@@ -1812,12 +2408,20 @@ export default function ManagerClient() {
         </div>
         <div className="form-grid settings-filter-grid">
           <input value={employeeFilter.query} onChange={(event) => setEmployeeFilter((current) => ({ ...current, query: event.target.value }))} placeholder={t("manager.employeeSearch")} />
-          <select value={employeeFilter.department} onChange={(event) => setEmployeeFilter((current) => ({ ...current, department: event.target.value }))}>
+          <select
+            aria-label={t("common.department")}
+            value={employeeFilter.department}
+            onChange={(event) => setEmployeeFilter((current) => ({ ...current, department: event.target.value }))}
+          >
             <option value="ALL">{t("common.all")}</option>
             <option value="OPERATION">{labelDepartment("OPERATION")}</option>
             <option value="RESTAURANT">{labelDepartment("RESTAURANT")}</option>
           </select>
-          <select value={employeeFilter.status} onChange={(event) => setEmployeeFilter((current) => ({ ...current, status: event.target.value }))}>
+          <select
+            aria-label={t("common.status")}
+            value={employeeFilter.status}
+            onChange={(event) => setEmployeeFilter((current) => ({ ...current, status: event.target.value }))}
+          >
             <option value="ALL">{t("common.all")}</option>
             <option value="ACTIVE">{t("common.active")}</option>
             <option value="INACTIVE">{t("common.inactive")}</option>
@@ -1847,9 +2451,9 @@ export default function ManagerClient() {
             </div>
           ))}
         </div>
-      </section>
+      </section>}
 
-      <section className={`employee-manager ${settingsTab === "products" ? "" : "is-hidden"}`}>
+      {settingsTab === "products" && <section className="employee-manager">
         <div className="row">
           <div>
             <h3>{t("manager.productManagement")}</h3>
@@ -1874,15 +2478,27 @@ export default function ManagerClient() {
         </div>
         <div className="form-grid settings-filter-grid product-settings-filter">
           <input value={productFilter.query} onChange={(event) => setProductFilter((current) => ({ ...current, query: event.target.value }))} placeholder={t("manager.productSearch")} />
-          <select value={productFilter.category} onChange={(event) => setProductFilter((current) => ({ ...current, category: event.target.value }))}>
+          <select
+            aria-label={t("common.department")}
+            value={productFilter.category}
+            onChange={(event) => setProductFilter((current) => ({ ...current, category: event.target.value }))}
+          >
             {productCategories.map((category) => <option key={category} value={category}>{category === "ALL" ? t("common.all") : category}</option>)}
           </select>
-          <select value={productFilter.status} onChange={(event) => setProductFilter((current) => ({ ...current, status: event.target.value }))}>
+          <select
+            aria-label={t("common.status")}
+            value={productFilter.status}
+            onChange={(event) => setProductFilter((current) => ({ ...current, status: event.target.value }))}
+          >
             <option value="ALL">{t("common.all")}</option>
             <option value="ACTIVE">{t("common.active")}</option>
             <option value="INACTIVE">{t("common.inactive")}</option>
           </select>
-          <select value={productFilter.popular} onChange={(event) => setProductFilter((current) => ({ ...current, popular: event.target.value }))}>
+          <select
+            aria-label={t("manager.popularProduct")}
+            value={productFilter.popular}
+            onChange={(event) => setProductFilter((current) => ({ ...current, popular: event.target.value }))}
+          >
             <option value="ALL">{t("common.all")}</option>
             <option value="POPULAR">{t("manager.popularProduct")}</option>
             <option value="REGULAR">{t("manager.regularProduct")}</option>
@@ -1912,9 +2528,9 @@ export default function ManagerClient() {
             </div>
           ))}
         </div>
-      </section>
+      </section>}
 
-      <section className={`employee-manager ${settingsTab === "users" ? "" : "is-hidden"}`}>
+      {settingsTab === "users" && <section className="employee-manager">
         <div className="row">
           <div>
             <h3>{t("manager.userManagement")}</h3>
@@ -1924,6 +2540,7 @@ export default function ManagerClient() {
         </div>
         <div className="form-grid user-form-grid">
           <select
+            aria-label={t("manager.accountType")}
             value={userForm.accountType}
             onChange={(event) => setUserForm((current) => ({
               ...current,
@@ -1936,6 +2553,7 @@ export default function ManagerClient() {
           </select>
           {userForm.accountType === "EMPLOYEE" && (
             <select
+              aria-label={t("manager.selectEmployee")}
               value={userForm.employeeId}
               onChange={(event) => {
                 const employee = activeEmployees.find((item) => item.id === event.target.value);
@@ -1970,7 +2588,11 @@ export default function ManagerClient() {
             data-1p-ignore="true"
             data-form-type="other"
           />
-          <select value={userForm.role} onChange={(event) => setUserForm((current) => ({ ...current, role: event.target.value }))}>
+          <select
+            aria-label={t("common.role")}
+            value={userForm.role}
+            onChange={(event) => setUserForm((current) => ({ ...current, role: event.target.value }))}
+          >
             {["ADMIN", "MANAGER", "CASHIER", "KITCHEN"].map((role) => <option key={role} value={role}>{t(`role.${role}`)}</option>)}
           </select>
           <label className="toggle-row">
@@ -1978,14 +2600,25 @@ export default function ManagerClient() {
             <span>{userForm.active ? t("common.active") : t("common.inactive")}</span>
           </label>
           <button className="btn-confirm" onClick={saveUser}>{userForm.id ? t("manager.updateUser") : t("manager.addUser")}</button>
+          <div className={`user-account-note ${userForm.accountType === "GENERAL" ? "general" : "employee"}`}>
+            {userForm.accountType === "GENERAL" ? t("manager.generalAccountHint") : t("manager.employeeAccountHint")}
+          </div>
         </div>
         <div className="form-grid settings-filter-grid">
           <input value={userFilter.query} onChange={(event) => setUserFilter((current) => ({ ...current, query: event.target.value }))} placeholder={t("manager.userSearch")} />
-          <select value={userFilter.role} onChange={(event) => setUserFilter((current) => ({ ...current, role: event.target.value }))}>
+          <select
+            aria-label={t("common.role")}
+            value={userFilter.role}
+            onChange={(event) => setUserFilter((current) => ({ ...current, role: event.target.value }))}
+          >
             <option value="ALL">{t("common.all")}</option>
             {["ADMIN", "MANAGER", "CASHIER", "KITCHEN"].map((role) => <option key={role} value={role}>{t(`role.${role}`)}</option>)}
           </select>
-          <select value={userFilter.status} onChange={(event) => setUserFilter((current) => ({ ...current, status: event.target.value }))}>
+          <select
+            aria-label={t("common.status")}
+            value={userFilter.status}
+            onChange={(event) => setUserFilter((current) => ({ ...current, status: event.target.value }))}
+          >
             <option value="ALL">{t("common.all")}</option>
             <option value="ACTIVE">{t("common.active")}</option>
             <option value="INACTIVE">{t("common.inactive")}</option>
@@ -2047,7 +2680,7 @@ export default function ManagerClient() {
             ))}
           </div>
         </div>
-      </section>
+      </section>}
 
       {settingsSection("branch", t("settings.branchSettings"), t("settings.branchSettingsHint"), settingsGroups.branch)}
       {settingsSection("invoice", t("settings.invoiceSettings"), t("settings.invoiceSettingsHint"), settingsGroups.invoice)}
@@ -2055,15 +2688,95 @@ export default function ManagerClient() {
       {settingsSection("business", t("settings.businessSettings"), t("settings.businessSettingsHint"), settingsGroups.business)}
       {settingsSection("workflow", t("settings.workflowSettings"), t("settings.workflowSettingsHint"), settingsGroups.workflow)}
       {settingsSection("reports", t("settings.reportSettings"), t("settings.reportSettingsHint"), settingsGroups.reports)}
+      {settingsTab === "recordsStyle" && <section className="employee-manager">
+        <div className="row">
+          <div>
+            <h3>{t("settings.recordTableSettings")}</h3>
+            <div className="muted">{t("settings.recordTableSettingsHint")}</div>
+          </div>
+          <button className="btn-confirm" onClick={saveRecordTableStyles}>{t("common.save")}</button>
+        </div>
+        <div className="employee-style-panel record-style-panel">
+          <div className="tabs preset-tabs">
+            {[
+              ["classic", t("settings.presetClassic")],
+              ["clean", t("settings.presetClean")],
+              ["highContrast", t("settings.presetHighContrast")],
+              ["printFriendly", t("settings.presetPrintFriendly")],
+            ].map(([preset, label]) => (
+              <button type="button" key={preset} onClick={() => applyRecordPreset(preset)}>{label}</button>
+            ))}
+          </div>
+          <div className="record-table-scroll record-style-preview">
+            <table className="record-line-table">
+              <thead>
+                <tr>
+                  <th>{t("common.order")}</th>
+                  <th>{t("manager.recordPaid")}</th>
+                  <th>{t("manager.recordGeidea")}</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td><b>ORD#41</b></td>
+                  <td>
+                    <span className="record-step-cell">
+                      <b>12:45:05 PM</b>
+                      <small><span className="general-account-name">Admin</span><em className="record-method-visa"> - {labelMethod("VISA")}</em></small>
+                    </span>
+                  </td>
+                  <td>
+                    <span className="record-step-cell">
+                      <b>12:45:06 PM</b>
+                      <small><span className="employee-name-female">نبيلة فتحي</span></small>
+                    </span>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <div className="ui-message-fields record-style-fields">
+            {[
+              ["headerBackgroundColor", t("settings.recordHeaderBackground"), "color"],
+              ["headerTextColor", t("settings.recordHeaderText"), "color"],
+              ["tableTextColor", t("settings.recordTableText"), "color"],
+              ["borderColor", t("settings.recordBorderColor"), "color"],
+              ["alternateRowColor", t("settings.recordAlternateRow"), "color"],
+              ["hoverRowColor", t("settings.recordHoverRow"), "color"],
+              ["timeColor", t("settings.recordTimeColor"), "color"],
+              ["totalColor", t("settings.recordTotalColor"), "color"],
+              ["timeFontSize", t("settings.recordTimeFontSize"), "number", 10, 22],
+              ["actorFontSize", t("settings.recordActorFontSize"), "number", 9, 20],
+              ["actorFontWeight", t("settings.recordActorFontWeight"), "number", 400, 950, 50],
+              ["cellPaddingY", t("settings.recordCellPaddingY"), "number", 4, 20],
+              ["cellPaddingX", t("settings.recordCellPaddingX"), "number", 4, 24],
+              ["minWidth", t("settings.recordTableMinWidth"), "number", 900, 2600, 50],
+            ].map(([field, label, type, min, max, step]) => (
+              <label key={field}>
+                <span>{label}</span>
+                <input
+                  type={type}
+                  min={min}
+                  max={max}
+                  step={step}
+                  value={recordTableStyles[field]}
+                  onChange={(event) => updateRecordTableStyle(field, event.target.value)}
+                />
+              </label>
+            ))}
+          </div>
+        </div>
+      </section>}
       {settingsSection("auditBackup", t("settings.auditBackupSettings"), t("settings.auditBackupSettingsHint"), settingsGroups.auditBackup)}
 
-      <section className={`employee-manager ${settingsTab === "backupRestore" ? "" : "is-hidden"}`}>
+      {settingsTab === "backupRestore" && <section className="employee-manager">
         <div className="row">
           <div>
             <h3>{t("manager.backupRestore")}</h3>
             <div className="muted">{t("manager.backupRestoreHint")}</div>
           </div>
           <div className="actions">
+            <button className="btn-details" onClick={createManualBackup}>{t("manager.createSnapshot")}</button>
             <button className="btn-confirm" onClick={createManualBackup}>{t("manager.createBackup")}</button>
             <button className="secondary" onClick={refreshBackups}>{t("common.refresh")}</button>
           </div>
@@ -2089,9 +2802,9 @@ export default function ManagerClient() {
             </div>
           ))}
         </div>
-      </section>
+      </section>}
 
-      <section className={`employee-manager ${settingsTab === "messages" ? "" : "is-hidden"}`}>
+      {settingsTab === "messages" && <section className="employee-manager">
         <div className="row">
           <div>
             <h3>{t("manager.uiMessages")}</h3>
@@ -2112,11 +2825,75 @@ export default function ManagerClient() {
             </section>
           ))}
         </div>
-      </section>
+      </section>}
         </div>
-      </section>
+      </section>}
 
-      <section className={`panel ${managerTab === "activity" ? "" : "is-hidden"}`}>
+      {managerTab === "records" && <section className="panel">
+        <div className="row">
+          <div>
+            <h3>{t("manager.orderRecords")}</h3>
+            <div className="muted">{t("manager.orderRecordsHint")} · {selectedPeriodLabel()}</div>
+          </div>
+          <div className="actions">
+            {renderDateRangePicker()}
+            <button className="btn-print" onClick={exportRecordsCsv}>{t("manager.exportExcel")}</button>
+            <button className="btn-details" onClick={printRecordsPdf}>{t("manager.exportPdf")}</button>
+          </div>
+        </div>
+        <div className="form-grid manager-filter-grid">
+          <input
+            value={recordQuery}
+            onChange={(event) => setRecordQuery(event.target.value)}
+            placeholder={t("manager.searchRecordPlaceholder")}
+          />
+          <button className="secondary" onClick={() => setRecordQuery("")}>{t("common.clearFilters")}</button>
+        </div>
+        {periodOrderRecords.length === 0 ? (
+          <div className="muted">{t("manager.noRecords")}</div>
+        ) : (
+          <div className="record-table-scroll">
+            <table className="record-line-table">
+              <thead>
+                <tr>
+                  <th>{t("common.order")}</th>
+                  <th>{t("common.bracelet")}</th>
+                  <th>{t("common.children")}</th>
+                  <th>{t("common.orderTotal")}</th>
+                  <th>{t("manager.recordCreated")}{recordDateHeading()}</th>
+                  <th>{t("manager.recordPreparation")}{recordDateHeading()}</th>
+                  <th>{t("manager.recordDelivered")}{recordDateHeading()}</th>
+                  <th>{t("manager.recordPaid")}{recordDateHeading()}</th>
+                  <th>{t("manager.recordGeidea")}{recordDateHeading()}</th>
+                  <th>{t("manager.recordLeft")}{recordDateHeading()}</th>
+                  <th>{t("manager.recordArchived")}{recordDateHeading()}</th>
+                  <th>{t("manager.recordLastActivity")}</th>
+                </tr>
+              </thead>
+              <tbody>
+            {periodOrderRecords.map((record) => (
+              <tr key={record.id}>
+                <td><b>{record.orderId}</b></td>
+                <td>{record.braceletNo}</td>
+                <td>{record.childNames || "-"}</td>
+                <td><b className="record-total">{currency(record.orderTotal)}</b></td>
+                <td>{recordStepCell(record, "orderCreated", "orderCreatedAt")}</td>
+                <td>{recordStepCell(record, "preparationStarted", "preparationStartedAt")}</td>
+                <td>{recordStepCell(record, "delivered", "deliveredAt")}</td>
+                <td>{recordStepCell(record, "paid", "paidAt", record.paymentMethod ? labelMethod(record.paymentMethod) : "", record.paymentMethod === "VISA" ? "record-method-visa" : "record-method-cash")}</td>
+                <td>{recordStepCell(record, "geidea", "geideaRegisteredAt")}</td>
+                <td>{recordStepCell(record, "customerLeft", "customerLeftAt")}</td>
+                <td>{archiveStepCell(record)}</td>
+                <td>{recordActivityCell(record)}</td>
+              </tr>
+            ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </section>}
+
+      {managerTab === "activity" && <section className="panel">
         <div className="row">
           <div>
             <h3>{t("manager.recentActivity")}</h3>
@@ -2135,7 +2912,7 @@ export default function ManagerClient() {
             </div>
           </div>
         ))}
-      </section>
+      </section>}
 
       {selectedOrder && (
         <div className="modal-backdrop" onClick={() => setSelectedOrder(null)}>
@@ -2154,38 +2931,22 @@ export default function ManagerClient() {
               <div className="meta-line"><span>{t("common.children")}</span><b>{selectedOrder.childNames}</b></div>
               <div className="meta-line"><span>{t("common.cashier")}</span><b className="meta-value meta-user">{selectedOrder.cashier}</b></div>
               <div className="meta-line"><span>{t("common.employee")}</span><b className={`meta-value meta-data-employee ${employeeGenderClass(selectedOrder.dataEmployee)}`}>{selectedOrder.dataEmployee}</b></div>
-              {selectedOrder.exitEmployee && (
-                <div className="meta-line exit-employee-line" style={uiMessageStyle(uiMessages.exitEmployee)}>
-                  {formatUiMessage(uiMessages.exitEmployee, { employee: selectedOrder.exitEmployee }).split("\n").map((line, index) => (
-                    <span className={index === 1 ? employeeGenderClass(selectedOrder.exitEmployee) : ""} key={index}>{line}</span>
-                  ))}
-                </div>
-              )}
               {selectedOrder.paymentEmployee && <div className="meta-line"><span>{t("common.paymentEmployee")}</span><b className={`meta-value meta-payment-employee ${employeeGenderClass(selectedOrder.paymentEmployee)}`}>{selectedOrder.paymentEmployee}</b></div>}
-              {selectedOrder.geideaRegisteredAt && (
-                <div className="geidea-alert-line" style={uiMessageStyle(uiMessages.geideaRegistered)}>
-                  {formatUiMessage(uiMessages.geideaRegistered, {
-                    employee: selectedOrder.geideaEmployee || "-",
-                    time: formatDateTime(selectedOrder.geideaRegisteredAt),
-                  }).split("\n").map((line, index) => (
-                    <span className={index === 1 ? employeeGenderClass(selectedOrder.geideaEmployee) : ""} key={index}>{line}</span>
-                  ))}
-                </div>
-              )}
               {!selectedOrder.geideaRegisteredAt && <div className="meta-line"><span>{t("common.systemRegistered")}</span><b className="meta-value meta-pending">{t("common.no")}</b></div>}
               <div className="meta-line"><span>{t("common.status")}</span><b className={`meta-value ${orderStageClass(selectedOrder)}`}>{labelOrderStage(selectedOrder)}</b></div>
               <div className="meta-line"><span>{t("common.payment")}</span><b className={`meta-value ${selectedOrder.paymentMethod === "VISA" ? "meta-visa" : "meta-cash"}`}>{labelStatus(selectedOrder.paymentStatus)} / {labelMethod(selectedOrder.paymentMethod)}</b></div>
               <div className="meta-line"><span>{t("common.archived")}</span><b className={`meta-value ${selectedOrder.archivedAt ? "meta-system" : "meta-pending"}`}>{selectedOrder.archivedAt ? t("common.yes") : t("common.no")}</b></div>
-              {selectedOrder.closedAt && (
-                <div className="archive-alert-line" style={uiMessageStyle(uiMessages.closedAt)}>
-                  {formatUiMessage(uiMessages.closedAt, { time: formatDateTime(selectedOrder.closedAt) })}
-                </div>
-              )}
-              {selectedOrder.archivedAt && (
-                <div className="archive-alert-line" style={uiMessageStyle(uiMessages.archivedAt)}>
-                  {formatUiMessage(uiMessages.archivedAt, { time: formatDateTime(selectedOrder.archivedAt) })}
-                </div>
-              )}
+            </div>
+            <div className="order-alerts detail-alerts">
+              <OrderAlerts
+                order={selectedOrder}
+                uiMessages={uiMessages}
+                exitEmployeeName={(order) => order.exitEmployee}
+                labelMethod={labelMethod}
+                actionLabels={{ delivered: t("common.delivered"), geidea: "تسجيل جيديا", exit: "خروج", archive: "أرشفة", closed: t("common.closed") }}
+                showArchive
+                showClosed
+              />
             </div>
             <div className="detail-items">
               {selectedOrder.items.map((item) => (
@@ -2202,7 +2963,11 @@ export default function ManagerClient() {
             {selectedIsEditableOrder && (
               <div className="manager-order-tools">
                 <div className="form-grid manager-order-edit-grid">
-                  <select value={orderItemForm.productId} onChange={(event) => setOrderItemForm((current) => ({ ...current, productId: event.target.value }))}>
+                  <select
+                    aria-label={t("manager.addItem")}
+                    value={orderItemForm.productId}
+                    onChange={(event) => setOrderItemForm((current) => ({ ...current, productId: event.target.value }))}
+                  >
                     {products.map((product) => <option key={product.id} value={product.id}>{product.name} - {currency(product.price)}</option>)}
                   </select>
                   <input
@@ -2216,6 +2981,7 @@ export default function ManagerClient() {
                 </div>
                 <div className="form-grid manager-order-edit-grid">
                   <select
+                    aria-label={t("manager.selectReceiver")}
                     className={employeeGenderClass(restaurantEmployees().find((employee) => employee.id === managerPaymentEmployeeId)?.name)}
                     value={managerPaymentEmployeeId}
                     onChange={(event) => setManagerPaymentEmployeeId(event.target.value)}
@@ -2242,6 +3008,7 @@ export default function ManagerClient() {
                 </div>
                 <div className="form-grid manager-order-edit-grid">
                   <select
+                    aria-label={t("manager.selectGeideaEmployee")}
                     className={employeeGenderClass(restaurantEmployees().find((employee) => employee.id === managerGeideaEmployeeId)?.name)}
                     value={managerGeideaEmployeeId}
                     onChange={(event) => setManagerGeideaEmployeeId(event.target.value)}

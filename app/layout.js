@@ -18,8 +18,8 @@ export const metadata = {
 
 export default function RootLayout({ children }) {
   return (
-    <html lang="ar" dir="rtl">
-      <body>
+    <html lang="ar" dir="rtl" suppressHydrationWarning>
+      <body suppressHydrationWarning>
         <UiPreferencesProvider>
           <ToastProvider>{children}</ToastProvider>
         </UiPreferencesProvider>

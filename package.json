@@ -4,7 +4,7 @@
     "build": "next build",
     "start": "set COOKIE_SECURE=false&& next start -H 127.0.0.1 -p 3000",
     "test": "node --test",
-    "lint": "next lint",
+    "lint": "node scripts/ui-audit.js",
     "db:push": "prisma db push",
     "db:pg:validate": "prisma validate --schema prisma/schema.postgres.prisma",
     "db:pg:push": "prisma db push --schema prisma/schema.postgres.prisma",

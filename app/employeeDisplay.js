@@ -30,6 +30,16 @@ export const defaultEmployeeNameStyles = {
     fontStyle: "normal",
     fontFamily: "",
   },
+  general: {
+    label: "General account names",
+    color: "#004b8d",
+    backgroundColor: "#d8ecff",
+    borderColor: "#8bbce8",
+    fontSize: 11,
+    fontWeight: 900,
+    fontStyle: "normal",
+    fontFamily: "",
+  },
 };
 
 export function employeeGenderClass(name) {
@@ -54,6 +64,7 @@ export function normalizeEmployeeNameStyles(value) {
   return {
     male: { ...defaultEmployeeNameStyles.male, ...(parsed?.male || {}) },
     female: { ...defaultEmployeeNameStyles.female, ...(parsed?.female || {}) },
+    general: { ...defaultEmployeeNameStyles.general, ...(parsed?.general || {}) },
   };
 }
 
@@ -68,5 +79,9 @@ export function applyEmployeeNameStyles(styles) {
     root.style.setProperty(`--employee-${key}-font-weight`, String(Number(style.fontWeight) || defaultEmployeeNameStyles[key].fontWeight));
     root.style.setProperty(`--employee-${key}-font-style`, style.fontStyle || defaultEmployeeNameStyles[key].fontStyle);
     root.style.setProperty(`--employee-${key}-font-family`, style.fontFamily ? `${style.fontFamily}, inherit` : "inherit");
+    if (key === "general") {
+      root.style.setProperty("--employee-general-bg", style.backgroundColor || defaultEmployeeNameStyles.general.backgroundColor);
+      root.style.setProperty("--employee-general-border", style.borderColor || defaultEmployeeNameStyles.general.borderColor);
+    }
   });
 }

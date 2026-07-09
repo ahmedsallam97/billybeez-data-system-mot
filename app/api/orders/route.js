@@ -4,7 +4,10 @@ import { authorizeApi } from "@/lib/api-auth";
 import { writeAudit } from "@/lib/audit";
 import { assertActiveBraceletAvailable, claimActiveBracelet, isBraceletLockConflict } from "@/lib/active-bracelets";
 import { ensureBusinessDayState } from "@/lib/business-day";
-import { buildOrderId, includeOrderDetails, serializeOrder, validateBracelet } from "@/lib/orders";
+import { actorFields, upsertOrderRecord } from "@/lib/order-records";
+import { buildOrderId, includeOrderDetails, serializeOrder, validateBracelet, validateCustomerPhone } from "@/lib/orders";
+import { getSetting } from "@/lib/settings";
+import { isDataDepartment } from "@/lib/employee-departments";
 import { enumValue, jsonValidationResponse, optionalString, requireArray, requireString } from "@/lib/validation";
 
 export async function GET(request) {
@@ -17,6 +20,7 @@ export async function GET(request) {
   const paymentStatus = searchParams.get("paymentStatus");
   const archived = searchParams.get("archived");
   const braceletNo = searchParams.get("braceletNo");
+  const compact = searchParams.get("compact") === "1";
 
   const where = {};
 
@@ -25,14 +29,34 @@ export async function GET(request) {
   if (archived === "false") where.archivedAt = null;
   if (braceletNo) where.braceletNo = braceletNo.trim();
 
-  const orders = await prisma.order.findMany({
+  const orders = await prisma.order.findMany(compact ? {
+    where,
+    select: {
+      id: true,
+      braceletNo: true,
+      childNames: true,
+      customerPhone: true,
+      archivedAt: true,
+    },
+    orderBy: { createdAt: "desc" },
+    take: 20,
+  } : {
     where,
     include: includeOrderDetails(),
     orderBy: { createdAt: "desc" },
     take: 100,
   });
 
-  return NextResponse.json(orders.map(serializeOrder));
+  if (compact) {
+    return NextResponse.json(orders);
+  }
+
+  const records = await prisma.orderTransactionRecord.findMany({
+    where: { orderId: { in: orders.map((order) => order.id) } },
+  });
+  const recordMap = new Map(records.map((record) => [record.orderId, record]));
+
+  return NextResponse.json(orders.map((order) => serializeOrder(order, recordMap.get(order.id))));
 }
 
 export async function POST(request) {
@@ -60,7 +84,11 @@ export async function POST(request) {
   }
 
   if (!validateBracelet(braceletNo)) {
-    return NextResponse.json({ success: false, error: "Bracelet must be 6 digits and start with 0, 1, 2, or 3" }, { status: 400 });
+    return NextResponse.json({ success: false, error: "Bracelet must be 5 digits starting with 0, or 6 digits starting with 0, 1, 2, or 3" }, { status: 400 });
+  }
+
+  if (!validateCustomerPhone(customerPhone)) {
+    return NextResponse.json({ success: false, error: "Phone must be 11 digits and start with 010, 011, or 012" }, { status: 400 });
   }
 
   if (!childNames.length) {
@@ -76,7 +104,9 @@ export async function POST(request) {
     }, { status: duplicateBraceletOrder.status });
   }
 
-  const dataEmployeeId = user.employee?.department === "OPERATION" ? user.employeeId : body.dataEmployeeId;
+  const departmentConfig = await getSetting("EMPLOYEE_DEPARTMENT_CONFIG", "");
+  const userIsDataEmployee = user.employee ? isDataDepartment(user.employee.department, departmentConfig) : false;
+  const dataEmployeeId = userIsDataEmployee ? user.employeeId : body.dataEmployeeId;
 
   if (!dataEmployeeId) {
     return NextResponse.json({ success: false, error: "Employee is required" }, { status: 400 });
@@ -86,12 +116,11 @@ export async function POST(request) {
     where: {
       id: dataEmployeeId,
       active: true,
-      department: "OPERATION",
     },
   });
 
-  if (!dataEmployee) {
-    return NextResponse.json({ success: false, error: "Operation employee is required" }, { status: 400 });
+  if (!dataEmployee || !isDataDepartment(dataEmployee.department, departmentConfig)) {
+    return NextResponse.json({ success: false, error: "Data employee is required" }, { status: 400 });
   }
 
   if (!items.length) {
@@ -143,6 +172,10 @@ export async function POST(request) {
         include: includeOrderDetails(),
       });
       await claimActiveBracelet(tx, braceletNo, createdOrder.id);
+      await upsertOrderRecord(tx, createdOrder, {
+        orderCreatedAt: createdOrder.createdAt,
+        ...actorFields("orderCreated", user, dataEmployee),
+      });
       return createdOrder;
     });
   } catch (error) {

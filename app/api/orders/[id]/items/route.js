@@ -4,7 +4,7 @@ import { authorizeApi } from "@/lib/api-auth";
 import { writeAudit } from "@/lib/audit";
 import { assertActiveBraceletAvailable, claimActiveBracelet, isBraceletLockConflict } from "@/lib/active-bracelets";
 import { ensureBusinessDayState } from "@/lib/business-day";
-import { routeOrderId } from "@/lib/orders";
+import { includeOrderDetails, routeOrderId, serializeOrder } from "@/lib/orders";
 import { orderAuditSnapshot, restoredStatus } from "@/lib/order-workflow";
 import { canUserEditPaidOrder } from "@/lib/workflow-rules";
 
@@ -76,6 +76,7 @@ export async function POST(request, { params }) {
           geideaEmployeeId: null,
           archivedAt: null,
         },
+        include: includeOrderDetails(),
       }),
       ...(order.archivedAt ? [prisma.activeBraceletLock.create({ data: { braceletNo: order.braceletNo, orderId: id } })] : []),
     ]);
@@ -97,7 +98,7 @@ export async function POST(request, { params }) {
     reason: "Items added, Geidea/archive state reset",
   });
 
-  return NextResponse.json({ success: true });
+  return NextResponse.json({ success: true, order: serializeOrder(updatedOrder) });
 }
 
 export async function DELETE(request, { params }) {
@@ -156,6 +157,7 @@ export async function DELETE(request, { params }) {
           geideaEmployeeId: null,
           archivedAt: null,
         },
+        include: includeOrderDetails(),
       }),
       ...(order.archivedAt ? [prisma.activeBraceletLock.create({ data: { braceletNo: order.braceletNo, orderId: id } })] : []),
     ]);
@@ -177,5 +179,5 @@ export async function DELETE(request, { params }) {
     reason: "Item removed, Geidea/archive state reset",
   });
 
-  return NextResponse.json({ success: true });
+  return NextResponse.json({ success: true, order: serializeOrder(updatedOrder) });
 }

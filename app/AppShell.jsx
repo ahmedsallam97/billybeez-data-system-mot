@@ -21,16 +21,21 @@ export default function AppShell({ title, user, children }) {
     <div className="shell">
       <header className="topbar">
         <div className="brand-block">
-          <img src="/bb-logo.png" alt="Billy Beez" className="brand-logo" />
+          <img src="/bb-logo-web.png" alt="Billy Beez" className="brand-logo" width="456" height="140" fetchPriority="high" />
           <div>
             <div className="brand">{shellTitle}</div>
-            <div className="muted">{user.name} · {labelRole(user.role)}</div>
+            <div className="muted"><span className={user.employeeId ? "" : "general-account-name"}>{user.name}</span> · {labelRole(user.role)}</div>
           </div>
         </div>
         <nav className="nav">
           {(user.role === "ADMIN" || user.role === "MANAGER") && <Link className="nav-manager" href="/manager">{t("nav.manager")}</Link>}
-          {(user.role === "ADMIN" || user.role === "CASHIER") && <Link className="nav-cashier" href="/cashier">{t("nav.cashier")}</Link>}
+          {(user.role === "ADMIN" || user.role === "CASHIER") && <Link className="nav-data" href="/data">{t("nav.data")}</Link>}
           {(user.role === "ADMIN" || user.role === "KITCHEN") && <Link className="nav-kitchen" href="/kitchen">{t("nav.kitchen")}</Link>}
+          {(user.role === "ADMIN" || user.role === "MANAGER") && (
+            <a className="nav-database" href="http://127.0.0.1:5555" target="_blank" rel="noreferrer">
+              {t("nav.database")}
+            </a>
+          )}
           <button className="danger" onClick={logout}>{t("nav.logout")}</button>
           <PreferenceIconButtons />
         </nav>

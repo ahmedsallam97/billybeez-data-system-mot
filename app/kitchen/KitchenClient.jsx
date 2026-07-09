@@ -1,10 +1,13 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useToast } from "../ToastProvider";
 import { useI18n } from "../i18n";
+import OrderAlerts from "../OrderAlerts";
+import OrderItemsSummary from "../OrderItemsSummary";
 import { applyEmployeeNameStyles, employeeGenderClass } from "../employeeDisplay";
 import { formatUiMessage, normalizeUiMessages, uiMessageStyle } from "../uiMessages";
+import { filterKitchenTicketItems } from "../../lib/kitchen-ticket-rules";
 
 export default function KitchenClient({ user }) {
   const toast = useToast();
@@ -12,14 +15,20 @@ export default function KitchenClient({ user }) {
   const [orders, setOrders] = useState([]);
   const [showArchive, setShowArchive] = useState(false);
   const [ordersQuery, setOrdersQuery] = useState("");
+  const [orderRenderLimit, setOrderRenderLimit] = useState(30);
   const [restaurantEmployees, setRestaurantEmployees] = useState([]);
+  const [deliveryEmployeeByOrder, setDeliveryEmployeeByOrder] = useState({});
   const [geideaEmployeeByOrder, setGeideaEmployeeByOrder] = useState({});
   const [paymentEmployeeByOrder, setPaymentEmployeeByOrder] = useState({});
+  const [defaultDeliveryEmployeeId, setDefaultDeliveryEmployeeId] = useState("");
   const [defaultRestaurantEmployeeId, setDefaultRestaurantEmployeeId] = useState("");
   const [defaultPaymentEmployeeId, setDefaultPaymentEmployeeId] = useState("");
   const [employeeEditor, setEmployeeEditor] = useState(null);
   const [printFrameUrl, setPrintFrameUrl] = useState("");
+  const [kitchenTicketRules, setKitchenTicketRules] = useState("");
   const [uiMessages, setUiMessages] = useState(normalizeUiMessages());
+  const [uiPrefsReady, setUiPrefsReady] = useState(false);
+  const ordersLoadRef = useRef(false);
   const isLinkedKitchenEmployeeAccount = user?.role === "KITCHEN" && user?.employeeId && user?.employee?.department === "RESTAURANT";
   const linkedRestaurantEmployeeId = isLinkedKitchenEmployeeAccount ? user.employeeId : "";
   const linkedRestaurantEmployeeName = isLinkedKitchenEmployeeAccount ? user.employee.name : "";
@@ -44,14 +53,18 @@ export default function KitchenClient({ user }) {
   }
 
   function paidPaymentLabel(order) {
-    return order.paymentMethod === "VISA" ? t("kitchen.paidVisa") : t("kitchen.paidCash");
+    return order.paymentMethod === "VISA" ? t("common.visa") : t("common.cash");
+  }
+
+  function hasKitchenTicketItems(order) {
+    return filterKitchenTicketItems(order.items || [], kitchenTicketRules).matchedItems.length > 0;
   }
 
   function orderStageClass(order) {
     if (order.geideaRegisteredAt) return "meta-system";
     if (order.paymentStatus === "PAID") return order.paymentMethod === "VISA" ? "meta-visa" : "meta-cash";
     if (order.kitchenStatus === "DELIVERED") return "meta-delivered";
-    return "meta-pending";
+    return order.kitchenPrintJob ? "meta-preparing" : "meta-pending";
   }
 
   const kitchenOrders = useMemo(() => {
@@ -71,12 +84,32 @@ export default function KitchenClient({ user }) {
     ].some((value) => String(value || "").toLowerCase().includes(search)));
   }, [kitchenOrders, ordersQuery]);
 
+  const renderedOrders = useMemo(
+    () => visibleOrders.slice(0, orderRenderLimit),
+    [visibleOrders, orderRenderLimit],
+  );
+
   const unpaidCount = kitchenOrders.filter((order) => order.paymentStatus !== "PAID").length;
   const unregisteredCount = kitchenOrders.filter((order) => !order.geideaRegisteredAt).length;
 
   useEffect(() => {
+    const savedArchive = localStorage.getItem("kitchenShowArchive");
+    if (savedArchive === "true" || savedArchive === "false") setShowArchive(savedArchive === "true");
+    setUiPrefsReady(true);
+  }, []);
+
+  useEffect(() => {
+    if (!uiPrefsReady) return;
+    localStorage.setItem("kitchenShowArchive", String(showArchive));
+  }, [showArchive, uiPrefsReady]);
+
+  useEffect(() => {
+    setOrderRenderLimit(30);
+  }, [showArchive, ordersQuery]);
+
+  useEffect(() => {
     load();
-    const timer = setInterval(load, 8000);
+    const timer = setInterval(load, 15000);
     return () => clearInterval(timer);
   }, [showArchive]);
 
@@ -91,28 +124,72 @@ export default function KitchenClient({ user }) {
     const data = await res.json();
     const setting = data.settings?.find((item) => item.key === "UI_MESSAGE_CONFIG");
     const employeeStyleSetting = data.settings?.find((item) => item.key === "EMPLOYEE_NAME_STYLE_CONFIG");
+    const kitchenTicketSetting = data.settings?.find((item) => item.key === "KITCHEN_TICKET_CATEGORIES");
     setUiMessages(normalizeUiMessages(setting?.value));
+    setKitchenTicketRules(kitchenTicketSetting?.value || "");
     applyEmployeeNameStyles(employeeStyleSetting?.value);
   }
 
   async function load() {
-    const res = await fetch(`/api/orders?archived=${showArchive}`);
-    const ordersData = await res.json();
-    setOrders(ordersData);
-    setPaymentEmployeeByOrder((current) => {
-      const next = { ...current };
-      ordersData.forEach((order) => {
-        if (!next[order.id] && order.paymentEmployeeId) next[order.id] = order.paymentEmployeeId;
+    if (ordersLoadRef.current) return;
+    ordersLoadRef.current = true;
+    try {
+      const res = await fetch(`/api/orders?archived=${showArchive}`);
+      const ordersData = await res.json();
+      setOrders(ordersData);
+      setPaymentEmployeeByOrder((current) => {
+        const next = { ...current };
+        ordersData.forEach((order) => {
+          if (!next[order.id] && order.paymentEmployeeId) next[order.id] = order.paymentEmployeeId;
+        });
+        return next;
       });
-      return next;
-    });
-    setGeideaEmployeeByOrder((current) => {
-      const next = { ...current };
-      ordersData.forEach((order) => {
-        if (!next[order.id] && order.geideaEmployeeId) next[order.id] = order.geideaEmployeeId;
+      setDeliveryEmployeeByOrder((current) => {
+        const next = { ...current };
+        ordersData.forEach((order) => {
+          if (!next[order.id] && order.deliveryEmployeeId) next[order.id] = order.deliveryEmployeeId;
+        });
+        return next;
       });
-      return next;
+      setGeideaEmployeeByOrder((current) => {
+        const next = { ...current };
+        ordersData.forEach((order) => {
+          if (!next[order.id] && order.geideaEmployeeId) next[order.id] = order.geideaEmployeeId;
+        });
+        return next;
+      });
+    } finally {
+      ordersLoadRef.current = false;
+    }
+  }
+
+  function applyOrderUpdate(updatedOrder) {
+    if (!updatedOrder) return false;
+
+    setOrders((current) => {
+      const shouldKeep = showArchive ? Boolean(updatedOrder.archivedAt) : !updatedOrder.archivedAt && !updatedOrder.geideaRegisteredAt;
+      const exists = current.some((order) => order.id === updatedOrder.id);
+
+      if (!shouldKeep) return current.filter((order) => order.id !== updatedOrder.id);
+      if (exists) return current.map((order) => order.id === updatedOrder.id ? updatedOrder : order);
+      return [updatedOrder, ...current];
     });
+
+    if (updatedOrder.paymentEmployeeId) {
+      setPaymentEmployeeByOrder((current) => ({ ...current, [updatedOrder.id]: updatedOrder.paymentEmployeeId }));
+    }
+    if (updatedOrder.deliveryEmployeeId) {
+      setDeliveryEmployeeByOrder((current) => ({ ...current, [updatedOrder.id]: updatedOrder.deliveryEmployeeId }));
+    }
+    if (updatedOrder.geideaEmployeeId) {
+      setGeideaEmployeeByOrder((current) => ({ ...current, [updatedOrder.id]: updatedOrder.geideaEmployeeId }));
+    }
+
+    return true;
+  }
+
+  async function refreshOrderFallback(data) {
+    if (!applyOrderUpdate(data?.order)) await load();
   }
 
   async function loadRestaurantEmployees() {
@@ -121,12 +198,16 @@ export default function KitchenClient({ user }) {
     setRestaurantEmployees(employees);
 
     const lastEmployeeId = localStorage.getItem("lastRestaurantEmployeeId") || "";
+    const lastDeliveryEmployeeId = localStorage.getItem("lastDeliveryEmployeeId") || "";
     if (linkedRestaurantEmployeeId) {
       setDefaultRestaurantEmployeeId(linkedRestaurantEmployeeId);
+      setDefaultDeliveryEmployeeId(linkedRestaurantEmployeeId);
     } else if (employees.some((employee) => employee.id === lastEmployeeId)) {
       setDefaultRestaurantEmployeeId(lastEmployeeId);
+      setDefaultDeliveryEmployeeId(employees.some((employee) => employee.id === lastDeliveryEmployeeId) ? lastDeliveryEmployeeId : employees[0]?.id || "");
     } else {
       setDefaultRestaurantEmployeeId("");
+      setDefaultDeliveryEmployeeId(employees[0]?.id || "");
     }
 
     const lastPaymentEmployeeId = localStorage.getItem("lastPaymentEmployeeId") || "";
@@ -148,6 +229,15 @@ export default function KitchenClient({ user }) {
     if (!linkedRestaurantEmployeeId) localStorage.setItem("lastPaymentEmployeeId", employeeId);
   }
 
+  function selectedDeliveryEmployeeId(orderId) {
+    return linkedRestaurantEmployeeId || deliveryEmployeeByOrder[orderId] || defaultDeliveryEmployeeId;
+  }
+
+  function selectDeliveryEmployee(orderId, employeeId) {
+    setDeliveryEmployeeByOrder((current) => ({ ...current, [orderId]: employeeId }));
+    if (!linkedRestaurantEmployeeId) localStorage.setItem("lastDeliveryEmployeeId", employeeId);
+  }
+
   function selectedGeideaEmployeeId(orderId) {
     return linkedRestaurantEmployeeId || geideaEmployeeByOrder[orderId] || defaultRestaurantEmployeeId;
   }
@@ -157,9 +247,16 @@ export default function KitchenClient({ user }) {
     if (!linkedRestaurantEmployeeId) localStorage.setItem("lastRestaurantEmployeeId", employeeId);
   }
 
-  async function deliver(orderId) {
+  async function deliver(orderId, employeeId = selectedDeliveryEmployeeId(orderId)) {
+    if (!employeeId) {
+      toast(t("kitchen.deliveryEmployeeRequired"), "error");
+      return;
+    }
+
     const res = await fetch(`/api/orders/${orderUrlId(orderId)}/deliver`, {
       method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ deliveryEmployeeId: employeeId }),
     });
     const data = await res.json();
 
@@ -168,8 +265,10 @@ export default function KitchenClient({ user }) {
       return;
     }
 
+    if (!linkedRestaurantEmployeeId) localStorage.setItem("lastDeliveryEmployeeId", employeeId);
+    setEmployeeEditor(null);
     showUiToast("delivered");
-    await load();
+    await refreshOrderFallback(data);
   }
 
   async function startPreparation(orderId) {
@@ -192,7 +291,7 @@ export default function KitchenClient({ user }) {
       "info",
       data.reused ? uiMessageStyle(uiMessages.kitchenTicketQueued) : null
     );
-    await load();
+    await refreshOrderFallback(data);
   }
 
   async function pay(orderId, paymentMethod, printInvoice = true) {
@@ -222,7 +321,7 @@ export default function KitchenClient({ user }) {
         "info",
         uiMessageStyle(uiMessages.paymentSaved)
       );
-      await load();
+      await refreshOrderFallback(data);
     } else {
       toast(data.error || t("kitchen.paymentFailed"), "error");
     }
@@ -234,6 +333,7 @@ export default function KitchenClient({ user }) {
 
   function employeeEditorTitle() {
     if (employeeEditor?.type === "payment") return t("kitchen.selectPaymentEmployee");
+    if (employeeEditor?.type === "deliver") return t("kitchen.selectDeliveryEmployee");
     return t("kitchen.selectRestaurantEmployee");
   }
 
@@ -250,6 +350,7 @@ export default function KitchenClient({ user }) {
   function selectedEditorEmployeeId() {
     if (!employeeEditor) return "";
     if (employeeEditor.type === "payment") return selectedPaymentEmployeeId(employeeEditor.order.id);
+    if (employeeEditor.type === "deliver") return selectedDeliveryEmployeeId(employeeEditor.order.id);
     return selectedGeideaEmployeeId(employeeEditor.order.id);
   }
 
@@ -257,6 +358,8 @@ export default function KitchenClient({ user }) {
     if (!employeeEditor) return;
     if (employeeEditor.type === "payment") {
       selectPaymentEmployee(employeeEditor.order.id, employeeId);
+    } else if (employeeEditor.type === "deliver") {
+      selectDeliveryEmployee(employeeEditor.order.id, employeeId);
     } else {
       selectGeideaEmployee(employeeEditor.order.id, employeeId);
     }
@@ -264,6 +367,7 @@ export default function KitchenClient({ user }) {
 
   function saveEditorAction() {
     if (employeeEditor.type === "payment") return pay(employeeEditor.order.id, employeeEditor.method || employeeEditor.order.paymentMethod || "CASH", !employeeEditor.order.paymentStatus || employeeEditor.order.paymentStatus !== "PAID");
+    if (employeeEditor.type === "deliver") return deliver(employeeEditor.order.id);
     return registerGeidea(employeeEditor.order.id);
   }
 
@@ -275,6 +379,8 @@ export default function KitchenClient({ user }) {
     if (linkedRestaurantEmployeeId) {
       if (type === "payment") {
         pay(order.id, method || order.paymentMethod || "CASH", !order.paymentStatus || order.paymentStatus !== "PAID");
+      } else if (type === "deliver") {
+        deliver(order.id, linkedRestaurantEmployeeId);
       } else {
         registerGeidea(order.id);
       }
@@ -305,7 +411,7 @@ export default function KitchenClient({ user }) {
 
     showUiToast("geideaSaved");
     setEmployeeEditor(null);
-    await load();
+    await refreshOrderFallback(data);
   }
 
   async function archiveOrder(orderId) {
@@ -318,21 +424,21 @@ export default function KitchenClient({ user }) {
     }
 
     showUiToast("orderArchived");
-    await load();
+    await refreshOrderFallback(data);
   }
 
   return (
     <>
     <section className="panel">
+      <div className="tabs order-tabs orders-top-tabs">
+        <button className={!showArchive ? "active" : ""} onClick={() => setShowArchive(false)}>{t("common.active")}</button>
+        <button className={showArchive ? "active" : ""} onClick={() => setShowArchive(true)}>{t("common.archive")}</button>
+      </div>
       <div className="row">
         <h2>{showArchive ? t("common.archive") : t("kitchen.orders")}</h2>
       </div>
       <div className="orders-layout">
         <aside className="orders-sidebar">
-          <div className="tabs order-tabs">
-            <button className={!showArchive ? "active" : ""} onClick={() => setShowArchive(false)}>{t("common.active")}</button>
-            <button className={showArchive ? "active" : ""} onClick={() => setShowArchive(true)}>{t("common.archive")}</button>
-          </div>
           <div className="orders-sidebar-metrics">
             <Metric label={t("common.visibleOrders")} value={formatNumber(visibleOrders.length)} />
             <Metric label={t("common.unpaid")} value={formatNumber(unpaidCount)} />
@@ -346,13 +452,25 @@ export default function KitchenClient({ user }) {
         </aside>
         <div className="orders-content">
           <div className="grid three honey-grid">
-            {visibleOrders.map((order) => (
+            {renderedOrders.map((order) => {
+              const canPrintKitchenTicket = hasKitchenTicketItems(order);
+              const preparationDisabled = !canPrintKitchenTicket || Boolean(order.kitchenPrintJob) || order.kitchenStatus === "DELIVERED";
+              const preparationTitle = !canPrintKitchenTicket
+                ? t("kitchen.noKitchenTicketItems")
+                : order.kitchenStatus === "DELIVERED"
+                  ? t("common.delivered")
+                  : order.kitchenPrintJob
+                    ? formatUiMessage(uiMessages.printJobPending)
+                    : "";
+
+              return (
               <div className={`card order-cell ${orderAlertClass(order)}`} key={order.id}>
             <div className="row order-head">
               <b>{order.id}</b>
               <span className={`badge ${order.paymentStatus === "PAID" ? "paid" : "unpaid"}`}>{labelStatus(order.paymentStatus)}</span>
             </div>
             <div className="order-info">
+              <div className="meta-line"><span>{t("common.date")}</span><b>{formatDateTime(order.createdAt)}</b></div>
               <div className="meta-line"><span>{t("common.bracelet")}</span><b>{order.braceletNo}</b></div>
               {order.customerPhone && <div className="meta-line"><span>{t("common.phone")}</span><b>{order.customerPhone}</b></div>}
               <div className="meta-line"><span>{t("common.children")}</span><b>{order.childNames}</b></div>
@@ -360,45 +478,16 @@ export default function KitchenClient({ user }) {
               {order.paymentStatus !== "PAID" && <div className="meta-line"><span>{t("common.paymentMethod")}</span><b className={`meta-value ${order.paymentMethod === "VISA" ? "meta-visa" : "meta-cash"}`}>{labelMethod(order.paymentMethod)}</b></div>}
               {order.paymentEmployee && <div className="meta-line"><span>{t("common.paymentEmployee")}</span><b className={`meta-value meta-payment-employee ${employeeGenderClass(order.paymentEmployee)}`}>{order.paymentEmployee}</b></div>}
             </div>
-            <div className="summary">
-              <div className="order-items">
-                {order.items.length === 0 ? (
-                  <div className="muted">{t("common.noItems")}</div>
-                ) : order.items.map((item) => (
-                  <div className="row" key={item.id}>
-                    <span>{item.name} x {item.qty}</span>
-                    <b>{currency(item.total)}</b>
-                  </div>
-                ))}
-              </div>
-              <div className="row order-total-row"><span>{t("common.orderTotal")}</span><b>{currency(order.total)}</b></div>
-            </div>
+            <OrderItemsSummary order={order} t={t} currency={currency} />
             <div className="order-alerts">
-              {order.customerLeft && order.paymentStatus !== "PAID" && (
-                <div className="warning" style={uiMessageStyle(uiMessages.leftUnpaid)}>
-                  {formatUiMessage(uiMessages.leftUnpaid)}
-                </div>
-              )}
-              {order.customerLeft && order.paymentStatus === "PAID" && !order.geideaRegisteredAt && (
-                <div className="warning warning-orange" style={uiMessageStyle(uiMessages.leftNeedsGeidea)}>
-                  {formatUiMessage(uiMessages.leftNeedsGeidea)}
-                </div>
-              )}
-              {order.geideaRegisteredAt && (
-                <div className="geidea-alert-line" style={uiMessageStyle(uiMessages.geideaRegistered)}>
-                  {formatUiMessage(uiMessages.geideaRegistered, {
-                    employee: order.geideaEmployee || "-",
-                    time: formatDateTime(order.geideaRegisteredAt),
-                  }).split("\n").map((line, index) => (
-                    <span className={index === 1 ? employeeGenderClass(order.geideaEmployee) : ""} key={index}>{line}</span>
-                  ))}
-                </div>
-              )}
-              {showArchive && (
-                <div className="archive-alert-line" style={uiMessageStyle(uiMessages.archivedAt)}>
-                  {formatUiMessage(uiMessages.archivedAt, { time: formatDateTime(order.archivedAt) })}
-                </div>
-              )}
+              <OrderAlerts
+                order={order}
+                uiMessages={uiMessages}
+                formatDateTime={formatDateTime}
+                labelMethod={labelMethod}
+                actionLabels={{ delivered: t("common.delivered"), geidea: "تسجيل جيديا", exit: "خروج", archive: "أرشفة", closed: t("common.closed") }}
+                showArchive={showArchive}
+              />
               {order.kitchenPrintJob && order.kitchenStatus !== "DELIVERED" && (
                 <div
                   className={`print-job-alert print-job-${String(order.kitchenPrintJob.status).toLowerCase()}`}
@@ -421,16 +510,16 @@ export default function KitchenClient({ user }) {
               )}
             </div>
             {!showArchive && (
-              <div className="actions">
+              <div className="actions kitchen-action-groups">
                 <button
                   className="btn-start-prep"
-                  disabled={Boolean(order.kitchenPrintJob) || order.kitchenStatus === "DELIVERED"}
-                  title={order.kitchenStatus === "DELIVERED" ? t("common.delivered") : order.kitchenPrintJob ? formatUiMessage(uiMessages.printJobPending) : ""}
+                  disabled={preparationDisabled}
+                  title={preparationTitle}
                   onClick={() => startPreparation(order.id)}
                 >
                   {t("kitchen.startPreparation")}
                 </button>
-                <button className="btn-deliver" disabled={order.kitchenStatus === "DELIVERED"} onClick={() => deliver(order.id)}>{t("kitchen.markDelivered")}</button>
+                <button className="btn-deliver" disabled={order.kitchenStatus === "DELIVERED"} onClick={() => openEmployeeAction(order, "deliver")}>{t("kitchen.markDelivered")}</button>
                 {order.paymentStatus === "PAID" ? (
                   <button
                     className={paymentButtonClass(order, order.paymentMethod, order.paymentMethod === "VISA" ? "btn-pay-visa" : "btn-pay-cash")}
@@ -473,8 +562,16 @@ export default function KitchenClient({ user }) {
               </div>
             )}
               </div>
-            ))}
+              );
+            })}
           </div>
+          {renderedOrders.length < visibleOrders.length && (
+            <div className="load-more-row">
+              <button className="secondary" onClick={() => setOrderRenderLimit((current) => current + 30)}>
+                {t("common.showMore")} · {formatNumber(visibleOrders.length - renderedOrders.length)}
+              </button>
+            </div>
+          )}
         </div>
       </div>
     </section>
@@ -493,6 +590,7 @@ export default function KitchenClient({ user }) {
               <div className="meta-line exit-employee-line"><span>{t("common.paymentEmployee")}</span><b className={employeeGenderClass(selectedEditorEmployeeName())}>{selectedEditorEmployeeName()}</b></div>
             )}
             <select
+              aria-label={employeeEditorTitle()}
               className={`employee-select-line modal-select ${employeeGenderClass(selectedEditorEmployeeName())}`}
               value={selectedEditorEmployeeId()}
               disabled={restaurantEmployees.length === 0}

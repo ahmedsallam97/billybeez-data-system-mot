@@ -6,3 +6,5 @@ prisma/dev.db-journal
 prisma/dev.pre-*.db
 dev-server*.log
 build.log
+tmp/
+backups/

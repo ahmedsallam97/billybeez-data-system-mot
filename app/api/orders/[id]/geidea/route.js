@@ -4,7 +4,8 @@ import { authorizeApi } from "@/lib/api-auth";
 import { writeAudit } from "@/lib/audit";
 import { releaseActiveBracelet } from "@/lib/active-bracelets";
 import { ensureBusinessDayState } from "@/lib/business-day";
-import { routeOrderId } from "@/lib/orders";
+import { actorFields, upsertOrderRecord } from "@/lib/order-records";
+import { includeOrderDetails, routeOrderId, serializeOrder } from "@/lib/orders";
 import { orderAuditSnapshot } from "@/lib/order-workflow";
 
 export async function POST(request, { params }) {
@@ -67,6 +68,11 @@ export async function POST(request, { params }) {
     if (shouldArchive) {
       await releaseActiveBracelet(tx, id);
     }
+    await upsertOrderRecord(tx, order, {
+      geideaRegisteredAt: registeredAt,
+      archivedAt,
+      ...actorFields("geidea", user, geideaEmployee),
+    });
     return order;
   });
 
@@ -103,5 +109,17 @@ export async function POST(request, { params }) {
     });
   }
 
-  return NextResponse.json({ success: true, geideaRegisteredAt: registeredAt, archivedAt });
+  const freshOrder = await prisma.order.findUnique({
+    where: { id },
+    include: includeOrderDetails(),
+  });
+  const record = await prisma.orderTransactionRecord.findUnique({ where: { orderId: id } });
+
+  return NextResponse.json({
+    success: true,
+    order: serializeOrder(freshOrder, record),
+    geideaRegisteredAt: registeredAt,
+    archivedAt,
+    geideaEmployee: geideaEmployee?.name || user.employee?.name || user.name || "",
+  });
 }

@@ -2,16 +2,18 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { authorizeApi } from "@/lib/api-auth";
 import { writeAudit } from "@/lib/audit";
-
-const departments = ["OPERATION", "RESTAURANT"];
+import { getSetting } from "@/lib/settings";
+import { normalizeEmployeeDepartments } from "@/lib/employee-departments";
 
 function normalizedName(value) {
   return String(value || "").trim().replace(/\s+/g, " ").toLocaleLowerCase("en");
 }
 
-function employeePayload(body) {
+async function employeePayload(body) {
+  const departments = normalizeEmployeeDepartments(await getSetting("EMPLOYEE_DEPARTMENT_CONFIG", ""));
+  const departmentIds = departments.map((department) => department.id);
   const name = String(body.name || "").trim().replace(/\s+/g, " ");
-  const department = departments.includes(body.department) ? body.department : "OPERATION";
+  const department = departmentIds.includes(body.department) ? body.department : "OPERATION";
   const active = body.active !== false;
 
   return { name, department, active };
@@ -24,8 +26,12 @@ export async function GET(request) {
   const { searchParams } = new URL(request.url);
   const department = searchParams.get("department") || "OPERATION";
   const includeInactive = searchParams.get("includeInactive") === "true";
+  const departments = normalizeEmployeeDepartments(await getSetting("EMPLOYEE_DEPARTMENT_CONFIG", ""));
+  const departmentIds = departments.map((item) => item.id);
+  const dataDepartmentIds = departments.filter((item) => item.kind === "DATA" && item.active).map((item) => item.id);
+  const restaurantDepartmentIds = departments.filter((item) => item.kind === "RESTAURANT" && item.active).map((item) => item.id);
 
-  if (department !== "ALL" && !departments.includes(department)) {
+  if (department !== "ALL" && !departmentIds.includes(department)) {
     return NextResponse.json({ success: false, error: "Invalid employee department" }, { status: 400 });
   }
 
@@ -33,11 +39,11 @@ export async function GET(request) {
     return NextResponse.json({ success: false, error: "Manager permission required" }, { status: 403 });
   }
 
-  if (user.role === "CASHIER" && department !== "OPERATION") {
+  if (user.role === "CASHIER" && department !== "ALL" && !dataDepartmentIds.includes(department)) {
     return NextResponse.json({ success: false, error: "Permission denied" }, { status: 403 });
   }
 
-  if (user.role === "KITCHEN" && department !== "RESTAURANT") {
+  if (user.role === "KITCHEN" && department !== "ALL" && !restaurantDepartmentIds.includes(department)) {
     return NextResponse.json({ success: false, error: "Permission denied" }, { status: 403 });
   }
 
@@ -45,6 +51,10 @@ export async function GET(request) {
 
   if (department !== "ALL") {
     where.department = department;
+  } else if (user.role === "CASHIER") {
+    where.department = { in: dataDepartmentIds };
+  } else if (user.role === "KITCHEN") {
+    where.department = { in: restaurantDepartmentIds };
   }
 
   const employees = await prisma.employee.findMany({
@@ -60,7 +70,7 @@ export async function POST(request) {
   if (error) return error;
 
   const body = await request.json();
-  const data = employeePayload(body);
+  const data = await employeePayload(body);
 
   if (!data.name) {
     return NextResponse.json({ success: false, error: "Employee name is required" }, { status: 400 });
@@ -91,7 +101,7 @@ export async function PATCH(request) {
 
   const body = await request.json();
   const id = String(body.id || "");
-  const data = employeePayload(body);
+  const data = await employeePayload(body);
 
   if (!id) {
     return NextResponse.json({ success: false, error: "Employee id is required" }, { status: 400 });

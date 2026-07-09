@@ -2,40 +2,85 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { authorizeApi } from "@/lib/api-auth";
 import { ensureBusinessDayState, serializeHistoryOrder } from "@/lib/business-day";
+import { serializeOrderRecord } from "@/lib/order-records";
 import { includeOrderDetails, serializeOrder } from "@/lib/orders";
 
-export async function GET() {
+export async function GET(request) {
   const { error } = await authorizeApi("DASHBOARD_READ");
   if (error) return error;
 
+  const light = request.nextUrl.searchParams.get("light") === "1";
   const businessState = await ensureBusinessDayState();
 
-  const [orders, historyOrders, businessDays, auditLogs] = await Promise.all([
+  const [orders, historyOrders, businessDays, auditLogs, orderRecords] = await Promise.all([
     prisma.order.findMany({
       include: includeOrderDetails(),
       orderBy: { createdAt: "desc" },
       take: 200,
     }),
-    prisma.orderHistory.findMany({
+    light ? Promise.resolve([]) : prisma.orderHistory.findMany({
       orderBy: [{ businessDate: "desc" }, { orderCreatedAt: "desc" }],
       take: 300,
     }),
     prisma.businessDay.findMany({
       orderBy: { businessDate: "desc" },
-      take: 60,
+      take: light ? 15 : 60,
     }),
-    prisma.auditLog.findMany({
+    light ? Promise.resolve([]) : prisma.auditLog.findMany({
       include: {
         user: true,
       },
       orderBy: { createdAt: "desc" },
       take: 50,
     }),
+    light ? Promise.resolve([]) : prisma.orderTransactionRecord.findMany({
+      orderBy: [{ businessDate: "desc" }, { updatedAt: "desc" }],
+      take: 500,
+    }),
   ]);
 
-  const serialized = orders.map(serializeOrder);
+  const recordMap = new Map(orderRecords.map((record) => [record.orderId, record]));
+  const serialized = orders.map((order) => serializeOrder(order, recordMap.get(order.id)));
   const serializedHistory = historyOrders.map(serializeHistoryOrder);
   const allOrderMap = new Map();
+
+  if (light) {
+    const activeOrders = serialized.filter((order) => !order.archivedAt);
+    const paidOrders = activeOrders.filter((order) => order.paymentStatus === "PAID");
+    const unpaidOrders = activeOrders.filter((order) => order.paymentStatus !== "PAID");
+
+    return NextResponse.json({
+      businessState,
+      reportBusinessDate: businessState.businessDate || businessDays[0]?.businessDate || null,
+      totalSales: paidOrders.reduce((sum, order) => sum + order.total, 0),
+      ordersCount: activeOrders.length,
+      paidOrders: paidOrders.length,
+      unpaidOrders: unpaidOrders.length,
+      cashSales: paidOrders.filter((order) => order.paymentMethod === "CASH").reduce((sum, order) => sum + order.total, 0),
+      visaSales: paidOrders.filter((order) => order.paymentMethod === "VISA").reduce((sum, order) => sum + order.total, 0),
+      leftUnpaid: unpaidOrders.filter((order) => order.customerLeft).length,
+      archivedOrders: 0,
+      geideaRegisteredOrders: activeOrders.filter((order) => order.geideaRegisteredAt).length,
+      paymentBreakdown: [],
+      statusBreakdown: [],
+      topProducts: [],
+      topBracelets: [],
+      cashierPerformance: [],
+      dataEmployeePerformance: [],
+      dailySales: [],
+      auditLogs: [],
+      businessDays: businessDays.map((day) => ({
+        businessDate: day.businessDate,
+        openedAt: day.openedAt,
+        closedAt: day.closedAt,
+        closedOrderCount: day.closedOrderCount,
+        closedTotal: day.closedTotal,
+      })),
+      orders: serialized,
+      orderHistory: [],
+      orderRecords: [],
+    });
+  }
 
   serializedHistory.forEach((order) => allOrderMap.set(order.id, order));
   serialized.forEach((order) => allOrderMap.set(order.id, order));
@@ -120,5 +165,6 @@ export async function GET() {
     })),
     orders: serialized,
     orderHistory: serializedHistory,
+    orderRecords: orderRecords.map(serializeOrderRecord),
   });
 }

@@ -3,7 +3,8 @@ import { prisma } from "@/lib/db";
 import { authorizeApi } from "@/lib/api-auth";
 import { writeAudit } from "@/lib/audit";
 import { ensureBusinessDayState } from "@/lib/business-day";
-import { routeOrderId } from "@/lib/orders";
+import { actorFields, upsertOrderRecord } from "@/lib/order-records";
+import { includeOrderDetails, routeOrderId, serializeOrder } from "@/lib/orders";
 import { orderAuditSnapshot } from "@/lib/order-workflow";
 import { loadWorkflowRules, validatePaymentAllowed } from "@/lib/workflow-rules";
 
@@ -59,6 +60,13 @@ export async function POST(request, { params }) {
         },
   });
 
+  const recordFields = {
+    paymentMethod: order.paymentMethod,
+    ...actorFields("paid", user, paymentEmployee),
+  };
+  if (!isEmployeeOnlyUpdate) recordFields.paidAt = new Date();
+  await upsertOrderRecord(prisma, order, recordFields);
+
   await writeAudit({
     action: "ORDER_PAID",
     orderId: id,
@@ -75,5 +83,11 @@ export async function POST(request, { params }) {
     reason: isEmployeeOnlyUpdate ? "Updated payment receiver" : `Marked order paid by ${paymentMethod}`,
   });
 
-  return NextResponse.json({ success: true });
+  const freshOrder = await prisma.order.findUnique({
+    where: { id },
+    include: includeOrderDetails(),
+  });
+  const record = await prisma.orderTransactionRecord.findUnique({ where: { orderId: id } });
+
+  return NextResponse.json({ success: true, order: serializeOrder(freshOrder, record) });
 }

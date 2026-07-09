@@ -4,8 +4,11 @@ import { authorizeApi } from "@/lib/api-auth";
 import { writeAudit } from "@/lib/audit";
 import { assertActiveBraceletAvailable, claimActiveBracelet, isBraceletLockConflict, releaseActiveBracelet } from "@/lib/active-bracelets";
 import { ensureBusinessDayState } from "@/lib/business-day";
-import { routeOrderId } from "@/lib/orders";
+import { actorFields, upsertOrderRecord } from "@/lib/order-records";
+import { includeOrderDetails, routeOrderId, serializeOrder } from "@/lib/orders";
 import { orderAuditSnapshot } from "@/lib/order-workflow";
+import { getSetting } from "@/lib/settings";
+import { isDataDepartment } from "@/lib/employee-departments";
 import { loadWorkflowRules, validateCustomerExitAllowed } from "@/lib/workflow-rules";
 
 export async function POST(request, { params }) {
@@ -16,7 +19,9 @@ export async function POST(request, { params }) {
   const id = routeOrderId(rawId);
   await ensureBusinessDayState();
   const body = await request.json().catch(() => ({}));
-  const exitEmployeeId = String(user.employee?.department === "OPERATION" ? user.employeeId : body.exitEmployeeId || "");
+  const departmentConfig = await getSetting("EMPLOYEE_DEPARTMENT_CONFIG", "");
+  const userIsDataEmployee = user.employee ? isDataDepartment(user.employee.department, departmentConfig) : false;
+  const exitEmployeeId = String(userIsDataEmployee ? user.employeeId : body.exitEmployeeId || "");
   const nextCustomerLeft = body.customerLeft === false ? false : true;
   const managerPassword = String(body.managerPassword || "");
 
@@ -39,9 +44,11 @@ export async function POST(request, { params }) {
       where: {
         id: exitEmployeeId,
         active: true,
-        department: "OPERATION",
       },
     });
+    if (exitEmployee && !isDataDepartment(exitEmployee.department, departmentConfig)) {
+      exitEmployee = null;
+    }
   }
 
   if (!nextCustomerLeft && user.role === "CASHIER" && managerPassword !== rules.businessDayPassword) {
@@ -49,12 +56,13 @@ export async function POST(request, { params }) {
   }
 
   if (nextCustomerLeft && user.role === "CASHIER" && !exitEmployee) {
-    return NextResponse.json({ success: false, error: "Operation employee is required" }, { status: 400 });
+    return NextResponse.json({ success: false, error: "Data employee is required" }, { status: 400 });
   }
 
   const shouldArchive = nextCustomerLeft && current.geideaRegisteredAt;
   const restoredStatus = current.paymentStatus === "PAID" ? "PAID" : current.kitchenStatus === "DELIVERED" ? "DELIVERED" : "OPEN";
   const archivedAt = shouldArchive ? (current.archivedAt || new Date()) : null;
+  const customerLeftAt = nextCustomerLeft ? (current.customerLeftAt || new Date()) : null;
 
   if (!shouldArchive && current.archivedAt) {
     const duplicateBraceletOrder = await assertActiveBraceletAvailable(prisma, current.braceletNo, id);
@@ -70,6 +78,7 @@ export async function POST(request, { params }) {
         where: { id },
         data: {
           customerLeft: nextCustomerLeft,
+          customerLeftAt,
           exitEmployeeId: nextCustomerLeft ? (exitEmployee?.id || current.exitEmployeeId) : null,
           status: shouldArchive ? "ARCHIVED" : restoredStatus,
           workflowState: shouldArchive ? "ARCHIVED" : nextCustomerLeft ? "CUSTOMER_LEFT" : restoredStatus,
@@ -81,6 +90,18 @@ export async function POST(request, { params }) {
       } else if (current.archivedAt) {
         await claimActiveBracelet(tx, current.braceletNo, id);
       }
+      await upsertOrderRecord(tx, updatedOrder, nextCustomerLeft ? {
+        customerLeftAt,
+        archivedAt,
+        ...actorFields("customerLeft", user, exitEmployee),
+      } : {
+        customerLeftAt: null,
+        customerLeftByUserId: null,
+        customerLeftByUserName: null,
+        customerLeftByEmployeeId: null,
+        customerLeftByEmployeeName: null,
+        archivedAt: null,
+      });
       return updatedOrder;
     });
   } catch (error) {
@@ -99,6 +120,7 @@ export async function POST(request, { params }) {
       paymentStatus: order.paymentStatus,
       kitchenStatus: order.kitchenStatus,
       exitEmployee: exitEmployee?.name || null,
+      customerLeftAt,
       managerPasswordUsed: !nextCustomerLeft && user.role === "CASHIER",
     },
     before: orderAuditSnapshot(current),
@@ -123,5 +145,11 @@ export async function POST(request, { params }) {
     });
   }
 
-  return NextResponse.json({ success: true });
+  const freshOrder = await prisma.order.findUnique({
+    where: { id },
+    include: includeOrderDetails(),
+  });
+  const record = await prisma.orderTransactionRecord.findUnique({ where: { orderId: id } });
+
+  return NextResponse.json({ success: true, order: serializeOrder(freshOrder, record) });
 }

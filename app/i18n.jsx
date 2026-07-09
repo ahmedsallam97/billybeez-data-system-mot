@@ -1,13 +1,16 @@
 "use client";
 
 import { createContext, useContext, useEffect, useMemo, useState } from "react";
+import { formatCairoDateTime } from "./dateTime";
 
 const dictionaries = {
   en: {
     "app.name": "BillyBeez Data System",
     "nav.manager": "Manager",
+    "nav.data": "Data",
     "nav.cashier": "Data",
     "nav.kitchen": "Restaurant",
+    "nav.database": "Database",
     "nav.logout": "Logout",
     "nav.language": "العربية",
     "nav.languageLabel": "Switch language",
@@ -15,6 +18,7 @@ const dictionaries = {
     "nav.themeRed": "Red Theme",
     "nav.themeBlue": "Blue Theme",
     "nav.themeOrange": "Orange Theme",
+    "title.data": "Data Interface",
     "title.cashier": "Data Interface",
     "title.kitchen": "Restaurant Interface",
     "title.manager": "Manager Interface",
@@ -31,11 +35,13 @@ const dictionaries = {
     "common.printInvoice": "Print Invoice",
     "common.clearFilters": "Clear Filters",
     "common.refresh": "Refresh",
+    "common.showMore": "Show more",
     "common.noItems": "No items",
     "common.noData": "No data",
     "common.yes": "Yes",
     "common.no": "No",
     "common.name": "Name",
+    "common.role": "Role",
     "common.department": "Department",
     "common.actions": "Actions",
     "common.delete": "Delete",
@@ -71,6 +77,7 @@ const dictionaries = {
     "common.method": "Method",
     "common.orderTotal": "Order Total",
     "common.businessDay": "Business Day",
+    "common.date": "Date",
     "common.closed": "Closed",
     "common.inProgress": "In Progress",
     "common.closedAt": "Closed At",
@@ -116,6 +123,8 @@ const dictionaries = {
     "cashier.backToOrders": "Back to orders",
     "cashier.braceletPlaceholder": "Bracelet number",
     "cashier.phonePlaceholder": "Customer phone (optional)",
+    "cashier.invalidBracelet": "Bracelet must be 5 digits starting with 0, or 6 digits starting with 0, 1, 2, or 3",
+    "cashier.invalidPhone": "Phone must be 11 digits and start with 010, 011, or 012",
     "cashier.childCount": "{count} child",
     "cashier.childName": "Child name {count}",
     "cashier.cart": "Cart",
@@ -158,24 +167,27 @@ const dictionaries = {
     "kitchen.archivedToast": "Order archived",
     "kitchen.registeredToast": "Order registered on Geidea",
     "kitchen.archiveOrder": "Archive",
-    "kitchen.startPreparation": "Start Prep",
-    "kitchen.markDelivered": "Delivered",
+    "kitchen.startPreparation": "Prep",
+    "kitchen.markDelivered": "Deliver",
     "kitchen.payCash": "Pay Cash",
     "kitchen.payVisa": "Pay Visa",
     "kitchen.paidCash": "Paid Cash",
     "kitchen.paidVisa": "Paid Visa",
     "kitchen.selectPaymentEmployee": "Select receiver",
+    "kitchen.selectDeliveryEmployee": "Select delivery employee",
     "kitchen.editPaymentEmployee": "Edit Payment Employee",
     "kitchen.editGeideaEmployee": "Edit Geidea Employee",
     "kitchen.selectRestaurantEmployee": "Select Geidea Employee",
     "kitchen.noRestaurantEmployees": "No restaurant employees",
     "kitchen.paymentEmployeeRequired": "Select the receiver first",
+    "kitchen.deliveryEmployeeRequired": "Select the delivery employee first",
     "kitchen.deliverBeforePayment": "Order must be delivered before payment",
     "kitchen.restaurantEmployeeRequired": "Select a restaurant employee first",
     "kitchen.registerSystem": "Geidea",
     "kitchen.printJobQueued": "Kitchen ticket queued",
     "kitchen.printJobAlreadyQueued": "Kitchen ticket is already queued",
     "kitchen.printJobFailed": "Kitchen print job failed",
+    "kitchen.noKitchenTicketItems": "No kitchen-print items in this order",
     "kitchenTicket.title": "Kitchen Ticket",
     "kitchenTicket.filtered": "Meals and sandwiches only",
     "kitchenTicket.allItems": "No meal category detected, all items printed",
@@ -192,6 +204,29 @@ const dictionaries = {
     "manager.tabReports": "Reports",
     "manager.tabSettings": "Settings",
     "manager.tabActivity": "Activity",
+    "manager.tabRecords": "Records",
+    "manager.orderRecords": "Order records",
+    "manager.orderRecordsHint": "Transaction timeline for each order and bracelet",
+    "manager.searchRecordPlaceholder": "Search by bracelet, order, or children",
+    "manager.noRecords": "No records found",
+    "manager.recordCreated": "Created",
+    "manager.recordPreparation": "Preparation",
+    "manager.recordDelivered": "Delivered",
+    "manager.recordPaid": "Paid",
+    "manager.recordGeidea": "Geidea",
+    "manager.recordLeft": "Customer left",
+    "manager.recordArchived": "Archived",
+    "manager.recordLastActivity": "Last activity",
+    "manager.healthPanel": "System Health",
+    "manager.healthPanelHint": "Fast operational checks for issues that need attention",
+    "manager.healthDuplicates": "Duplicate bracelets",
+    "manager.healthPaidNotGeidea": "Paid, not Geidea",
+    "manager.healthLeftUnpaid": "Left unpaid",
+    "manager.healthOldOpen": "Old open orders",
+    "manager.healthPrintFailed": "Print failed",
+    "manager.cleanupTool": "Clean-up Tool",
+    "manager.cleanupToolHint": "Current data issues that may need review or correction",
+    "manager.cleanupMore": "+{count} more",
     "manager.confirmDanger": "Are you sure you want to continue?",
     "manager.todayOrders": "Today Orders",
     "manager.dateRange": "Date range",
@@ -235,7 +270,7 @@ const dictionaries = {
     "manager.setVisaPaid": "Set Visa Paid",
     "manager.cashPaid": "Paid Cash",
     "manager.visaPaid": "Paid Visa",
-    "manager.markDelivered": "Mark Delivered",
+    "manager.markDelivered": "Deliver",
     "manager.markCustomerLeft": "Mark Customer Left",
     "manager.archive": "Archive",
     "manager.registerSystem": "Geidea",
@@ -275,6 +310,8 @@ const dictionaries = {
     "manager.accountType": "Account type",
     "manager.generalAccount": "General",
     "manager.employeeAccount": "Employee",
+    "manager.generalAccountHint": "Standalone account. Choose any role such as Admin, Manager, Data, or Restaurant.",
+    "manager.employeeAccountHint": "Employee account. The logged-in employee name will be used automatically in actions.",
     "manager.selectEmployee": "Select employee",
     "manager.uiMessages": "UI Messages",
     "manager.uiMessagesHint": "Edit alert and toast text, colors, and sizes from the database",
@@ -291,6 +328,10 @@ const dictionaries = {
     "manager.backgroundColor": "Background",
     "manager.textColor": "Text",
     "manager.borderColor": "Border",
+    "manager.textAlign": "Alignment",
+    "manager.alignRight": "Right",
+    "manager.alignCenter": "Center",
+    "manager.alignLeft": "Left",
     "manager.fontSize": "Font size",
     "manager.fontWeight": "Weight",
     "manager.fontStyle": "Style",
@@ -304,11 +345,13 @@ const dictionaries = {
     "manager.employeeNameStyleHint": "Control employee name typography across tables, cards, and dropdown lists",
     "manager.maleEmployeeStyle": "Male employees",
     "manager.femaleEmployeeStyle": "Female employees",
+    "manager.generalAccountStyle": "General accounts",
     "manager.employeeStyleSaved": "Employee name style saved",
     "manager.employeeStyleSaveFailed": "Employee name style save failed",
     "manager.backupRestore": "Backup & Restore",
     "manager.backupRestoreHint": "Create, download, and restore database backups. Restore creates a safety backup first.",
     "manager.createBackup": "Create Backup",
+    "manager.createSnapshot": "Snapshot Before Changes",
     "manager.backupCreated": "Backup created",
     "manager.backupFailed": "Backup failed",
     "manager.backupFile": "Backup file",
@@ -339,6 +382,27 @@ const dictionaries = {
     "settings.workflowSettingsHint": "Operational rules for edit, payment, exit, Geidea, and archive",
     "settings.reportSettings": "Report Settings",
     "settings.reportSettingsHint": "Default report behavior and export options",
+    "settings.recordTableSettings": "Records Table Settings",
+    "settings.recordTableSettingsHint": "Colors, font sizes, and spacing for the manager records table",
+    "settings.searchPlaceholder": "Search settings",
+    "settings.presetClassic": "Classic",
+    "settings.presetClean": "Clean",
+    "settings.presetHighContrast": "High contrast",
+    "settings.presetPrintFriendly": "Print friendly",
+    "settings.recordHeaderBackground": "Header background",
+    "settings.recordHeaderText": "Header text",
+    "settings.recordTableText": "Table text",
+    "settings.recordBorderColor": "Border color",
+    "settings.recordAlternateRow": "Alternate row",
+    "settings.recordHoverRow": "Hover row",
+    "settings.recordTimeColor": "Time color",
+    "settings.recordTotalColor": "Total color",
+    "settings.recordTimeFontSize": "Time font size",
+    "settings.recordActorFontSize": "Employee/user font size",
+    "settings.recordActorFontWeight": "Employee/user weight",
+    "settings.recordCellPaddingY": "Vertical spacing",
+    "settings.recordCellPaddingX": "Horizontal spacing",
+    "settings.recordTableMinWidth": "Table width",
     "settings.auditBackupSettings": "Audit & Backup",
     "settings.auditBackupSettingsHint": "Audit retention, export, and database backup settings",
     "settings.companyName": "Company name",
@@ -356,6 +420,7 @@ const dictionaries = {
     "settings.website": "Website",
     "settings.invoicePrinter": "Invoice printer",
     "settings.kitchenPrinter": "Kitchen printer",
+    "settings.printAgentUrl": "Local print agent URL",
     "settings.invoiceCopies": "Invoice copies",
     "settings.kitchenCopies": "Kitchen copies",
     "settings.autoInvoicePrint": "Auto invoice print",
@@ -372,6 +437,7 @@ const dictionaries = {
     "settings.paidOrderEditRoles": "Paid order edit roles",
     "settings.allowPaymentBeforeDelivery": "Allow payment before delivery",
     "settings.requireGeideaBeforeArchive": "Require Geidea before archive",
+    "settings.requirePaymentBeforeArchive": "Require payment before archive",
     "settings.allowExitBeforePayment": "Allow exit before payment",
     "settings.defaultReportTab": "Default report tab",
     "settings.showCashVisaGeidea": "Show cash / visa / Geidea",
@@ -451,8 +517,10 @@ const dictionaries = {
   ar: {
     "app.name": "نظام بيانات BillyBeez",
     "nav.manager": "المدير",
+    "nav.data": "الداتا",
     "nav.cashier": "الداتا",
     "nav.kitchen": "المطعم",
+    "nav.database": "الداتابيز",
     "nav.logout": "تسجيل خروج",
     "nav.language": "English",
     "nav.languageLabel": "تغيير اللغة",
@@ -460,6 +528,7 @@ const dictionaries = {
     "nav.themeRed": "الثيم الأحمر",
     "nav.themeBlue": "الثيم الأزرق",
     "nav.themeOrange": "الثيم البرتقاني",
+    "title.data": "واجهة الداتا",
     "title.cashier": "واجهة الداتا",
     "title.kitchen": "واجهة المطعم",
     "title.manager": "واجهة المدير",
@@ -476,11 +545,13 @@ const dictionaries = {
     "common.printInvoice": "طباعة الفاتورة",
     "common.clearFilters": "مسح الفلاتر",
     "common.refresh": "تحديث",
+    "common.showMore": "عرض المزيد",
     "common.noItems": "لا توجد منتجات",
     "common.noData": "لا توجد بيانات",
     "common.yes": "نعم",
     "common.no": "لا",
     "common.name": "الاسم",
+    "common.role": "الصلاحية",
     "common.department": "القسم",
     "common.actions": "الإجراءات",
     "common.delete": "حذف",
@@ -516,6 +587,7 @@ const dictionaries = {
     "common.method": "الطريقة",
     "common.orderTotal": "إجمالي الطلب",
     "common.businessDay": "يوم التشغيل",
+    "common.date": "التاريخ",
     "common.closed": "مغلق",
     "common.inProgress": "جاري",
     "common.closedAt": "وقت الإغلاق",
@@ -561,6 +633,8 @@ const dictionaries = {
     "cashier.backToOrders": "رجوع للطلبات",
     "cashier.braceletPlaceholder": "البريسلت",
     "cashier.phonePlaceholder": "التليفون (اختياري)",
+    "cashier.invalidBracelet": "رقم البريسلت لازم يكون 5 أرقام لو بادئ بـ0، أو 6 أرقام ويبدأ بـ0 أو 1 أو 2 أو 3",
+    "cashier.invalidPhone": "رقم التليفون لازم يكون 11 رقم ويبدأ بـ010 أو 011 أو 012",
     "cashier.childCount": "{count} طفل",
     "cashier.childName": "اسم الطفل {count}",
     "cashier.cart": "السلة",
@@ -603,24 +677,27 @@ const dictionaries = {
     "kitchen.archivedToast": "تم أرشفة الطلب",
     "kitchen.registeredToast": "تم تسجيل الطلب على جيديا",
     "kitchen.archiveOrder": "أرشفة",
-    "kitchen.startPreparation": "بدأ التجهيز",
-    "kitchen.markDelivered": "تم التسليم",
+    "kitchen.startPreparation": "تجهيز",
+    "kitchen.markDelivered": "تسليم",
     "kitchen.payCash": "دفع كاش",
     "kitchen.payVisa": "دفع فيزا",
     "kitchen.paidCash": "مدفوع كاش",
     "kitchen.paidVisa": "مدفوع فيزا",
     "kitchen.selectPaymentEmployee": "اختر المستلم",
+    "kitchen.selectDeliveryEmployee": "اختر موظف التسليم",
     "kitchen.editPaymentEmployee": "تعديل موظف الدفع",
     "kitchen.editGeideaEmployee": "تعديل موظف جيديا",
     "kitchen.selectRestaurantEmployee": "اختر موظف جيديا",
     "kitchen.noRestaurantEmployees": "لا يوجد موظفين مطعم",
     "kitchen.paymentEmployeeRequired": "اختار المستلم الأول",
+    "kitchen.deliveryEmployeeRequired": "اختار موظف التسليم الأول",
     "kitchen.deliverBeforePayment": "لازم يتم تسليم الأوردر قبل الدفع",
     "kitchen.restaurantEmployeeRequired": "اختار موظف المطعم الأول",
     "kitchen.registerSystem": "جيديا",
     "kitchen.printJobQueued": "تم تجهيز تيكت المطبخ للطباعة",
     "kitchen.printJobAlreadyQueued": "تيكت المطبخ موجود بالفعل في صف الطباعة",
     "kitchen.printJobFailed": "فشل تجهيز تيكت المطبخ",
+    "kitchen.noKitchenTicketItems": "لا توجد أصناف تطبع في المطبخ",
     "kitchenTicket.title": "تيكت المطبخ",
     "kitchenTicket.filtered": "الوجبات والساندويتشات فقط",
     "kitchenTicket.allItems": "لم يتم العثور على قسم وجبات، تم طباعة كل الأصناف",
@@ -637,6 +714,29 @@ const dictionaries = {
     "manager.tabReports": "التقارير",
     "manager.tabSettings": "الإعدادات",
     "manager.tabActivity": "النشاط",
+    "manager.tabRecords": "السجلات",
+    "manager.orderRecords": "سجلات العمليات",
+    "manager.orderRecordsHint": "توقيت كل مرحلة لكل أوردر وبريسلت",
+    "manager.searchRecordPlaceholder": "بحث بالبريسلت أو رقم الطلب أو أسماء الأطفال",
+    "manager.noRecords": "لا توجد سجلات",
+    "manager.recordCreated": "إنشاء الطلب",
+    "manager.recordPreparation": "بدأ التجهيز",
+    "manager.recordDelivered": "تم التسليم",
+    "manager.recordPaid": "تم الدفع",
+    "manager.recordGeidea": "جيديا",
+    "manager.recordLeft": "خروج العميل",
+    "manager.recordArchived": "الأرشفة",
+    "manager.recordLastActivity": "آخر نشاط",
+    "manager.healthPanel": "صحة النظام",
+    "manager.healthPanelHint": "فحص سريع للمشاكل اللي محتاجة متابعة",
+    "manager.healthDuplicates": "بريسلت مكرر",
+    "manager.healthPaidNotGeidea": "مدفوع ومش جيديا",
+    "manager.healthLeftUnpaid": "خرج ولم يدفع",
+    "manager.healthOldOpen": "طلبات قديمة مفتوحة",
+    "manager.healthPrintFailed": "فشل طباعة",
+    "manager.cleanupTool": "أداة تنظيف الداتا",
+    "manager.cleanupToolHint": "مشاكل الداتا الحالية اللي ممكن تحتاج مراجعة أو تصحيح",
+    "manager.cleanupMore": "+{count} طلبات أخرى",
     "manager.confirmDanger": "متأكد إنك عايز تكمل؟",
     "manager.todayOrders": "طلبات اليوم",
     "manager.dateRange": "اختيار الفترة",
@@ -680,7 +780,7 @@ const dictionaries = {
     "manager.setVisaPaid": "تسجيل دفع فيزا",
     "manager.cashPaid": "مدفوع كاش",
     "manager.visaPaid": "مدفوع فيزا",
-    "manager.markDelivered": "تم التسليم",
+    "manager.markDelivered": "تسليم",
     "manager.markCustomerLeft": "تم خروج العميل",
     "manager.archive": "أرشفة",
     "manager.registerSystem": "جيديا",
@@ -718,8 +818,10 @@ const dictionaries = {
     "manager.userSaveFailed": "فشل حفظ اليوزر",
     "manager.passwordOptional": "كلمة مرور جديدة (اختياري)",
     "manager.accountType": "نوع الحساب",
-    "manager.generalAccount": "General",
-    "manager.employeeAccount": "Employee",
+    "manager.generalAccount": "حساب عام",
+    "manager.employeeAccount": "حساب موظف",
+    "manager.generalAccountHint": "حساب مستقل غير مربوط بموظف. اختار له أي دور زي أدمن أو مدير أو داتا أو مطعم.",
+    "manager.employeeAccountHint": "حساب مربوط بموظف. اسم الموظف اللي عامل لوجين هيتسجل تلقائيًا في العمليات.",
     "manager.selectEmployee": "اختار الموظف",
     "manager.uiMessages": "رسائل الواجهة",
     "manager.uiMessagesHint": "تعديل نصوص وألوان وأحجام التنبيهات والرسائل من الداتابيز",
@@ -736,6 +838,10 @@ const dictionaries = {
     "manager.backgroundColor": "الخلفية",
     "manager.textColor": "الخط",
     "manager.borderColor": "البوردر",
+    "manager.textAlign": "محاذاة الكلام",
+    "manager.alignRight": "يمين",
+    "manager.alignCenter": "وسط",
+    "manager.alignLeft": "شمال",
     "manager.fontSize": "حجم الخط",
     "manager.fontWeight": "سُمك الخط",
     "manager.fontStyle": "شكل الخط",
@@ -749,11 +855,13 @@ const dictionaries = {
     "manager.employeeNameStyleHint": "تحكم في لون وحجم وشكل أسماء الموظفين في الجداول والكروت والقوائم",
     "manager.maleEmployeeStyle": "أسماء الأولاد",
     "manager.femaleEmployeeStyle": "أسماء البنات",
+    "manager.generalAccountStyle": "يوزرات General",
     "manager.employeeStyleSaved": "تم حفظ ستايل أسماء الموظفين",
     "manager.employeeStyleSaveFailed": "فشل حفظ ستايل أسماء الموظفين",
     "manager.backupRestore": "النسخ والاسترجاع",
     "manager.backupRestoreHint": "إنشاء وتحميل واسترجاع نسخ قاعدة البيانات. الاسترجاع يعمل نسخة أمان الأول.",
     "manager.createBackup": "إنشاء Backup",
+    "manager.createSnapshot": "Snapshot قبل التعديل",
     "manager.backupCreated": "تم إنشاء Backup",
     "manager.backupFailed": "فشل إنشاء Backup",
     "manager.backupFile": "ملف النسخة",
@@ -784,6 +892,27 @@ const dictionaries = {
     "settings.workflowSettingsHint": "قواعد التشغيل للتعديل والدفع والخروج وجيديا والأرشفة",
     "settings.reportSettings": "إعدادات التقارير",
     "settings.reportSettingsHint": "إعدادات عرض التقارير والتصدير",
+    "settings.recordTableSettings": "إعدادات جدول السجلات",
+    "settings.recordTableSettingsHint": "ألوان وأحجام الخطوط والمسافات الخاصة بجدول سجلات العمليات",
+    "settings.searchPlaceholder": "بحث في الإعدادات",
+    "settings.presetClassic": "كلاسيك",
+    "settings.presetClean": "نظيف",
+    "settings.presetHighContrast": "تباين عالي",
+    "settings.presetPrintFriendly": "مناسب للطباعة",
+    "settings.recordHeaderBackground": "خلفية العنوان",
+    "settings.recordHeaderText": "لون عنوان الجدول",
+    "settings.recordTableText": "لون نص الجدول",
+    "settings.recordBorderColor": "لون الحدود",
+    "settings.recordAlternateRow": "لون الصف المتبادل",
+    "settings.recordHoverRow": "لون الهوفر",
+    "settings.recordTimeColor": "لون الوقت",
+    "settings.recordTotalColor": "لون الإجمالي",
+    "settings.recordTimeFontSize": "حجم خط الوقت",
+    "settings.recordActorFontSize": "حجم خط الموظف/اليوزر",
+    "settings.recordActorFontWeight": "سمك خط الموظف/اليوزر",
+    "settings.recordCellPaddingY": "المسافة الرأسية",
+    "settings.recordCellPaddingX": "المسافة الأفقية",
+    "settings.recordTableMinWidth": "عرض الجدول",
     "settings.auditBackupSettings": "النشاط والنسخ الاحتياطي",
     "settings.auditBackupSettingsHint": "مدة حفظ النشاط والتصدير والنسخ الاحتياطي",
     "settings.companyName": "اسم الشركة",
@@ -801,6 +930,7 @@ const dictionaries = {
     "settings.website": "الموقع الإلكتروني",
     "settings.invoicePrinter": "طابعة الفاتورة",
     "settings.kitchenPrinter": "طابعة المطبخ",
+    "settings.printAgentUrl": "رابط خدمة الطباعة المحلية",
     "settings.invoiceCopies": "عدد نسخ الفاتورة",
     "settings.kitchenCopies": "عدد نسخ المطبخ",
     "settings.autoInvoicePrint": "طباعة الفاتورة تلقائي",
@@ -817,6 +947,7 @@ const dictionaries = {
     "settings.paidOrderEditRoles": "صلاحيات تعديل الأوردر المدفوع",
     "settings.allowPaymentBeforeDelivery": "السماح بالدفع قبل التسليم",
     "settings.requireGeideaBeforeArchive": "جيديا قبل الأرشفة إجباري",
+    "settings.requirePaymentBeforeArchive": "الدفع قبل الأرشفة إجباري",
     "settings.allowExitBeforePayment": "السماح بالخروج قبل الدفع",
     "settings.defaultReportTab": "تبويب التقرير الافتراضي",
     "settings.showCashVisaGeidea": "عرض كاش / فيزا / جيديا",
@@ -911,16 +1042,35 @@ const methodKeys = {
 };
 
 const categoryKeys = {
-  All: "common.all",
-  Drinks: "category.drinks",
-  Burgers: "category.burgers",
-  Meals: "category.meals",
-  Snacks: "category.snacks",
-  Imported: "category.imported",
+  all: "common.all",
+  drinks: "category.drinks",
+  "cold drinks": "category.coldDrinks",
+  colddrinks: "category.coldDrinks",
+  "hot drinks": "category.hotDrinks",
+  hotdrinks: "category.hotDrinks",
+  juice: "category.juice",
+  water: "category.water",
+  burgers: "category.burgers",
+  burger: "category.burgers",
+  meals: "category.meals",
+  meal: "category.meals",
+  snacks: "category.snacks",
+  snack: "category.snacks",
+  sandwiches: "category.sandwiches",
+  sandwich: "category.sandwiches",
+  "سندوتشات": "category.sandwiches",
+  bakery: "category.bakery",
+  pizza: "category.pizza",
+  pasta: "category.pasta",
+  salad: "category.salad",
+  crepes: "category.crepes",
+  crepe: "category.crepes",
+  imported: "category.imported",
 };
 
 const departmentKeys = {
   OPERATION: "department.operation",
+  CASHIER: "department.cashier",
   RESTAURANT: "department.restaurant",
 };
 
@@ -946,18 +1096,40 @@ function nextThemeName(theme) {
 }
 
 dictionaries.en["category.drinks"] = "Drinks";
+dictionaries.en["category.coldDrinks"] = "Cold Drinks";
+dictionaries.en["category.hotDrinks"] = "Hot Drinks";
+dictionaries.en["category.juice"] = "Juice";
+dictionaries.en["category.water"] = "Water";
 dictionaries.en["category.burgers"] = "Burgers";
 dictionaries.en["category.meals"] = "Meals";
 dictionaries.en["category.snacks"] = "Snacks";
+dictionaries.en["category.sandwiches"] = "Sandwiches";
+dictionaries.en["category.bakery"] = "Bakery";
+dictionaries.en["category.pizza"] = "Pizza";
+dictionaries.en["category.pasta"] = "Pasta";
+dictionaries.en["category.salad"] = "Salad";
+dictionaries.en["category.crepes"] = "Crepes";
 dictionaries.en["category.imported"] = "Imported";
 dictionaries.en["department.operation"] = "Operation";
+dictionaries.en["department.cashier"] = "Cashier";
 dictionaries.en["department.restaurant"] = "Restaurant";
 dictionaries.ar["category.drinks"] = "مشروبات";
+dictionaries.ar["category.coldDrinks"] = "مشروبات باردة";
+dictionaries.ar["category.hotDrinks"] = "مشروبات ساخنة";
+dictionaries.ar["category.juice"] = "عصائر";
+dictionaries.ar["category.water"] = "مياه";
 dictionaries.ar["category.burgers"] = "برجر";
 dictionaries.ar["category.meals"] = "وجبات";
 dictionaries.ar["category.snacks"] = "سناكس";
+dictionaries.ar["category.sandwiches"] = "ساندويتشات";
+dictionaries.ar["category.bakery"] = "مخبوزات";
+dictionaries.ar["category.pizza"] = "بيتزا";
+dictionaries.ar["category.pasta"] = "باستا";
+dictionaries.ar["category.salad"] = "سلطة";
+dictionaries.ar["category.crepes"] = "كريب";
 dictionaries.ar["category.imported"] = "مستورد";
 dictionaries.ar["department.operation"] = "التشغيل";
+dictionaries.ar["department.cashier"] = "كاشير";
 dictionaries.ar["department.restaurant"] = "المطعم";
 
 const permissionLabels = {
@@ -1047,30 +1219,7 @@ function interpolate(text, values) {
 }
 
 function formatDateTimeValue(value, language) {
-  const date = value ? new Date(value) : null;
-  if (!date || Number.isNaN(date.getTime())) return "-";
-
-  const parts = new Intl.DateTimeFormat("en-US-u-nu-latn", {
-    timeZone: "Africa/Cairo",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-    hour12: true,
-  }).formatToParts(date).reduce((current, part) => {
-    current[part.type] = part.value;
-    return current;
-  }, {});
-
-  const period = parts.dayPeriod;
-
-  if (language === "ar") {
-    return `${parts.day}/${parts.month}/${parts.year}, ${parts.hour}:${parts.minute}:${parts.second} ${period}`;
-  }
-
-  return `${parts.month}/${parts.day}/${parts.year}, ${parts.hour}:${parts.minute}:${parts.second} ${period}`;
+  return formatCairoDateTime(value);
 }
 
 function formatNumberValue(value, options = {}) {
@@ -1110,12 +1259,16 @@ export function UiPreferencesProvider({ children }) {
     const labelStatus = (status) => t(statusKeys[status] || status);
     const labelMethod = (method) => t(methodKeys[method] || method);
     const labelOrderStage = (order) => {
-      if (order?.geideaRegisteredAt) return t("common.closed");
+      if (order?.geideaRegisteredAt) return `${t("common.closed")} ${labelMethod(order.paymentMethod)}`;
       if (order?.paymentStatus === "PAID") return `${t("common.paid")} ${labelMethod(order.paymentMethod)}`;
       if (order?.kitchenStatus === "DELIVERED") return t("common.delivered");
       return t("common.inProgress");
     };
-    const labelCategory = (category) => t(categoryKeys[category] || category);
+    const labelCategory = (category) => {
+      const normalized = String(category || "").trim().toLowerCase().replace(/\s+/g, " ");
+      const compact = normalized.replace(/\s+/g, "");
+      return t(categoryKeys[normalized] || categoryKeys[compact] || category);
+    };
     const labelDepartment = (department) => t(departmentKeys[department] || department);
     const labelRole = (role) => t(roleKeys[role] || role);
     const labelTheme = (themeName) => t(themeLabelKeys[themeName] || themeLabelKeys.classic);

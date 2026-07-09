@@ -19,7 +19,7 @@ export default function InvoicePrint({ order, settings = {} }) {
   return (
     <div className="invoice">
       <div className="invoice-logo-wrap">
-        <img src={settings.logoUrl || "/bb-logo.png"} alt="Billy Beez" className="invoice-logo" />
+        <img src={settings.logoUrl || "/bb-logo.png"} alt="Billy Beez" className="invoice-logo" width="456" height="140" />
       </div>
       <div className="receipt-center">
         <b>{t("invoice.welcome")}</b>

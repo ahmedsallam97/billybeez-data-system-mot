@@ -13,6 +13,7 @@
     "db:backup": "node scripts/backup-db.js",
     "db:restore": "node scripts/restore-db.js",
     "db:verify-backup": "node scripts/verify-backup.js",
+    "db:studio": "prisma studio --port 5555",
     "db:migrate-workflow": "node scripts/migrate-workflow-state.js",
     "products:images": "node scripts/sync-product-images.js",
     "db:import:apps-script": "node scripts/import-apps-script.js",

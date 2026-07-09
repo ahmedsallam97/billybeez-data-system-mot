@@ -19,6 +19,9 @@ export const metadata = {
 export default function RootLayout({ children }) {
   return (
     <html lang="ar" dir="rtl" suppressHydrationWarning>
+      <head>
+        <link rel="preload" as="image" href="/bb-logo-fast.png" fetchPriority="high" />
+      </head>
       <body suppressHydrationWarning>
         <UiPreferencesProvider>
           <ToastProvider>{children}</ToastProvider>

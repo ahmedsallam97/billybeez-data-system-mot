@@ -21,7 +21,7 @@ export default function AppShell({ title, user, children }) {
     <div className="shell">
       <header className="topbar">
         <div className="brand-block">
-          <img src="/bb-logo-web.png" alt="Billy Beez" className="brand-logo" width="456" height="140" fetchPriority="high" />
+          <img src="/bb-logo-fast.png" alt="Billy Beez" className="brand-logo" width="240" height="74" fetchPriority="high" />
           <div>
             <div className="brand">{shellTitle}</div>
             <div className="muted"><span className={user.employeeId ? "" : "general-account-name"}>{user.name}</span> · {labelRole(user.role)}</div>

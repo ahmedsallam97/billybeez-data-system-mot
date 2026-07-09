@@ -15,7 +15,7 @@ export async function POST(request, { params }) {
   const { id: rawId } = await params;
   const id = routeOrderId(rawId);
   const body = await request.json().catch(() => ({}));
-  const geideaEmployeeId = user.employee?.department === "RESTAURANT" ? user.employeeId : body.geideaEmployeeId || body.restaurantEmployeeId || null;
+  const geideaEmployeeId = user.employee?.department === "KITCHEN" ? user.employeeId : body.geideaEmployeeId || body.restaurantEmployeeId || null;
   const canForceRegister = ["ADMIN", "MANAGER"].includes(user.role);
 
   await ensureBusinessDayState();
@@ -37,7 +37,7 @@ export async function POST(request, { params }) {
       where: {
         id: geideaEmployeeId,
         active: true,
-        department: "RESTAURANT",
+        department: "KITCHEN",
       },
     });
 

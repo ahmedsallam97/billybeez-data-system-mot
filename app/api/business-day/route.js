@@ -27,7 +27,7 @@ export async function POST(request) {
 
   const body = await request.json();
   const action = String(body.action || "").toLowerCase();
-  const requiresPassword = user.role === "CASHIER" || user.role === "KITCHEN";
+  const requiresPassword = ["CASHIER", "KITCHEN", "DATA"].includes(user.role);
 
   if (requiresPassword && !(await validBusinessDayPassword(body.password))) {
     return NextResponse.json({ success: false, error: "Invalid business day password" }, { status: 403 });

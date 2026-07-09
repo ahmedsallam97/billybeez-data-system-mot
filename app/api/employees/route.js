@@ -29,7 +29,7 @@ export async function GET(request) {
   const departments = normalizeEmployeeDepartments(await getSetting("EMPLOYEE_DEPARTMENT_CONFIG", ""));
   const departmentIds = departments.map((item) => item.id);
   const dataDepartmentIds = departments.filter((item) => item.kind === "DATA" && item.active).map((item) => item.id);
-  const restaurantDepartmentIds = departments.filter((item) => item.kind === "RESTAURANT" && item.active).map((item) => item.id);
+  const restaurantDepartmentIds = departments.filter((item) => item.kind === "KITCHEN" && item.active).map((item) => item.id);
 
   if (department !== "ALL" && !departmentIds.includes(department)) {
     return NextResponse.json({ success: false, error: "Invalid employee department" }, { status: 400 });
@@ -39,7 +39,7 @@ export async function GET(request) {
     return NextResponse.json({ success: false, error: "Manager permission required" }, { status: 403 });
   }
 
-  if (user.role === "CASHIER" && department !== "ALL" && !dataDepartmentIds.includes(department)) {
+  if (["CASHIER", "DATA"].includes(user.role) && department !== "ALL" && !dataDepartmentIds.includes(department)) {
     return NextResponse.json({ success: false, error: "Permission denied" }, { status: 403 });
   }
 
@@ -51,7 +51,7 @@ export async function GET(request) {
 
   if (department !== "ALL") {
     where.department = department;
-  } else if (user.role === "CASHIER") {
+  } else if (["CASHIER", "DATA"].includes(user.role)) {
     where.department = { in: dataDepartmentIds };
   } else if (user.role === "KITCHEN") {
     where.department = { in: restaurantDepartmentIds };

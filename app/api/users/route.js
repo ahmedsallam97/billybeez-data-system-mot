@@ -4,7 +4,7 @@ import { prisma } from "@/lib/db";
 import { authorizeApi } from "@/lib/api-auth";
 import { writeAudit } from "@/lib/audit";
 
-const roles = ["ADMIN", "MANAGER", "CASHIER", "KITCHEN"];
+const roles = ["ADMIN", "MANAGER", "CASHIER", "KITCHEN", "DATA"];
 
 function serializeUser(user) {
   return {
@@ -26,7 +26,7 @@ function userPayload(body) {
   return {
     name: String(body.name || "").trim().replace(/\s+/g, " "),
     username: String(body.username || "").trim().toLowerCase(),
-    role: roles.includes(body.role) ? body.role : "CASHIER",
+    role: roles.includes(body.role) ? body.role : "DATA",
     active: body.active !== false,
     password: String(body.password || ""),
     accountType: accountType === "EMPLOYEE" ? "EMPLOYEE" : "GENERAL",

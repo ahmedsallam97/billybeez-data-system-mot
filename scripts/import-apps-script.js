@@ -134,11 +134,11 @@ async function ensureImportedDataUser(name) {
       name: dataName,
       username,
       password,
-      role: "CASHIER",
+      role: "DATA",
     },
     update: {
       name: dataName,
-      role: "CASHIER",
+      role: "DATA",
       active: true,
     },
   });

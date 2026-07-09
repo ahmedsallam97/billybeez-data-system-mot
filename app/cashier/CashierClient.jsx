@@ -47,7 +47,7 @@ export default function CashierClient({ user }) {
   const [entryPassword, setEntryPassword] = useState("");
   const [uiMessages, setUiMessages] = useState(normalizeUiMessages());
   const [uiPrefsReady, setUiPrefsReady] = useState(false);
-  const linkedOperationEmployeeId = user?.role === "CASHIER" && user?.employeeId && user?.employee?.department !== "RESTAURANT" ? user.employeeId : "";
+  const linkedOperationEmployeeId = ["CASHIER", "DATA"].includes(user?.role) && user?.employeeId && user?.employee?.department !== "KITCHEN" ? user.employeeId : "";
   const linkedOperationEmployeeName = linkedOperationEmployeeId ? user.employee.name : "";
 
   useEffect(() => {
@@ -140,7 +140,7 @@ export default function CashierClient({ user }) {
     const lastEmployee = localStorage.getItem("lastDataEmployeeId");
     setDataEmployeeId(linkedOperationEmployeeId || lastEmployee || employeesData[0]?.id || "");
 
-    const operationEmployees = employeesData.filter((employee) => employee.department !== "RESTAURANT");
+    const operationEmployees = employeesData.filter((employee) => employee.department !== "KITCHEN");
     const lastExitEmployee = localStorage.getItem("lastExitEmployeeId") || "";
     setDefaultExitEmployeeId(
       linkedOperationEmployeeId
@@ -192,7 +192,7 @@ export default function CashierClient({ user }) {
   }
 
   const categories = useMemo(() => ["All", ...new Set(products.map((product) => product.categoryName))], [products]);
-  const operationEmployees = useMemo(() => employees.filter((employee) => employee.department !== "RESTAURANT"), [employees]);
+  const operationEmployees = useMemo(() => employees.filter((employee) => employee.department !== "KITCHEN"), [employees]);
   const [category, setCategory] = useState("All");
   const visibleProducts = products.filter((product) => category === "All" || product.categoryName === category);
   const visibleOrders = useMemo(() => {

@@ -44,7 +44,8 @@ const products = [
 const users = [
   { name: "Admin", username: "admin", password: "admin123", role: "ADMIN" },
   { name: "Manager", username: "manager", password: "manager123", role: "MANAGER" },
-  { name: "Data", username: "data", password: "data112411", role: "CASHIER" },
+  { name: "Data", username: "data", password: "data112411", role: "DATA" },
+  { name: "Cashier", username: "cashier", password: "cashier112411", role: "CASHIER" },
   { name: "Kitchen", username: "kitchen", password: "kitchen123", role: "KITCHEN" },
 ];
 
@@ -100,8 +101,8 @@ async function main() {
   for (const employee of restaurantEmployees) {
     await prisma.employee.upsert({
       where: { name: employee },
-      create: { name: employee, department: "RESTAURANT" },
-      update: { active: true, department: "RESTAURANT" },
+      create: { name: employee, department: "KITCHEN" },
+      update: { active: true, department: "KITCHEN" },
     });
   }
 

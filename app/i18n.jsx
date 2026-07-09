@@ -26,6 +26,7 @@ const dictionaries = {
     "role.MANAGER": "Manager",
     "role.CASHIER": "Data",
     "role.KITCHEN": "Restaurant",
+    "role.DATA": "Data",
     "common.loading": "Loading...",
     "common.close": "Close",
     "common.save": "Save",
@@ -536,6 +537,7 @@ const dictionaries = {
     "role.MANAGER": "مدير",
     "role.CASHIER": "الداتا",
     "role.KITCHEN": "المطعم",
+    "role.DATA": "الداتا",
     "common.loading": "جاري التحميل...",
     "common.close": "إغلاق",
     "common.save": "حفظ",
@@ -1071,7 +1073,8 @@ const categoryKeys = {
 const departmentKeys = {
   OPERATION: "department.operation",
   CASHIER: "department.cashier",
-  RESTAURANT: "department.restaurant",
+  KITCHEN: "department.kitchen",
+  RESTAURANT: "department.kitchen",
 };
 
 const roleKeys = {
@@ -1079,6 +1082,7 @@ const roleKeys = {
   MANAGER: "role.MANAGER",
   CASHIER: "role.CASHIER",
   KITCHEN: "role.KITCHEN",
+  DATA: "role.DATA",
 };
 
 const themeOrder = ["classic", "red", "blue", "orange"];
@@ -1113,6 +1117,7 @@ dictionaries.en["category.imported"] = "Imported";
 dictionaries.en["department.operation"] = "Operation";
 dictionaries.en["department.cashier"] = "Cashier";
 dictionaries.en["department.restaurant"] = "Restaurant";
+dictionaries.en["department.kitchen"] = "Kitchen";
 dictionaries.ar["category.drinks"] = "مشروبات";
 dictionaries.ar["category.coldDrinks"] = "مشروبات باردة";
 dictionaries.ar["category.hotDrinks"] = "مشروبات ساخنة";
@@ -1131,6 +1136,7 @@ dictionaries.ar["category.imported"] = "مستورد";
 dictionaries.ar["department.operation"] = "التشغيل";
 dictionaries.ar["department.cashier"] = "كاشير";
 dictionaries.ar["department.restaurant"] = "المطعم";
+dictionaries.ar["department.kitchen"] = "المطبخ";
 
 const permissionLabels = {
   BUSINESS_DAY_READ: ["Read business day", "قراءة يوم التشغيل"],

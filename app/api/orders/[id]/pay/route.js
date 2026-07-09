@@ -17,7 +17,7 @@ export async function POST(request, { params }) {
   await ensureBusinessDayState();
   const body = await request.json();
   const paymentMethod = body.paymentMethod === "VISA" ? "VISA" : "CASH";
-  const paymentEmployeeId = String(user.employee?.department === "RESTAURANT" ? user.employeeId : body.paymentEmployeeId || "");
+  const paymentEmployeeId = String(user.employee?.department === "KITCHEN" ? user.employeeId : body.paymentEmployeeId || "");
   const current = await prisma.order.findUnique({ where: { id } });
 
   if (!current) {
@@ -38,7 +38,7 @@ export async function POST(request, { params }) {
       where: {
         id: paymentEmployeeId,
         active: true,
-        department: "RESTAURANT",
+        department: "KITCHEN",
       },
     });
   }

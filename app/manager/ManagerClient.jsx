@@ -11,7 +11,7 @@ import { formatUiMessage, normalizeUiMessages, uiMessageStyle } from "../uiMessa
 import { formatCairoDateLabel, formatCairoTime } from "../dateTime";
 import { kitchenTicketRuleValue, parseKitchenTicketRules } from "../../lib/kitchen-ticket-rules";
 
-const roles = ["ADMIN", "MANAGER", "CASHIER", "KITCHEN"];
+const roles = ["ADMIN", "MANAGER", "CASHIER", "KITCHEN", "DATA"];
 const permissionKeys = [
   "BUSINESS_DAY_READ",
   "BUSINESS_DAY_WRITE",
@@ -80,7 +80,7 @@ const emptyUserForm = {
   name: "",
   username: "",
   password: "",
-  role: "CASHIER",
+  role: "DATA",
   active: true,
 };
 
@@ -233,7 +233,7 @@ export default function ManagerClient() {
     if (!selectedOrder) return;
     ensureEmployeesLoaded();
     ensureProductsLoaded();
-    const restaurantEmployees = employees.filter((employee) => employee.department === "RESTAURANT" && employee.active);
+    const restaurantEmployees = employees.filter((employee) => employee.department === "KITCHEN" && employee.active);
     setManagerPaymentEmployeeId(selectedOrder.paymentEmployeeId || restaurantEmployees[0]?.id || "");
     setManagerGeideaEmployeeId(selectedOrder.geideaEmployeeId || restaurantEmployees[0]?.id || "");
     setOrderItemForm((current) => ({ productId: current.productId || products[0]?.id || "", qty: current.qty || 1 }));
@@ -597,7 +597,7 @@ export default function ManagerClient() {
   }
 
   function restaurantEmployees() {
-    return employees.filter((employee) => employee.department === "RESTAURANT" && employee.active);
+    return employees.filter((employee) => employee.department === "KITCHEN" && employee.active);
   }
 
   function confirmDanger(message = t("manager.confirmDanger")) {
@@ -2322,7 +2322,8 @@ export default function ManagerClient() {
             onChange={(event) => setEmployeeForm((current) => ({ ...current, department: event.target.value }))}
           >
             <option value="OPERATION">{labelDepartment("OPERATION")}</option>
-            <option value="RESTAURANT">{labelDepartment("RESTAURANT")}</option>
+            <option value="CASHIER">{labelDepartment("CASHIER")}</option>
+            <option value="KITCHEN">{labelDepartment("KITCHEN")}</option>
           </select>
           <label className="toggle-row">
             <input
@@ -2415,7 +2416,8 @@ export default function ManagerClient() {
           >
             <option value="ALL">{t("common.all")}</option>
             <option value="OPERATION">{labelDepartment("OPERATION")}</option>
-            <option value="RESTAURANT">{labelDepartment("RESTAURANT")}</option>
+            <option value="CASHIER">{labelDepartment("CASHIER")}</option>
+            <option value="KITCHEN">{labelDepartment("KITCHEN")}</option>
           </select>
           <select
             aria-label={t("common.status")}
@@ -2561,7 +2563,7 @@ export default function ManagerClient() {
                   ...current,
                   employeeId: event.target.value,
                   name: employee?.name || current.name,
-                  role: employee?.department === "RESTAURANT" ? "KITCHEN" : "CASHIER",
+                  role: employee?.department === "KITCHEN" ? "KITCHEN" : employee?.department === "CASHIER" ? "CASHIER" : "DATA",
                 }));
               }}
             >
@@ -2593,7 +2595,7 @@ export default function ManagerClient() {
             value={userForm.role}
             onChange={(event) => setUserForm((current) => ({ ...current, role: event.target.value }))}
           >
-            {["ADMIN", "MANAGER", "CASHIER", "KITCHEN"].map((role) => <option key={role} value={role}>{t(`role.${role}`)}</option>)}
+            {roles.map((role) => <option key={role} value={role}>{t(`role.${role}`)}</option>)}
           </select>
           <label className="toggle-row">
             <input type="checkbox" checked={userForm.active} onChange={(event) => setUserForm((current) => ({ ...current, active: event.target.checked }))} />
@@ -2612,7 +2614,7 @@ export default function ManagerClient() {
             onChange={(event) => setUserFilter((current) => ({ ...current, role: event.target.value }))}
           >
             <option value="ALL">{t("common.all")}</option>
-            {["ADMIN", "MANAGER", "CASHIER", "KITCHEN"].map((role) => <option key={role} value={role}>{t(`role.${role}`)}</option>)}
+            {roles.map((role) => <option key={role} value={role}>{t(`role.${role}`)}</option>)}
           </select>
           <select
             aria-label={t("common.status")}

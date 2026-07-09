@@ -3,7 +3,7 @@ import AppShell from "../AppShell";
 import CashierClient from "../cashier/CashierClient";
 
 export default async function DataPage() {
-  const user = await requireUser(["ADMIN", "CASHIER"]);
+  const user = await requireUser(["ADMIN", "CASHIER", "DATA"]);
 
   return (
     <AppShell title="title.data" user={user}>

@@ -6,7 +6,7 @@ import { getSetting } from "@/lib/settings";
 import InvoicePrint from "./InvoicePrint";
 
 export default async function InvoicePage({ params }) {
-  await requireUser(["ADMIN", "MANAGER", "CASHIER", "KITCHEN"]);
+  await requireUser(["ADMIN", "MANAGER", "CASHIER", "KITCHEN", "DATA"]);
 
   const { id: rawId } = await params;
   const id = routeOrderId(rawId);

@@ -7,7 +7,7 @@ const { ROLE_MATRIX, normalizeRoleMatrix } = require("../lib/role-matrix.js");
 
 test("normalizeRoleMatrix uses fallback for missing permissions", () => {
   const normalized = normalizeRoleMatrix({ ORDER_READ: ["CASHIER"] });
-  assert.deepEqual(normalized.ORDER_READ, ["CASHIER"]);
+  assert.deepEqual(normalized.ORDER_READ, ["CASHIER", "DATA"]);
   assert.deepEqual(normalized.ORDER_PAY, ROLE_MATRIX.ORDER_PAY);
 });
 

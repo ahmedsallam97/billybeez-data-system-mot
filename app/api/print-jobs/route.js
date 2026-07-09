@@ -111,7 +111,7 @@ export async function POST(request) {
   if (type === "KITCHEN") {
     await upsertOrderRecord(prisma, updatedOrder, {
       preparationStartedAt: job.createdAt,
-      ...actorFields("preparationStarted", user, user.employee?.department === "RESTAURANT" ? user.employee : null),
+      ...actorFields("preparationStarted", user, user.employee?.department === "KITCHEN" ? user.employee : null),
     });
   }
 

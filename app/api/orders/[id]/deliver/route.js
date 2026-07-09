@@ -21,7 +21,7 @@ export async function POST(request, { params }) {
     return NextResponse.json({ success: false, error: "Order not found" }, { status: 404 });
   }
 
-  const deliveryEmployeeId = String(user.employee?.department === "RESTAURANT" ? user.employeeId : body.deliveryEmployeeId || body.restaurantEmployeeId || "");
+  const deliveryEmployeeId = String(user.employee?.department === "KITCHEN" ? user.employeeId : body.deliveryEmployeeId || body.restaurantEmployeeId || "");
   let deliveryEmployee = null;
 
   if (deliveryEmployeeId) {
@@ -29,7 +29,7 @@ export async function POST(request, { params }) {
       where: {
         id: deliveryEmployeeId,
         active: true,
-        department: "RESTAURANT",
+        department: "KITCHEN",
       },
     });
   }

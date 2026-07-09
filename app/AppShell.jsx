@@ -10,7 +10,7 @@ export default function AppShell({ title, user, children }) {
   const router = useRouter();
   const { t, labelRole } = useI18n();
   const shellTitle = title?.startsWith("title.") ? t(title) : title;
-  const requiresDayPassword = title !== "title.manager" || user.role === "CASHIER" || user.role === "KITCHEN";
+  const requiresDayPassword = title !== "title.manager" || ["CASHIER", "KITCHEN", "DATA"].includes(user.role);
 
   async function logout() {
     await fetch("/api/auth/logout", { method: "POST" });
@@ -29,7 +29,7 @@ export default function AppShell({ title, user, children }) {
         </div>
         <nav className="nav">
           {(user.role === "ADMIN" || user.role === "MANAGER") && <Link className="nav-manager" href="/manager">{t("nav.manager")}</Link>}
-          {(user.role === "ADMIN" || user.role === "CASHIER") && <Link className="nav-data" href="/data">{t("nav.data")}</Link>}
+          {(user.role === "ADMIN" || user.role === "CASHIER" || user.role === "DATA") && <Link className="nav-data" href="/data">{t("nav.data")}</Link>}
           {(user.role === "ADMIN" || user.role === "KITCHEN") && <Link className="nav-kitchen" href="/kitchen">{t("nav.kitchen")}</Link>}
           {(user.role === "ADMIN" || user.role === "MANAGER") && (
             <a className="nav-database" href="http://127.0.0.1:5555" target="_blank" rel="noreferrer">

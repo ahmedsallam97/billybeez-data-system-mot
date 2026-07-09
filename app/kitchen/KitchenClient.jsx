@@ -29,7 +29,7 @@ export default function KitchenClient({ user }) {
   const [uiMessages, setUiMessages] = useState(normalizeUiMessages());
   const [uiPrefsReady, setUiPrefsReady] = useState(false);
   const ordersLoadRef = useRef(false);
-  const isLinkedKitchenEmployeeAccount = user?.role === "KITCHEN" && user?.employeeId && user?.employee?.department === "RESTAURANT";
+  const isLinkedKitchenEmployeeAccount = user?.role === "KITCHEN" && user?.employeeId && user?.employee?.department === "KITCHEN";
   const linkedRestaurantEmployeeId = isLinkedKitchenEmployeeAccount ? user.employeeId : "";
   const linkedRestaurantEmployeeName = isLinkedKitchenEmployeeAccount ? user.employee.name : "";
 
@@ -193,7 +193,7 @@ export default function KitchenClient({ user }) {
   }
 
   async function loadRestaurantEmployees() {
-    const res = await fetch("/api/employees?department=RESTAURANT");
+    const res = await fetch("/api/employees?department=KITCHEN");
     const employees = await res.json();
     setRestaurantEmployees(employees);
 

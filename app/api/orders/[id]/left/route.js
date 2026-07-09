@@ -51,11 +51,11 @@ export async function POST(request, { params }) {
     }
   }
 
-  if (!nextCustomerLeft && user.role === "CASHIER" && managerPassword !== rules.businessDayPassword) {
+  if (!nextCustomerLeft && ["CASHIER", "DATA"].includes(user.role) && managerPassword !== rules.businessDayPassword) {
     return NextResponse.json({ success: false, error: "Manager password is required" }, { status: 403 });
   }
 
-  if (nextCustomerLeft && user.role === "CASHIER" && !exitEmployee) {
+  if (nextCustomerLeft && ["CASHIER", "DATA"].includes(user.role) && !exitEmployee) {
     return NextResponse.json({ success: false, error: "Data employee is required" }, { status: 400 });
   }
 
@@ -121,7 +121,7 @@ export async function POST(request, { params }) {
       kitchenStatus: order.kitchenStatus,
       exitEmployee: exitEmployee?.name || null,
       customerLeftAt,
-      managerPasswordUsed: !nextCustomerLeft && user.role === "CASHIER",
+      managerPasswordUsed: !nextCustomerLeft && ["CASHIER", "DATA"].includes(user.role),
     },
     before: orderAuditSnapshot(current),
     after: orderAuditSnapshot(order),

@@ -238,14 +238,16 @@ h1,h2,h3{color:var(--bb-purple);font-weight:900;margin-top:0}
   grid-template-columns:minmax(64px,.8fr) minmax(56px,.7fr) minmax(0,1fr);
   align-items:center;
   gap:8px;
-  padding:5px 0;
+  min-height:34px;
+  padding:4px 0;
   border-bottom:1px solid var(--bb-line);
   font-size:13px;
 }
 .order-item-row:last-child{border-bottom:0}
-.order-item-row b{color:var(--bb-purple);font-weight:950;text-align:start}
-.order-item-row small{color:var(--bb-blue);font-size:11px;font-weight:900;text-align:center;white-space:nowrap;direction:ltr;unicode-bidi:isolate}
-.order-item-row span{text-align:end;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.order-item-row > *{align-self:center;line-height:1.1;min-height:22px;display:flex;align-items:center}
+.order-item-row b{color:var(--bb-purple);font-weight:950;text-align:start;justify-content:flex-start}
+.order-item-row small{color:var(--bb-blue);font-size:11px;font-weight:900;text-align:center;white-space:nowrap;direction:ltr;unicode-bidi:isolate;justify-content:center}
+.order-item-row span{text-align:end;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;justify-content:flex-end}
 .order-cell .summary .row{font-size:14px;padding:5px 0;gap:9px}
 .order-cell .summary .order-total-row{
   flex-shrink:0;

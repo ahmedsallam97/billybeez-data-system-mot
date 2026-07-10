@@ -195,7 +195,7 @@ prisma/dev.db
 Latest USB backup created during this update:
 
 ```text
-C:\Users\asall\Documents\Codex\2026-06-17\https-chatgpt-com-c-6a2f0385-ba30\work\billybeez-website-usb-backup-20260710-021322.zip
+C:\Users\asall\Documents\Codex\2026-06-17\https-chatgpt-com-c-6a2f0385-ba30\work\billybeez-data-system-mot\backups\billybeez-website-usb-backup-20260711-022250.zip
 ```
 
 ## GitHub
@@ -212,11 +212,12 @@ Repository:
 https://github.com/ahmedsallam97/billybeez-data-system-mot
 ```
 
-Latest implementation commit before this README update:
+Latest update scope:
 
-```text
-c81fefc fix: center order item row content
-```
+- Modern manager reports dashboard
+- Month-to-date default reports calendar
+- Payment donut chart with amount/count/percentage cards
+- Configurable report KPI card colors and icon URLs from manager settings
 
 ## Features
 
@@ -235,6 +236,8 @@ c81fefc fix: center order item row content
 - Kitchen ticket print flow
 - Invoice print flow
 - Daily reports and export support
+- Modern reports dashboard with area chart, donut chart, KPI cards, activity, and top orders
+- Report cards configurable from manager settings: icon URL, gradient colors, and text color
 - Local product images, no random external image URLs
 
 ## Important Workflow Rules

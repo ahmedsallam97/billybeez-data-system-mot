@@ -107,6 +107,28 @@ const uiMessageGroups = [
   },
 ];
 
+function cairoTodayIso() {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Africa/Cairo",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(new Date());
+  const map = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+  return `${map.year}-${map.month}-${map.day}`;
+}
+
+function monthToDateFilter(day = cairoTodayIso()) {
+  const month = day.slice(0, 7);
+  return {
+    day,
+    month,
+    year: day.slice(0, 4),
+    from: `${month}-01`,
+    to: day,
+  };
+}
+
 export default function ManagerClient() {
   const toast = useToast();
   const { language, t, formatNumber, currency, labelAudit, labelBusinessMessage, labelDepartment, labelMethod, labelOrderStage, labelStatus, formatDateTime } = useI18n();
@@ -118,10 +140,10 @@ export default function ManagerClient() {
   const [productForm, setProductForm] = useState(emptyProductForm);
   const [userForm, setUserForm] = useState(emptyUserForm);
   const [viewMode, setViewMode] = useState("TODAY");
-  const [dateFilterMode, setDateFilterMode] = useState("DAY");
-  const [dateFilter, setDateFilter] = useState({ day: "", month: "", year: "", from: "", to: "" });
+  const [dateFilterMode, setDateFilterMode] = useState("RANGE");
+  const [dateFilter, setDateFilter] = useState(() => monthToDateFilter());
   const [datePickerOpen, setDatePickerOpen] = useState(false);
-  const [calendarMonth, setCalendarMonth] = useState("");
+  const [calendarMonth, setCalendarMonth] = useState(() => monthToDateFilter().month);
   const [filter, setFilter] = useState("ALL");
   const [archiveFilter, setArchiveFilter] = useState("ALL");
   const [managerTab, setManagerTab] = useState("orders");
@@ -168,14 +190,16 @@ export default function ManagerClient() {
     const savedArchiveFilter = localStorage.getItem("managerArchiveFilter");
     const savedDateFilterMode = localStorage.getItem("managerDateFilterMode");
     const savedDateFilter = localStorage.getItem("managerDateFilter");
+    const savedDateDefaultVersion = localStorage.getItem("managerDateFilterDefaultVersion");
+    const shouldUseSavedDateFilter = savedDateDefaultVersion === "month-to-date-v1";
 
     if (["orders", "review", "reports", "settings", "records", "activity"].includes(savedManagerTab)) setManagerTab(savedManagerTab);
     if (["employees", "products", "users", "branch", "invoice", "printing", "business", "workflow", "reports", "recordsStyle", "auditBackup", "backupRestore", "messages"].includes(savedSettingsTab)) setSettingsTab(savedSettingsTab);
     if (["TODAY", "HISTORY"].includes(savedViewMode)) setViewMode(savedViewMode);
     if (["ALL", "CASH", "VISA", "UNPAID"].includes(savedFilter)) setFilter(savedFilter);
     if (["ALL", "ACTIVE", "ARCHIVED", "UNREGISTERED"].includes(savedArchiveFilter)) setArchiveFilter(savedArchiveFilter);
-    if (["DAY", "YESTERDAY", "MONTH", "YEAR", "RANGE"].includes(savedDateFilterMode)) setDateFilterMode(savedDateFilterMode);
-    if (savedDateFilter) {
+    if (shouldUseSavedDateFilter && ["DAY", "YESTERDAY", "MONTH", "YEAR", "RANGE"].includes(savedDateFilterMode)) setDateFilterMode(savedDateFilterMode);
+    if (shouldUseSavedDateFilter && savedDateFilter) {
       try {
         const parsedDateFilter = JSON.parse(savedDateFilter);
         if (parsedDateFilter && typeof parsedDateFilter === "object") {
@@ -190,6 +214,12 @@ export default function ManagerClient() {
           else if (parsedDateFilter.day) setCalendarMonth(String(parsedDateFilter.day).slice(0, 7));
         }
       } catch {}
+    } else {
+      const nextFilter = monthToDateFilter();
+      setDateFilterMode("RANGE");
+      setDateFilter(nextFilter);
+      setCalendarMonth(nextFilter.month);
+      localStorage.setItem("managerDateFilterDefaultVersion", "month-to-date-v1");
     }
     setUiPrefsReady(true);
   }, []);
@@ -734,6 +764,14 @@ export default function ManagerClient() {
     }
   }
 
+  function applyMonthToDate() {
+    const nextFilter = monthToDateFilter(data?.reportBusinessDate || cairoTodayIso());
+    setDateFilterMode("RANGE");
+    setCalendarMonth(nextFilter.month);
+    setDateFilter(nextFilter);
+    setDatePickerOpen(false);
+  }
+
   function selectCalendarDay(day) {
     if (!day) return;
     const month = day.slice(0, 7);
@@ -762,7 +800,7 @@ export default function ManagerClient() {
       <div className="date-range-control">
         <button type="button" className="date-picker-trigger" onClick={() => setDatePickerOpen((current) => !current)} aria-expanded={datePickerOpen}>
           <span className="date-range-icon" aria-hidden="true" />
-          <span>{selectedPeriodLabel() || t("manager.dateRange")}</span>
+          <span className="date-picker-label">{selectedPeriodLabel() || t("manager.dateRange")}</span>
         </button>
         {datePickerOpen && (
           <div className="date-picker-popover">
@@ -953,18 +991,26 @@ export default function ManagerClient() {
   function buildPeriodReports(orders) {
     const paymentMap = new Map();
     const productMap = new Map();
+    const productQtyMap = new Map();
     const statusMap = new Map();
     const cashierMap = new Map();
     const employeeMap = new Map();
     const braceletMap = new Map();
     const dayMap = new Map();
+    let totalSales = 0;
+    let paidSales = 0;
+    let geideaCount = 0;
 
     orders.forEach((order) => {
       const total = Number(order.total) || 0;
+      totalSales += total;
+      if (order.paymentStatus === "PAID") paidSales += total;
+      if (order.geideaRegisteredAt) geideaCount += 1;
+
       const paymentKey = order.paymentStatus === "PAID" ? (order.paymentMethod || "UNKNOWN") : "UNPAID";
       const paymentRow = paymentMap.get(paymentKey) || { method: paymentKey, count: 0, total: 0 };
       paymentRow.count += 1;
-      paymentRow.total += total;
+      paymentRow.total += paymentKey === "UNPAID" ? 0 : total;
       paymentMap.set(paymentKey, paymentRow);
 
       const statusKey = order.archivedAt ? "ARCHIVED" : order.paymentStatus;
@@ -999,18 +1045,43 @@ export default function ManagerClient() {
         const productRow = productMap.get(name) || { name, total: 0 };
         productRow.total += Number(item.total) || 0;
         productMap.set(name, productRow);
+
+        const qtyRow = productQtyMap.get(name) || { name, qty: 0 };
+        qtyRow.qty += Number(item.qty) || 0;
+        productQtyMap.set(name, qtyRow);
       });
     });
 
     const byTotal = (a, b) => b.total - a.total;
+    const orderCount = orders.length;
+    const topOrders = [...orders]
+      .sort((a, b) => (Number(b.total) || 0) - (Number(a.total) || 0))
+      .slice(0, 6)
+      .map((order) => ({
+        id: order.id,
+        braceletNo: order.braceletNo,
+        childNames: order.childNames,
+        total: Number(order.total) || 0,
+        status: order.archivedAt ? "ARCHIVED" : order.paymentStatus,
+      }));
+
     return {
+      summary: {
+        orderCount,
+        totalSales,
+        paidSales,
+        averageOrder: orderCount ? totalSales / orderCount : 0,
+        geideaRate: orderCount ? Math.round((geideaCount / orderCount) * 100) : 0,
+      },
       paymentBreakdown: [...paymentMap.values()].sort(byTotal),
       topProducts: [...productMap.values()].sort(byTotal).slice(0, 8),
+      topProductQty: [...productQtyMap.values()].sort((a, b) => b.qty - a.qty).slice(0, 8),
       statusBreakdown: [...statusMap.values()].sort((a, b) => b.count - a.count),
       cashierPerformance: [...cashierMap.values()].sort(byTotal).slice(0, 8),
       dataEmployeePerformance: [...employeeMap.values()].sort(byTotal).slice(0, 8),
       topBracelets: [...braceletMap.values()].sort(byTotal).slice(0, 8),
       dailySales: [...dayMap.values()].sort((a, b) => a.date.localeCompare(b.date)),
+      topOrders,
     };
   }
 
@@ -1976,6 +2047,22 @@ export default function ManagerClient() {
       { key: "REPORT_SHOW_CASH_VISA_GEIDEA", label: t("settings.showCashVisaGeidea"), type: "checkbox" },
       { key: "REPORT_ENABLE_EXCEL_EXPORT", label: t("settings.enableExcel"), type: "checkbox" },
       { key: "REPORT_ENABLE_PDF_EXPORT", label: t("settings.enablePdf"), type: "checkbox" },
+      { key: "REPORT_ORDERS_CARD_ICON_URL", label: t("settings.reportOrdersCardIcon") },
+      { key: "REPORT_ORDERS_CARD_COLOR_START", label: t("settings.reportOrdersCardStart"), type: "color", defaultValue: "#e94b96" },
+      { key: "REPORT_ORDERS_CARD_COLOR_END", label: t("settings.reportOrdersCardEnd"), type: "color", defaultValue: "#d93074" },
+      { key: "REPORT_ORDERS_CARD_TEXT_COLOR", label: t("settings.reportOrdersCardText"), type: "color", defaultValue: "#ffffff" },
+      { key: "REPORT_AVERAGE_CARD_ICON_URL", label: t("settings.reportAverageCardIcon") },
+      { key: "REPORT_AVERAGE_CARD_COLOR_START", label: t("settings.reportAverageCardStart"), type: "color", defaultValue: "#6d4cd7" },
+      { key: "REPORT_AVERAGE_CARD_COLOR_END", label: t("settings.reportAverageCardEnd"), type: "color", defaultValue: "#301848" },
+      { key: "REPORT_AVERAGE_CARD_TEXT_COLOR", label: t("settings.reportAverageCardText"), type: "color", defaultValue: "#ffffff" },
+      { key: "REPORT_GEIDEA_CARD_ICON_URL", label: t("settings.reportGeideaCardIcon") },
+      { key: "REPORT_GEIDEA_CARD_COLOR_START", label: t("settings.reportGeideaCardStart"), type: "color", defaultValue: "#36acd4" },
+      { key: "REPORT_GEIDEA_CARD_COLOR_END", label: t("settings.reportGeideaCardEnd"), type: "color", defaultValue: "#005eb8" },
+      { key: "REPORT_GEIDEA_CARD_TEXT_COLOR", label: t("settings.reportGeideaCardText"), type: "color", defaultValue: "#ffffff" },
+      { key: "REPORT_PAID_CARD_ICON_URL", label: t("settings.reportPaidCardIcon") },
+      { key: "REPORT_PAID_CARD_COLOR_START", label: t("settings.reportPaidCardStart"), type: "color", defaultValue: "#ffb12b" },
+      { key: "REPORT_PAID_CARD_COLOR_END", label: t("settings.reportPaidCardEnd"), type: "color", defaultValue: "#ff671f" },
+      { key: "REPORT_PAID_CARD_TEXT_COLOR", label: t("settings.reportPaidCardText"), type: "color", defaultValue: "#ffffff" },
     ],
     auditBackup: [
       { key: "AUDIT_RETENTION_DAYS", label: t("settings.auditRetention"), type: "number", min: 1 },
@@ -2008,6 +2095,12 @@ export default function ManagerClient() {
       field.label,
     ].some((value) => String(value || "").toLowerCase().includes(search)));
     return String(label || "").toLowerCase().includes(search) || fieldMatches;
+  });
+  const reportCardStyle = (prefix, fallbackStart, fallbackEnd) => ({
+    iconUrl: settingsMap[`REPORT_${prefix}_CARD_ICON_URL`] || "",
+    startColor: settingsMap[`REPORT_${prefix}_CARD_COLOR_START`] || fallbackStart,
+    endColor: settingsMap[`REPORT_${prefix}_CARD_COLOR_END`] || fallbackEnd,
+    textColor: settingsMap[`REPORT_${prefix}_CARD_TEXT_COLOR`] || "#ffffff",
   });
 
   return (
@@ -2240,54 +2333,87 @@ export default function ManagerClient() {
         )}
       </section>}
 
-      {managerTab === "reports" && <>
-      <section className="panel">
-        <div className="row">
+      {managerTab === "reports" && <div className="reports-dashboard-shell">
+        <section className="reports-control-bar">
           <div>
-            <h2>{t("manager.tabReports")}</h2>
-            <div className="muted">{t("manager.reportsExportHint")}</div>
+            <h2>{t("manager.reportDashboard")}</h2>
+            <div className="muted">{t("manager.reportDashboardHint")}</div>
           </div>
-          <div className="actions">
+          <div className="reports-period-tabs">
+            <button className={dateFilterMode === "DAY" ? "active" : ""} onClick={() => applyDatePreset("DAY")}>{t("manager.rangeToday")}</button>
+            <button className={dateFilterMode === "RANGE" ? "active" : ""} onClick={applyMonthToDate}>{t("manager.monthToDate")}</button>
+            <button className={dateFilterMode === "MONTH" ? "active" : ""} onClick={() => applyDatePreset("MONTH")}>{t("manager.rangeMonth")}</button>
+            <button className={dateFilterMode === "YEAR" ? "active" : ""} onClick={() => applyDatePreset("YEAR")}>{t("manager.rangeYear")}</button>
+          </div>
+          <div className="actions reports-toolbar-actions">
             {renderDateRangePicker()}
             <button className="btn-print" onClick={exportReportsCsv}>{t("manager.exportExcel")}</button>
             <button className="btn-details" onClick={printReportsPdf}>{t("manager.exportPdf")}</button>
           </div>
-        </div>
-      </section>
+        </section>
 
-      <section className="grid three">
-        <div className="panel">
-          <h3>{t("manager.paymentBreakdown")}</h3>
-          {periodReports.paymentBreakdown.map((row) => (
-            <div className="row" key={row.method}><span>{labelMethod(row.method)} ({formatNumber(row.count)})</span><b>{currency(row.total)}</b></div>
-          ))}
-          <MiniBars rows={periodReports.paymentBreakdown} labelKey="method" valueKey="total" labelFormatter={labelMethod} valueFormatter={currency} />
-        </div>
-        <div className="panel">
-          <h3>{t("manager.topProducts")}</h3>
-          {periodReports.topProducts.map((product) => (
-            <div className="row" key={product.name}><span>{product.name}</span><b>{currency(product.total)}</b></div>
-          ))}
-        </div>
-        <div className="panel">
-          <h3>{t("manager.statusBreakdown")}</h3>
-          {periodReports.statusBreakdown.map((row) => (
-            <div className="row" key={row.status}><span>{labelStatus(row.status)}</span><b>{formatNumber(row.count)}</b></div>
-          ))}
-        </div>
-      </section>
+        <section className="reports-hero-grid">
+          <div className="reports-hero-card">
+            <div className="reports-hero-summary">
+              <span>{t("manager.reportOverview")}</span>
+              <small>{selectedPeriodLabel()}</small>
+              <b>{currency(periodReports.summary.totalSales)}</b>
+              <em>{t("manager.totalSales")}</em>
+              <button className="report-summary-button" onClick={printReportsPdf}>{t("manager.exportPdf")}</button>
+            </div>
+            <AreaChart
+              title={t("manager.dailySales")}
+              rows={periodReports.dailySales}
+              valueKey="total"
+              labelKey="date"
+              valueFormatter={currency}
+              emptyLabel={t("common.noData")}
+            />
+          </div>
+          <DonutChart
+            title={t("manager.paymentBreakdown")}
+            rows={periodReports.paymentBreakdown}
+            labelKey="method"
+            valueKey="total"
+            countKey="count"
+            labelFormatter={labelMethod}
+            valueFormatter={currency}
+            emptyLabel={t("common.noData")}
+          />
+        </section>
 
-      <section className="grid three">
-        <Report title={t("manager.cashierPerformance")} rows={periodReports.cashierPerformance} labelKey="name" valueKey="total" formatValue={currency} emptyLabel={t("common.noData")} />
-        <Report title={t("manager.employees")} rows={periodReports.dataEmployeePerformance} labelKey="name" valueKey="total" formatValue={currency} emptyLabel={t("common.noData")} />
-        <Report title={t("manager.topBracelets")} rows={periodReports.topBracelets} labelKey="bracelet" valueKey="total" formatValue={currency} emptyLabel={t("common.noData")} />
-      </section>
+        <section className="report-gradient-grid">
+          <GradientSummaryCard tone="pink" title={t("manager.orders")} value={formatNumber(periodReports.summary.orderCount)} caption={t("manager.reportOrdersCaption")} styleConfig={reportCardStyle("ORDERS", "#e94b96", "#d93074")} />
+          <GradientSummaryCard tone="purple" title={t("manager.averageOrder")} value={currency(periodReports.summary.averageOrder)} caption={t("manager.reportAverageCaption")} styleConfig={reportCardStyle("AVERAGE", "#6d4cd7", "#301848")} />
+          <GradientSummaryCard tone="blue" title={t("manager.notRegisteredGeidea")} value={`${formatNumber(periodReports.summary.geideaRate)}%`} caption={t("manager.geideaRate")} styleConfig={reportCardStyle("GEIDEA", "#36acd4", "#005eb8")} />
+          <GradientSummaryCard tone="orange" title={t("manager.totalPaidSales")} value={currency(periodReports.summary.paidSales)} caption={t("manager.reportPaidCaption")} styleConfig={reportCardStyle("PAID", "#ffb12b", "#ff671f")} />
+        </section>
 
-      <section className="panel">
-        <h3>{t("manager.dailySales")}</h3>
-        <MiniBars rows={periodReports.dailySales} labelKey="date" valueKey="total" valueFormatter={currency} />
-      </section>
-      </>}
+        <section className="reports-lower-grid">
+          <RecentActivityCard
+            title={t("manager.recentActivity")}
+            rows={periodAuditLogs.slice(0, 5)}
+            labelAudit={labelAudit}
+            formatDateTime={formatDateTime}
+            emptyLabel={t("manager.noActivity")}
+          />
+          <TopOrdersTable
+            title={t("manager.topOrders")}
+            rows={periodReports.topOrders}
+            t={t}
+            currency={currency}
+            labelStatus={labelStatus}
+            emptyLabel={t("common.noData")}
+          />
+        </section>
+
+        <section className="report-dashboard-grid report-dashboard-grid-wide">
+          <DashboardBars title={t("manager.topProducts")} rows={periodReports.topProducts} labelKey="name" valueKey="total" valueFormatter={currency} emptyLabel={t("common.noData")} />
+          <DashboardBars title={t("manager.productQuantity")} rows={periodReports.topProductQty} labelKey="name" valueKey="qty" valueFormatter={formatNumber} emptyLabel={t("common.noData")} />
+          <DashboardBars title={t("manager.employees")} rows={periodReports.dataEmployeePerformance} labelKey="name" valueKey="total" valueFormatter={currency} emptyLabel={t("common.noData")} />
+          <DashboardBars title={t("manager.topBracelets")} rows={periodReports.topBracelets} labelKey="bracelet" valueKey="total" valueFormatter={currency} emptyLabel={t("common.noData")} />
+        </section>
+      </div>}
 
       {managerTab === "settings" && <section className="panel settings-shell">
         <aside className="settings-sidebar">
@@ -3083,6 +3209,262 @@ function Report({ title, rows, labelKey, valueKey, formatValue, emptyLabel }) {
           <b>{formatValue ? formatValue(row[valueKey]) : row[valueKey]}</b>
         </div>
       ))}
+    </div>
+  );
+}
+
+function AreaChart({ title, rows, labelKey, valueKey, valueFormatter, emptyLabel }) {
+  const width = 620;
+  const height = 230;
+  const padX = 26;
+  const padY = 24;
+  const chartRows = rows.length ? rows : [{ [labelKey]: "", [valueKey]: 0 }];
+  const values = chartRows.map((row) => Number(row[valueKey]) || 0);
+  const max = Math.max(...values, 1);
+  const step = chartRows.length > 1 ? (width - padX * 2) / (chartRows.length - 1) : 0;
+  const points = chartRows.map((row, index) => {
+    const x = padX + step * index;
+    const y = height - padY - ((Number(row[valueKey]) || 0) / max) * (height - padY * 2);
+    return { x, y, row };
+  });
+  const linePath = points.map((point, index) => `${index === 0 ? "M" : "L"} ${point.x} ${point.y}`).join(" ");
+  const lastPoint = points[points.length - 1];
+  const areaPath = `${linePath} L ${lastPoint.x} ${height - padY} L ${points[0].x} ${height - padY} Z`;
+
+  return (
+    <div className="area-chart-card">
+      <div className="area-chart-head">
+        <h3>{title}</h3>
+        <div className="chart-dot-legend"><span className="dot dot-pink" />{valueFormatter ? valueFormatter(max) : max}</div>
+      </div>
+      {rows.length === 0 ? (
+        <div className="muted">{emptyLabel}</div>
+      ) : (
+        <svg className="area-chart-svg" viewBox={`0 0 ${width} ${height}`} role="img" aria-label={title}>
+          <defs>
+            <linearGradient id="salesAreaGradient" x1="0" x2="0" y1="0" y2="1">
+              <stop offset="0%" stopColor="#e94b96" stopOpacity="0.34" />
+              <stop offset="55%" stopColor="#ff671f" stopOpacity="0.18" />
+              <stop offset="100%" stopColor="#ffffff" stopOpacity="0" />
+            </linearGradient>
+            <filter id="chartGlow" x="-20%" y="-20%" width="140%" height="140%">
+              <feDropShadow dx="0" dy="7" stdDeviation="6" floodColor="#e94b96" floodOpacity="0.22" />
+            </filter>
+          </defs>
+          {[0.25, 0.5, 0.75].map((ratio) => (
+            <line key={ratio} x1={padX} x2={width - padX} y1={padY + ratio * (height - padY * 2)} y2={padY + ratio * (height - padY * 2)} className="area-grid-line" />
+          ))}
+          <path d={areaPath} fill="url(#salesAreaGradient)" />
+          <path d={linePath} className="area-line area-line-pink" filter="url(#chartGlow)" />
+          <path
+            d={points.map((point, index) => {
+              const wobble = index % 2 === 0 ? 14 : -10;
+              const y = Math.max(padY, Math.min(height - padY, point.y + wobble));
+              return `${index === 0 ? "M" : "L"} ${point.x} ${y}`;
+            }).join(" ")}
+            className="area-line area-line-purple"
+          />
+          {points.map((point, index) => (
+            <g key={`${point.row[labelKey]}-${index}`}>
+              <circle cx={point.x} cy={point.y} r="4.5" className="area-point" />
+              {(index === 0 || index === points.length - 1 || index % 3 === 0) && (
+                <text x={point.x} y={height - 5} textAnchor="middle" className="area-label">{String(point.row[labelKey] || "").slice(5)}</text>
+              )}
+            </g>
+          ))}
+        </svg>
+      )}
+    </div>
+  );
+}
+
+function GradientSummaryCard({ tone, title, value, caption, styleConfig }) {
+  const customStyle = {
+    "--summary-start": styleConfig?.startColor,
+    "--summary-end": styleConfig?.endColor,
+    "--summary-text": styleConfig?.textColor,
+  };
+
+  return (
+    <div className={`gradient-summary-card gradient-summary-${tone}`} style={customStyle}>
+      {styleConfig?.iconUrl ? (
+        <img className="gradient-summary-icon" src={styleConfig.iconUrl} alt="" aria-hidden="true" />
+      ) : (
+        <div className="mini-chart-icon" aria-hidden="true"><i /><i /><i /><i /></div>
+      )}
+      <span>{title}</span>
+      <b>{value}</b>
+      <small>{caption}</small>
+    </div>
+  );
+}
+
+function RecentActivityCard({ title, rows, labelAudit, formatDateTime, emptyLabel }) {
+  return (
+    <div className="panel report-activity-card">
+      <h3>{title}</h3>
+      {rows.length === 0 ? (
+        <div className="muted">{emptyLabel}</div>
+      ) : rows.map((row, index) => (
+        <div className="report-activity-item" key={row.id || `${row.action}-${index}`}>
+          <span>{formatDateTime(row.createdAt)}</span>
+          <i />
+          <div>
+            <b>{labelAudit(row.summary || row.action)}</b>
+            <small>{row.user || row.orderId || "-"}</small>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function TopOrdersTable({ title, rows, t, currency, labelStatus, emptyLabel }) {
+  return (
+    <div className="panel report-table-card">
+      <div className="report-chart-head">
+        <h3>{title}</h3>
+      </div>
+      {rows.length === 0 ? (
+        <div className="muted">{emptyLabel}</div>
+      ) : (
+        <div className="report-mini-table">
+          <div className="report-mini-table-head">
+            <span>{t("common.order")}</span>
+            <span>{t("common.bracelet")}</span>
+            <span>{t("common.children")}</span>
+            <span>{t("common.orderTotal")}</span>
+            <span>{t("common.status")}</span>
+          </div>
+          {rows.map((row) => (
+            <div className="report-mini-table-row" key={row.id}>
+              <b>{row.id}</b>
+              <span>{row.braceletNo}</span>
+              <span>{row.childNames}</span>
+              <b>{currency(row.total)}</b>
+              <em>{labelStatus(row.status)}</em>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ReportKpi({ label, value, tone }) {
+  return (
+    <div className={`report-kpi report-kpi-${tone}`}>
+      <span>{label}</span>
+      <b>{value}</b>
+    </div>
+  );
+}
+
+function chartColor(key, index = 0) {
+  const normalized = String(key || "").toUpperCase();
+  if (normalized.includes("CASH")) return "#301848";
+  if (normalized.includes("VISA")) return "#31aa2f";
+  if (normalized.includes("UNPAID")) return "#e01838";
+  if (normalized.includes("ARCHIVED")) return "#005eb8";
+  const palette = ["#ff671f", "#36acd4", "#e94b96", "#f8c800", "#4b2874", "#00843d", "#c8102e", "#7a3f0c"];
+  return palette[index % palette.length];
+}
+
+function splitChartValueLabel(label) {
+  const value = String(label || "").trim();
+  const match = value.match(/^(.+?)\s+([^\d\s]+)$/u);
+  if (!match) return { amount: value, unit: "" };
+  return { amount: match[1], unit: match[2] };
+}
+
+function DonutChart({ title, rows, labelKey, valueKey, countKey, labelFormatter, valueFormatter, emptyLabel }) {
+  const chartRows = rows.filter((row) => Number(row[valueKey]) > 0);
+  const total = chartRows.reduce((sum, row) => sum + (Number(row[valueKey]) || 0), 0);
+  const totalLabel = splitChartValueLabel(valueFormatter ? valueFormatter(total) : total);
+  let cursor = 0;
+  const gradient = total > 0
+    ? chartRows.map((row, index) => {
+        const value = Number(row[valueKey]) || 0;
+        const start = cursor;
+        const end = cursor + (value / total) * 100;
+        cursor = end;
+        return `${chartColor(row[labelKey], index)} ${start}% ${end}%`;
+      }).join(", ")
+    : "#eee4ca 0 100%";
+
+  return (
+    <div className="panel report-chart-card">
+      <div className="report-chart-head">
+        <h3>{title}</h3>
+        <b>{valueFormatter ? valueFormatter(total) : total}</b>
+      </div>
+      {rows.length === 0 ? (
+        <div className="muted">{emptyLabel}</div>
+      ) : (
+        <div className="donut-chart-layout">
+          <div className="donut-chart" style={{ background: `conic-gradient(${gradient})` }}>
+            <div>
+              <b>{totalLabel.amount}</b>
+              {totalLabel.unit && <strong>{totalLabel.unit}</strong>}
+              <span>{title}</span>
+            </div>
+          </div>
+          <div className="chart-legend payment-chart-legend">
+            {rows.map((row, index) => {
+              const value = Number(row[valueKey]) || 0;
+              const percent = total ? Math.round((value / total) * 100) : 0;
+              return (
+                <div className="payment-legend-card" key={row[labelKey]}>
+                  <div className="payment-legend-top">
+                    <span>{labelFormatter ? labelFormatter(row[labelKey]) : row[labelKey]}</span>
+                    <i style={{ background: chartColor(row[labelKey], index) }} />
+                  </div>
+                  <b>{valueFormatter ? valueFormatter(value) : value}</b>
+                  {countKey && <small>{row[countKey]} · {percent}%</small>}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function DashboardBars({ title, rows, labelKey, valueKey, valueFormatter, emptyLabel }) {
+  const max = Math.max(...rows.map((row) => Number(row[valueKey]) || 0), 1);
+
+  return (
+    <div className="panel report-chart-card">
+      <div className="report-chart-head">
+        <h3>{title}</h3>
+      </div>
+      {rows.length === 0 ? (
+        <div className="muted">{emptyLabel}</div>
+      ) : (
+        <div className="dashboard-bars">
+          {rows.slice(0, 8).map((row, index) => {
+            const value = Number(row[valueKey]) || 0;
+            return (
+              <div className="dashboard-bar-row" key={row[labelKey]}>
+                <div className="dashboard-bar-label">
+                  <span>{row[labelKey]}</span>
+                  <b>{valueFormatter ? valueFormatter(value) : value}</b>
+                </div>
+                <div className="dashboard-bar-track">
+                  <div
+                    className="dashboard-bar-fill"
+                    style={{
+                      width: `${Math.max(5, (value / max) * 100)}%`,
+                      background: chartColor(row[labelKey], index),
+                    }}
+                  />
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }

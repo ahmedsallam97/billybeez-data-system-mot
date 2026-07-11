@@ -1,8 +1,10 @@
-# BillyBeez Data System MOT
+# Data-Kitchen-System
 
 Next.js + Prisma POS/data system for BillyBeez daily operations.
 
 The current active system is the Next.js app. The old Google Apps Script/static HTML files are still kept in the repository as legacy migration references only.
+
+This branch is the stable daily-operation version. Larger upgrades should continue on a separate upgrade branch/worktree so this version can still be run when needed.
 
 ## Current Stack
 
@@ -192,10 +194,10 @@ and include the latest database backup as:
 prisma/dev.db
 ```
 
-Latest USB backup created during this update:
+Latest stable USB backup:
 
 ```text
-C:\Users\asall\Documents\Codex\2026-06-17\https-chatgpt-com-c-6a2f0385-ba30\work\billybeez-data-system-mot\backups\billybeez-website-usb-backup-20260711-022250.zip
+C:\Users\asall\Documents\Codex\2026-06-17\https-chatgpt-com-c-6a2f0385-ba30\work\billybeez-data-system-mot\backups\Data-Kitchen-System-20260711-025358.zip
 ```
 
 ## GitHub
@@ -203,7 +205,7 @@ C:\Users\asall\Documents\Codex\2026-06-17\https-chatgpt-com-c-6a2f0385-ba30\work
 Current working branch:
 
 ```text
-ui-redesign-work-20260701-044749
+Data-Kitchen-System
 ```
 
 Repository:
@@ -218,6 +220,7 @@ Latest update scope:
 - Month-to-date default reports calendar
 - Payment donut chart with amount/count/percentage cards
 - Configurable report KPI card colors and icon URLs from manager settings
+- Stable branch prepared for future next-level upgrade work
 
 ## Features
 

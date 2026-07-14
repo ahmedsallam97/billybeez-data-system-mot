@@ -430,7 +430,7 @@ export default function ManagerClient() {
     const shouldUseSavedDateFilter = savedDateDefaultVersion === "month-to-date-v1";
 
     if (["orders", "review", "reports", "settings", "records", "activity"].includes(savedManagerTab)) setManagerTab(savedManagerTab);
-    if (["employees", "products", "users", "devices", "paymentProviders", "branch", "invoice", "printing", "business", "workflow", "reports", "recordsStyle", "auditBackup", "backupRestore", "messages"].includes(savedSettingsTab)) setSettingsTab(savedSettingsTab);
+    if (["employees", "customers", "products", "users", "devices", "paymentProviders", "branch", "invoice", "printing", "business", "workflow", "reports", "recordsStyle", "auditBackup", "backupRestore", "messages"].includes(savedSettingsTab)) setSettingsTab(savedSettingsTab);
     if (["TODAY", "HISTORY"].includes(savedViewMode)) setViewMode(savedViewMode);
     if (["ALL", "CASH", "VISA", "UNPAID"].includes(savedFilter)) setFilter(savedFilter);
     if (["ALL", "ACTIVE", "ARCHIVED", "UNREGISTERED"].includes(savedArchiveFilter)) setArchiveFilter(savedArchiveFilter);
@@ -3073,12 +3073,12 @@ export default function ManagerClient() {
     backupRestore: { label: t("manager.backupRestore"), hint: t("manager.backupRestoreHint") },
   };
   const settingsNavigationGroups = [
-    { key: "people", title: t("settings.groupPeople"), hint: t("settings.groupPeopleHint"), tabs: ["employees", "customers", "users"] },
-    { key: "catalog", title: t("settings.groupCatalog"), hint: t("settings.groupCatalogHint"), tabs: ["products", "paymentProviders"] },
-    { key: "operations", title: t("settings.groupOperations"), hint: t("settings.groupOperationsHint"), tabs: ["devices", "business", "workflow"] },
-    { key: "receipts", title: t("settings.groupReceipts"), hint: t("settings.groupReceiptsHint"), tabs: ["branch", "invoice", "printing"] },
-    { key: "insights", title: t("settings.groupInsights"), hint: t("settings.groupInsightsHint"), tabs: ["reports", "recordsStyle", "messages"] },
-    { key: "maintenance", title: t("settings.groupMaintenance"), hint: t("settings.groupMaintenanceHint"), tabs: ["auditBackup", "backupRestore"] },
+    { key: "people", title: t("settings.groupPeople"), hint: t("settings.groupPeopleHint"), tabs: ["employees", "customers", "users"], code: "01" },
+    { key: "catalog", title: t("settings.groupCatalog"), hint: t("settings.groupCatalogHint"), tabs: ["products", "paymentProviders"], code: "02" },
+    { key: "operations", title: t("settings.groupOperations"), hint: t("settings.groupOperationsHint"), tabs: ["devices", "business", "workflow"], code: "03" },
+    { key: "receipts", title: t("settings.groupReceipts"), hint: t("settings.groupReceiptsHint"), tabs: ["branch", "invoice", "printing"], code: "04" },
+    { key: "insights", title: t("settings.groupInsights"), hint: t("settings.groupInsightsHint"), tabs: ["reports", "recordsStyle", "messages"], code: "05" },
+    { key: "maintenance", title: t("settings.groupMaintenance"), hint: t("settings.groupMaintenanceHint"), tabs: ["auditBackup", "backupRestore"], code: "06" },
   ];
   const settingsTabMatchesSearch = (tab) => {
     const search = settingsSearch.trim().toLowerCase();
@@ -3095,6 +3095,11 @@ export default function ManagerClient() {
     .filter((group) => group.tabs.length > 0 || [group.title, group.hint].some((value) => String(value || "").toLowerCase().includes(settingsSearch.trim().toLowerCase())));
   const currentSettingsGroup = settingsNavigationGroups.find((group) => group.tabs.includes(settingsTab));
   const currentSettingsTabMeta = settingsTabMeta[settingsTab] || { label: settingsTab, hint: "" };
+  const settingsSearchActive = Boolean(settingsSearch.trim());
+  const settingsGroupTargetTab = (group) => {
+    if (group.tabs.includes(settingsTab)) return settingsTab;
+    return group.tabs[0] || settingsNavigationGroups.find((item) => item.key === group.key)?.tabs?.[0] || "employees";
+  };
   const reportCardStyle = (prefix, fallbackStart, fallbackEnd) => ({
     iconUrl: settingsMap[`REPORT_${prefix}_CARD_ICON_URL`] || "",
     startColor: settingsMap[`REPORT_${prefix}_CARD_COLOR_START`] || fallbackStart,
@@ -3428,30 +3433,40 @@ export default function ManagerClient() {
         </section>
       </div>}
 
-      {managerTab === "settings" && <section className="panel settings-shell">
-        <aside className="settings-sidebar">
+      {managerTab === "settings" && <section className="panel settings-shell settings-workbench">
+        <div className="settings-workbench-head">
+          <div>
+            <span>{t("manager.tabSettings")}</span>
+            <h2>{t("settings.settingsCenter")}</h2>
+            <p>{t("settings.settingsCenterHint")}</p>
+          </div>
           <input
             className="settings-search"
             value={settingsSearch}
             onChange={(event) => setSettingsSearch(event.target.value)}
             placeholder={t("settings.searchPlaceholder")}
           />
-          {visibleSettingsGroups.map((group) => (
-            <div className={`settings-sidebar-group ${currentSettingsGroup?.key === group.key ? "active-group" : ""}`} key={group.key}>
-              <div className="settings-sidebar-group-head">
+        </div>
+        <div className="settings-group-strip">
+          {visibleSettingsGroups.map((group) => {
+            const isActive = currentSettingsGroup?.key === group.key;
+            const originalGroup = settingsNavigationGroups.find((item) => item.key === group.key) || group;
+            return (
+              <button
+                type="button"
+                className={`settings-group-card tone-${group.key} ${isActive ? "active" : ""}`}
+                key={group.key}
+                onClick={() => setSettingsTab(settingsGroupTargetTab(group))}
+              >
+                <small>{group.code}</small>
                 <b>{group.title}</b>
-                <small>{group.hint}</small>
-              </div>
-              <div className="settings-sidebar-buttons">
-                {group.tabs.map((tab) => (
-                  <button key={tab} className={settingsTab === tab ? "active" : ""} onClick={() => setSettingsTab(tab)}>
-                    <span>{settingsTabMeta[tab]?.label || tab}</span>
-                  </button>
-                ))}
-              </div>
-            </div>
-          ))}
-        </aside>
+                <span>{group.hint}</span>
+                <em>{formatNumber(settingsSearchActive ? group.tabs.length : originalGroup.tabs.length)}</em>
+              </button>
+            );
+          })}
+          {!visibleSettingsGroups.length && <div className="settings-empty-search">{t("settings.noSettingsResults")}</div>}
+        </div>
         <div className="settings-content">
           <div className="settings-content-head">
             <div>

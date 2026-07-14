@@ -4,9 +4,10 @@ import { authorizeApi } from "@/lib/api-auth";
 import { writeAudit } from "@/lib/audit";
 import { assertActiveBraceletAvailable, claimActiveBracelet, isBraceletLockConflict } from "@/lib/active-bracelets";
 import { ensureBusinessDayState } from "@/lib/business-day";
-import { includeOrderDetails, routeOrderId, serializeOrder } from "@/lib/orders";
+import { findSerializedOrder, includeOrderDetails, routeOrderId, serializeOrder } from "@/lib/orders";
 import { orderAuditSnapshot, restoredStatus } from "@/lib/order-workflow";
 import { canUserEditPaidOrder } from "@/lib/workflow-rules";
+import { findUnavailableProducts } from "@/lib/product-availability";
 
 export async function POST(request, { params }) {
   const { user, error } = await authorizeApi("ORDER_EDIT_ITEMS");
@@ -22,12 +23,14 @@ export async function POST(request, { params }) {
     return NextResponse.json({ success: false, error: "Please select at least one product" }, { status: 400 });
   }
 
-  const order = await prisma.order.findUnique({ where: { id }, include: { items: true } });
+  const order = await prisma.order.findUnique({ where: { id }, include: { items: true, device: true } });
   if (!order) {
     return NextResponse.json({ success: false, error: "Order not found" }, { status: 404 });
   }
 
-  if (order.paymentStatus === "PAID" && !(await canUserEditPaidOrder(user))) {
+  const canAppendKitchenToFrontOrder = order.device?.type === "FRONT" && ["CASHIER", "DATA"].includes(user.role);
+
+  if (order.paymentStatus === "PAID" && !(await canUserEditPaidOrder(user)) && !canAppendKitchenToFrontOrder) {
     return NextResponse.json({ success: false, error: "Paid orders can only be edited by manager" }, { status: 403 });
   }
 
@@ -40,8 +43,20 @@ export async function POST(request, { params }) {
 
   const products = await prisma.product.findMany({
     where: { id: { in: items.map((item) => item.productId) } },
+    include: { category: true },
   });
   const productMap = new Map(products.map((product) => [product.id, product]));
+  const missingProductIds = [...new Set(items.map((item) => item.productId).filter((productId) => !productMap.has(productId)))];
+  if (missingProductIds.length) {
+    return NextResponse.json({ success: false, error: `Product not found: ${missingProductIds.join(", ")}` }, { status: 400 });
+  }
+  const unavailableProducts = findUnavailableProducts(products);
+  if (unavailableProducts.length) {
+    return NextResponse.json({
+      success: false,
+      error: `Product is not available now: ${unavailableProducts.map(({ product }) => product.name).join(", ")}`,
+    }, { status: 400 });
+  }
   let addedTotal = 0;
   const orderItems = [];
 
@@ -58,6 +73,8 @@ export async function POST(request, { params }) {
       name: product.name,
       qty,
       price: product.price,
+      netSales: product.netSales === null || product.netSales === undefined ? null : product.netSales * qty,
+      taxAmount: product.taxAmount === null || product.taxAmount === undefined ? null : product.taxAmount * qty,
       total,
     });
   });
@@ -70,8 +87,10 @@ export async function POST(request, { params }) {
         where: { id },
         data: {
           total: { increment: addedTotal },
-          status: restoredStatus(order),
-          workflowState: restoredStatus(order),
+          status: "OPEN",
+          workflowState: "OPEN",
+          kitchenStatus: "PENDING",
+          paymentStatus: "UNPAID",
           geideaRegisteredAt: null,
           geideaEmployeeId: null,
           archivedAt: null,
@@ -87,18 +106,21 @@ export async function POST(request, { params }) {
     throw error;
   }
 
-  await writeAudit({
-    action: "ORDER_ITEMS_ADDED",
-    orderId: id,
-    user,
-    summary: `Added ${orderItems.length} item lines`,
-    metadata: { addedTotal, items: orderItems.map((item) => ({ name: item.name, qty: item.qty, total: item.total })) },
-    before: orderAuditSnapshot(order),
-    after: orderAuditSnapshot(updatedOrder),
-    reason: "Items added, Geidea/archive state reset",
-  });
+  const [serializedOrder] = await Promise.all([
+    findSerializedOrder(id),
+    writeAudit({
+      action: "ORDER_ITEMS_ADDED",
+      orderId: id,
+      user,
+      summary: `Added ${orderItems.length} item lines`,
+      metadata: { addedTotal, items: orderItems.map((item) => ({ name: item.name, qty: item.qty, total: item.total })) },
+      before: orderAuditSnapshot(order),
+      after: orderAuditSnapshot(updatedOrder),
+      reason: "Items added, system/archive state reset",
+    }),
+  ]);
 
-  return NextResponse.json({ success: true, order: serializeOrder(updatedOrder) });
+  return NextResponse.json({ success: true, order: serializedOrder || serializeOrder(updatedOrder) });
 }
 
 export async function DELETE(request, { params }) {
@@ -168,16 +190,19 @@ export async function DELETE(request, { params }) {
     throw error;
   }
 
-  await writeAudit({
-    action: "ORDER_ITEM_REMOVED",
-    orderId: id,
-    user,
-    summary: "Removed item line",
-    metadata: { name: item.name, qty: item.qty, total: item.total, nextTotal },
-    before: orderAuditSnapshot(order),
-    after: orderAuditSnapshot(updatedOrder),
-    reason: "Item removed, Geidea/archive state reset",
-  });
+  const [serializedOrder] = await Promise.all([
+    findSerializedOrder(id),
+    writeAudit({
+      action: "ORDER_ITEM_REMOVED",
+      orderId: id,
+      user,
+      summary: "Removed item line",
+      metadata: { name: item.name, qty: item.qty, total: item.total, nextTotal },
+      before: orderAuditSnapshot(order),
+      after: orderAuditSnapshot(updatedOrder),
+      reason: "Item removed, system/archive state reset",
+    }),
+  ]);
 
-  return NextResponse.json({ success: true, order: serializeOrder(updatedOrder) });
+  return NextResponse.json({ success: true, order: serializedOrder || serializeOrder(updatedOrder) });
 }

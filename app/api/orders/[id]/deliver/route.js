@@ -4,7 +4,7 @@ import { authorizeApi } from "@/lib/api-auth";
 import { writeAudit } from "@/lib/audit";
 import { ensureBusinessDayState } from "@/lib/business-day";
 import { actorFields, upsertOrderRecord } from "@/lib/order-records";
-import { includeOrderDetails, routeOrderId, serializeOrder } from "@/lib/orders";
+import { findSerializedOrder, routeOrderId } from "@/lib/orders";
 import { orderAuditSnapshot } from "@/lib/order-workflow";
 
 export async function POST(request, { params }) {
@@ -67,26 +67,23 @@ export async function POST(request, { params }) {
     data: { status: "PRINTED", printedAt: deliveredAt },
   });
 
-  await writeAudit({
-    action: "ORDER_DELIVERED",
-    orderId: id,
-    user,
-    summary: "Marked delivered",
-    metadata: {
-      previousKitchenStatus: order.kitchenStatus,
-      paymentStatus: order.paymentStatus,
-      deliveryEmployee: deliveryEmployee?.name || null,
-    },
-    before: orderAuditSnapshot(order),
-    after: orderAuditSnapshot(updatedOrder),
-    reason: "Restaurant marked order as delivered",
-  });
+  const [serializedOrder] = await Promise.all([
+    findSerializedOrder(id),
+    writeAudit({
+      action: "ORDER_DELIVERED",
+      orderId: id,
+      user,
+      summary: "Marked delivered",
+      metadata: {
+        previousKitchenStatus: order.kitchenStatus,
+        paymentStatus: order.paymentStatus,
+        deliveryEmployee: deliveryEmployee?.name || null,
+      },
+      before: orderAuditSnapshot(order),
+      after: orderAuditSnapshot(updatedOrder),
+      reason: "Restaurant marked order as delivered",
+    }),
+  ]);
 
-  const freshOrder = await prisma.order.findUnique({
-    where: { id },
-    include: includeOrderDetails(),
-  });
-  const record = await prisma.orderTransactionRecord.findUnique({ where: { orderId: id } });
-
-  return NextResponse.json({ success: true, order: serializeOrder(freshOrder, record) });
+  return NextResponse.json({ success: true, order: serializedOrder });
 }

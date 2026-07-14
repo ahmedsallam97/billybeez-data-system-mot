@@ -7,8 +7,8 @@ import ToastProvider from "./ToastProvider";
 import { UiPreferencesProvider } from "./i18n";
 
 export const metadata = {
-  title: "BillyBeez Data System",
-  description: "BillyBeez data, restaurant, and manager interface system",
+  title: "BillyBeez POS & Data System",
+  description: "BillyBeez POS, data, restaurant, and manager interface system",
   icons: {
     icon: [{ url: "/billy-favicon.png", type: "image/png" }],
     shortcut: "/billy-favicon.png",

@@ -112,6 +112,7 @@ export async function POST(request, { params }) {
         total: { increment: sourceTotal },
         childNames: mergedChildNames.join(", "),
         childrenCount: mergedChildNames.length || target.childrenCount,
+        allowOpenCharges: Boolean(target.allowOpenCharges || sourceOrders.some((order) => order.allowOpenCharges)),
         status: restoredStatus(target),
         workflowState: workflowStateFromOrder({ ...target, total: target.total + sourceTotal, geideaRegisteredAt: null, archivedAt: null }),
         geideaRegisteredAt: null,

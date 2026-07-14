@@ -22,15 +22,40 @@ export async function GET(request) {
   }
 
   const orders = businessDate ? await prisma.order.findMany({ where: { businessDate } }) : [];
+  const payments = businessDate ? await prisma.orderPayment.findMany({
+    where: { order: { businessDate } },
+    include: { paymentProvider: true },
+  }) : [];
   const paid = orders.filter((order) => order.paymentStatus === "PAID");
   const unpaid = orders.filter((order) => order.paymentStatus !== "PAID");
+  const paymentMap = new Map();
+
+  payments.forEach((payment) => {
+    const method = ["CASH", "VISA"].includes(payment.method)
+      ? payment.method
+      : payment.paymentProvider?.name || payment.method || "UNKNOWN";
+    const current = paymentMap.get(method) || { method, count: 0, total: 0 };
+    current.count += 1;
+    current.total += Number(payment.amount || 0);
+    paymentMap.set(method, current);
+  });
+
+  const paymentOrderIds = new Set(payments.map((payment) => payment.orderId));
+  paid
+    .filter((order) => !paymentOrderIds.has(order.id))
+    .forEach((order) => {
+      const method = order.paymentMethod || "UNKNOWN";
+      const current = paymentMap.get(method) || { method, count: 0, total: 0 };
+      current.count += 1;
+      current.total += Number(order.total || 0);
+      paymentMap.set(method, current);
+    });
 
   return NextResponse.json({
     success: true,
     source: "live",
     payments: [
-      { method: "CASH", count: paid.filter((order) => order.paymentMethod === "CASH").length, total: paid.filter((order) => order.paymentMethod === "CASH").reduce((sum, order) => sum + order.total, 0) },
-      { method: "VISA", count: paid.filter((order) => order.paymentMethod === "VISA").length, total: paid.filter((order) => order.paymentMethod === "VISA").reduce((sum, order) => sum + order.total, 0) },
+      ...Array.from(paymentMap.values()).sort((a, b) => b.total - a.total),
       { method: "UNPAID", count: unpaid.length, total: unpaid.reduce((sum, order) => sum + order.total, 0) },
     ],
   });

@@ -5,7 +5,7 @@ import { writeAudit } from "@/lib/audit";
 import { assertActiveBraceletAvailable, isBraceletLockConflict, claimActiveBracelet } from "@/lib/active-bracelets";
 import { ensureBusinessDayState } from "@/lib/business-day";
 import { upsertOrderRecord } from "@/lib/order-records";
-import { includeOrderDetails, routeOrderId, serializeOrder } from "@/lib/orders";
+import { findSerializedOrder, routeOrderId } from "@/lib/orders";
 import { orderAuditSnapshot, restoredStatus, workflowStateFromOrder } from "@/lib/order-workflow";
 
 export async function POST(_request, { params }) {
@@ -53,21 +53,19 @@ export async function POST(_request, { params }) {
     throw error;
   }
 
-  await writeAudit({
-    action: "ORDER_UNARCHIVED",
-    orderId: id,
-    user,
-    summary: "Unarchived order",
-    metadata: { previousArchivedAt: current.archivedAt, restoredStatus: order.status },
-    before: orderAuditSnapshot(current),
-    after: orderAuditSnapshot(order),
-    reason: "Manager unarchived order",
-  });
+  const [serializedOrder] = await Promise.all([
+    findSerializedOrder(id),
+    writeAudit({
+      action: "ORDER_UNARCHIVED",
+      orderId: id,
+      user,
+      summary: "Unarchived order",
+      metadata: { previousArchivedAt: current.archivedAt, restoredStatus: order.status },
+      before: orderAuditSnapshot(current),
+      after: orderAuditSnapshot(order),
+      reason: "Manager unarchived order",
+    }),
+  ]);
 
-  const freshOrder = await prisma.order.findUnique({
-    where: { id },
-    include: includeOrderDetails(),
-  });
-
-  return NextResponse.json({ success: true, order: serializeOrder(freshOrder) });
+  return NextResponse.json({ success: true, order: serializedOrder });
 }

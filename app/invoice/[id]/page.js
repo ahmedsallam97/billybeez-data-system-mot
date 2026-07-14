@@ -2,6 +2,7 @@ import { prisma } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
 import { serializeHistoryOrder } from "@/lib/business-day";
 import { includeOrderDetails, routeOrderId, serializeOrder } from "@/lib/orders";
+import { invoiceQrDataUrl } from "@/lib/invoice-qr";
 import { getSetting } from "@/lib/settings";
 import InvoicePrint from "./InvoicePrint";
 
@@ -27,10 +28,14 @@ export default async function InvoicePage({ params }) {
     taxRate: await getSetting("INVOICE_TAX_RATE", "14"),
     contactNumber: await getSetting("INVOICE_CONTACT_NUMBER", "19881"),
     website: await getSetting("INVOICE_WEBSITE", "www.billybeezeg.com"),
+    qrMode: await getSetting("ETA_QR_MODE", "INTERNAL"),
+    baseUrl: await getSetting("PUBLIC_APP_BASE_URL", "http://127.0.0.1:3000"),
+    layoutConfig: await getSetting("INVOICE_LAYOUT_CONFIG", ""),
   };
 
   if (order) {
-    return <InvoicePrint order={serializeOrder(order)} settings={settings} />;
+    const serializedOrder = serializeOrder(order);
+    return <InvoicePrint order={serializedOrder} settings={{ ...settings, qrDataUrl: await invoiceQrDataUrl(serializedOrder, settings) }} />;
   }
 
   const historyOrder = await prisma.orderHistory.findUnique({
@@ -41,5 +46,6 @@ export default async function InvoicePage({ params }) {
     return <div className="invoice">Invoice not found</div>;
   }
 
-  return <InvoicePrint order={serializeHistoryOrder(historyOrder)} settings={settings} />;
+  const serializedHistoryOrder = serializeHistoryOrder(historyOrder);
+  return <InvoicePrint order={serializedHistoryOrder} settings={{ ...settings, qrDataUrl: await invoiceQrDataUrl(serializedHistoryOrder, settings) }} />;
 }

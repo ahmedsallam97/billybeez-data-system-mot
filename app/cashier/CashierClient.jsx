@@ -7,14 +7,20 @@ import OrderAlerts from "../OrderAlerts";
 import OrderItemsSummary from "../OrderItemsSummary";
 import { applyEmployeeNameStyles, employeeGenderClass } from "../employeeDisplay";
 import { formatUiMessage, normalizeUiMessages, uiMessageStyle } from "../uiMessages";
+import { categoryAvailability, categoryToneClass, orderProductCategories, productAvailability } from "../categoryRules";
 
 function isValidBracelet(value) {
-  return /^(0[0-9]{4}|[0-3][0-9]{5})$/.test(String(value || "").trim());
+  return /^(0[0-9]{4}|[0-3][0-9]{5}|[0-9]{10})$/.test(String(value || "").trim());
 }
 
 function isValidCustomerPhone(value) {
   const phone = String(value || "").trim();
   return !phone || /^01[012][0-9]{8}$/.test(phone);
+}
+
+function shortBracelet(value) {
+  const text = String(value || "").trim();
+  return text.length > 6 ? text.slice(-6) : text;
 }
 
 export default function CashierClient({ user }) {
@@ -25,6 +31,7 @@ export default function CashierClient({ user }) {
   const ordersRef = useRef(null);
   const [products, setProducts] = useState([]);
   const [employees, setEmployees] = useState([]);
+  const [paymentProviders, setPaymentProviders] = useState([]);
   const [orders, setOrders] = useState([]);
   const [childNameHistory, setChildNameHistory] = useState([]);
   const [cart, setCart] = useState([]);
@@ -34,6 +41,7 @@ export default function CashierClient({ user }) {
   const [childNames, setChildNames] = useState([""]);
   const [dataEmployeeId, setDataEmployeeId] = useState("");
   const [paymentMethod, setPaymentMethod] = useState("CASH");
+  const [paymentProviderId, setPaymentProviderId] = useState("CASH");
   const [message, setMessage] = useState("");
   const [editingOrder, setEditingOrder] = useState(null);
   const [activeBraceletOrder, setActiveBraceletOrder] = useState(null);
@@ -113,7 +121,7 @@ export default function CashierClient({ user }) {
   }, [braceletNo, editingOrder]);
 
   async function loadUiMessages() {
-    const res = await fetch("/api/settings").catch(() => null);
+    const res = await fetch("/api/settings?keys=UI_MESSAGE_CONFIG,EMPLOYEE_NAME_STYLE_CONFIG").catch(() => null);
     if (!res?.ok) return;
     const data = await res.json();
     const setting = data.settings?.find((item) => item.key === "UI_MESSAGE_CONFIG");
@@ -123,18 +131,27 @@ export default function CashierClient({ user }) {
   }
 
   async function loadStaticData() {
-    const [productsRes, employeesRes, childNamesRes] = await Promise.all([
-      fetch("/api/products"),
+    const [productsRes, employeesRes, providersRes, childNamesRes] = await Promise.all([
+      fetch("/api/products?department=KITCHEN&context=data"),
       fetch("/api/employees?department=ALL"),
+      fetch("/api/payment-providers?context=data"),
       fetch("/api/child-names"),
     ]);
-    const [productsData, employeesData, childNamesData] = await Promise.all([
+    const [productsData, employeesData, providersData, childNamesData] = await Promise.all([
       productsRes.json(),
       employeesRes.json(),
+      providersRes.ok ? providersRes.json() : { providers: [] },
       childNamesRes.ok ? childNamesRes.json() : { names: [] },
     ]);
     setProducts(productsData);
     setEmployees(employeesData);
+    const nextProviders = (providersData.providers || []).filter((provider) => provider.active);
+    setPaymentProviders(nextProviders);
+    const firstProvider = nextProviders.find((provider) => provider.id === paymentProviderId) || nextProviders.find((provider) => provider.method === "CASH") || nextProviders[0];
+    if (firstProvider) {
+      setPaymentProviderId(firstProvider.id);
+      setPaymentMethod(firstProvider.method || "CASH");
+    }
     setChildNameHistory(Array.isArray(childNamesData.names) ? childNamesData.names : []);
 
     const lastEmployee = localStorage.getItem("lastDataEmployeeId");
@@ -191,7 +208,7 @@ export default function CashierClient({ user }) {
     if (!applyOrderUpdate(data?.order, archived)) await loadOrders(archived);
   }
 
-  const categories = useMemo(() => ["All", ...new Set(products.map((product) => product.categoryName))], [products]);
+  const categories = useMemo(() => ["All", ...orderProductCategories(products.map((product) => product.categoryName))], [products]);
   const operationEmployees = useMemo(() => employees.filter((employee) => employee.department !== "KITCHEN"), [employees]);
   const [category, setCategory] = useState("All");
   const visibleProducts = products.filter((product) => category === "All" || product.categoryName === category);
@@ -218,19 +235,16 @@ export default function CashierClient({ user }) {
       .filter((order) => String(order.braceletNo || "").includes(search))
       .slice(0, 6);
   }, [braceletNo, editingOrder, orders]);
+  const frontAdmissions = useMemo(() => (
+    orders
+      .filter((order) => !order.archivedAt && order.deviceType === "FRONT")
+      .filter((order) => !order.customerLeft)
+      .slice(0, 8)
+  ), [orders]);
   const unpaidCount = orders.filter((order) => order.paymentStatus !== "PAID").length;
   const unregisteredCount = orders.filter((order) => !order.geideaRegisteredAt).length;
   const total = cart.reduce((sum, item) => sum + item.price * item.qty, 0);
   const orderTotalPreview = editingOrder ? Number(editingOrder.total || 0) + total : total;
-
-  function categoryTone(categoryName) {
-    const value = String(categoryName || "").toLowerCase();
-    if (value === "all") return "category-all";
-    if (["drink", "juice", "water", "pepsi", "coffee", "latte", "cappuccino", "hot", "cold"].some((word) => value.includes(word))) {
-      return "category-drink";
-    }
-    return "category-food";
-  }
 
   function orderAlertClass(order) {
     if (order.archivedAt) return "archived-order";
@@ -308,6 +322,7 @@ export default function CashierClient({ user }) {
   }
 
   function addToCart(product) {
+    if (!productAvailability(product).available) return;
     setCart((current) => {
       const existing = current.find((item) => item.productId === product.id);
       if (existing) {
@@ -322,12 +337,15 @@ export default function CashierClient({ user }) {
   }
 
   function changeQty(productId, change) {
+    const product = products.find((item) => item.id === productId || item.productId === productId);
+    if (product && !productAvailability(product).available) return;
     setCart((current) => current
       .map((item) => item.productId === productId ? { ...item, qty: item.qty + change } : item)
       .filter((item) => item.qty > 0));
   }
 
   function setCartQty(product, qty) {
+    if (!productAvailability(product).available) return;
     const nextQty = Math.max(0, Number(qty) || 0);
     const productId = product.id || product.productId;
     setCart((current) => {
@@ -402,6 +420,7 @@ export default function CashierClient({ user }) {
         customerPhone,
         childNames,
         dataEmployeeId: linkedOperationEmployeeId || dataEmployeeId,
+        paymentProviderId,
         paymentMethod,
         items: cart,
       }),
@@ -421,7 +440,9 @@ export default function CashierClient({ user }) {
     setCustomerPhone("");
     setChildNames([""]);
     setChildren(1);
-    setPaymentMethod("CASH");
+    const firstProvider = paymentProviders.find((provider) => provider.method === "CASH") || paymentProviders[0];
+    setPaymentProviderId(firstProvider?.id || "CASH");
+    setPaymentMethod(firstProvider?.method || "CASH");
     setCart([]);
     applyOrderUpdate(data.order, false);
     setChildNameHistory((current) => [...new Set([...childNames.filter(Boolean), ...current])]);
@@ -665,6 +686,23 @@ export default function CashierClient({ user }) {
           </div>
         ) : (
           <>
+            {frontAdmissions.length > 0 && (
+              <div className="front-admissions-strip">
+                <div className="row">
+                  <h3>{t("cashier.frontAdmissions")}</h3>
+                  <b>{formatNumber(frontAdmissions.length)}</b>
+                </div>
+                <div className="front-admission-list">
+                  {frontAdmissions.map((order) => (
+                    <button className="front-admission-chip" type="button" key={order.id} onClick={() => startEdit(order)}>
+                      <b>{shortBracelet(order.invoiceSerial || order.braceletNo)}</b>
+                      <span>{order.customerName || order.childNames}</span>
+                      <small>{t("cashier.addKitchenItems")}</small>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
             <div className="form-grid new-order-fields">
               <div className="bracelet-live-field">
                 <input value={braceletNo} onChange={(event) => setBraceletNo(event.target.value)} placeholder={t("cashier.braceletPlaceholder")} />
@@ -682,19 +720,19 @@ export default function CashierClient({ user }) {
               </div>
               <input value={customerPhone} onChange={(event) => setCustomerPhone(event.target.value)} placeholder={t("cashier.phonePlaceholder")} />
               <div className="payment-radios" role="radiogroup" aria-label={t("common.paymentMethod")}>
-                {[
-                  { value: "CASH", label: t("common.cash"), tone: "cash" },
-                  { value: "VISA", label: t("common.visa"), tone: "visa" },
-                ].map((method) => (
-                  <label className={`payment-option ${method.tone} ${paymentMethod === method.value ? "active" : ""}`} key={method.value}>
+                {paymentProviders.map((provider) => (
+                  <label className={`payment-option ${provider.method === "VISA" ? "visa" : provider.method === "CASH" ? "cash" : "custom"} ${paymentProviderId === provider.id ? "active" : ""}`} key={provider.id}>
                     <input
                       type="radio"
                       name="paymentMethod"
-                      value={method.value}
-                      checked={paymentMethod === method.value}
-                      onChange={() => setPaymentMethod(method.value)}
+                      value={provider.id}
+                      checked={paymentProviderId === provider.id}
+                      onChange={() => {
+                        setPaymentProviderId(provider.id);
+                        setPaymentMethod(provider.method || "CASH");
+                      }}
                     />
-                    <span>{method.label}</span>
+                    <span>{provider.name || labelMethod(provider.method)}</span>
                   </label>
                 ))}
               </div>
@@ -746,16 +784,28 @@ export default function CashierClient({ user }) {
       </div>
           <div className="new-order-products">
         <div className="tabs category-tabs">
-          {categories.map((item) => (
-            <button key={item} className={`${categoryTone(item)} ${category === item ? "active" : ""}`} onClick={() => setCategory(item)}>{labelCategory(item)}</button>
-          ))}
+          {categories.map((item) => {
+            const availability = categoryAvailability(item);
+            return (
+              <button
+                key={item}
+                className={`${categoryToneClass(item)} ${category === item ? "active" : ""}`}
+                disabled={!availability.available}
+                title={availability.opensOn ? `${labelCategory(item)} opens on ${availability.opensOn}` : undefined}
+                onClick={() => setCategory(item)}
+              >
+                {labelCategory(item)}
+              </button>
+            );
+          })}
         </div>
         <div className="products">
           {visibleProducts.map((product) => {
             const qty = cartQuantity(product.id);
+            const availability = productAvailability(product);
             return (
-              <div className={`card product ${qty ? "in-cart" : ""}`} key={product.id}>
-                <button className="product-main" onClick={() => addToCart(product)}>
+              <div className={`card product ${qty ? "in-cart" : ""} ${!availability.available ? "product-disabled" : ""}`} key={product.id}>
+                <button className="product-main" onClick={() => addToCart(product)} disabled={!availability.available}>
                   <img
                     src={product.imageUrl || fallbackImage}
                     alt={product.name}
@@ -769,7 +819,7 @@ export default function CashierClient({ user }) {
                 </button>
                 <div className="product-body">
                   <div className="product-qty-actions">
-                    <button className="secondary qty-button" onClick={() => changeQty(product.id, -1)} disabled={!qty}>-</button>
+                    <button className="secondary qty-button" onClick={() => changeQty(product.id, -1)} disabled={!qty || !availability.available}>-</button>
                     <input
                       className="qty-input"
                       type="number"
@@ -777,10 +827,12 @@ export default function CashierClient({ user }) {
                       value={qty}
                       onChange={(event) => setCartQty(product, event.target.value)}
                       aria-label={`${product.name} quantity`}
+                      disabled={!availability.available}
                     />
-                    <button className="btn-confirm qty-button" onClick={() => addToCart(product)}>+</button>
+                    <button className="btn-confirm qty-button" onClick={() => addToCart(product)} disabled={!availability.available}>+</button>
                   </div>
                   <div className="product-price">{currency(product.price)}</div>
+                  {!availability.available && <small className="muted product-availability">{availability.opensOn}</small>}
                 </div>
               </div>
             );
@@ -824,7 +876,7 @@ export default function CashierClient({ user }) {
               <div className="row order-head"><b>{order.id}</b><span className={`badge ${order.paymentStatus === "PAID" ? "paid" : "unpaid"}`}>{labelStatus(order.paymentStatus)}</span></div>
               <div className="order-info">
                 <div className="meta-line"><span>{t("common.date")}</span><b>{orderCreatedLine(order)}</b></div>
-                <div className="meta-line"><span>{t("common.bracelet")}</span><b>{order.braceletNo}</b></div>
+                <div className="meta-line"><span>{t("common.bracelet")}</span><b>{shortBracelet(order.braceletNo)}</b></div>
                 {order.customerPhone && <div className="meta-line"><span>{t("common.phone")}</span><b>{order.customerPhone}</b></div>}
                 <div className="meta-line"><span>{t("common.children")}</span><b>{order.childNames}</b></div>
                 <div className="meta-line"><span>{t("common.cashier")}</span><b className="meta-value meta-user">{order.cashier || "-"}</b></div>
@@ -840,7 +892,7 @@ export default function CashierClient({ user }) {
                   formatDateTime={formatDateTime}
                   exitEmployeeName={exitEmployeeName}
                   labelMethod={labelMethod}
-                  actionLabels={{ delivered: t("common.delivered"), geidea: "تسجيل جيديا", exit: "خروج", archive: "أرشفة", closed: t("common.closed") }}
+                  actionLabels={{ delivered: t("common.delivered"), geidea: t("cashier.registerSystem"), exit: "خروج", archive: "أرشفة", closed: t("common.closed") }}
                   showArchive={showArchived}
                 />
               </div>

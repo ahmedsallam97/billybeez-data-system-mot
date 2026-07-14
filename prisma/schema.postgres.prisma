@@ -51,6 +51,29 @@ enum PaymentStatus {
 enum PaymentMethod {
   CASH
   VISA
+  KIDZAPP
+  WAFFARHA
+  E_INVOICE
+  CUSTOM_1
+  CUSTOM_2
+}
+
+enum ProductDepartment {
+  ENTRANCE
+  KITCHEN
+  KITCHEN_CASHIER
+}
+
+enum DeviceType {
+  FRONT
+  KITCHEN
+  KITCHEN_CASHIER
+}
+
+enum PaymentProviderType {
+  CASH
+  VISA
+  CUSTOM
 }
 
 enum PrintJobType {
@@ -83,12 +106,12 @@ model User {
 }
 
 model Employee {
-  id         String   @id @default(cuid())
-  name       String   @unique
+  id         String     @id @default(cuid())
+  name       String     @unique
   department Department @default(OPERATION)
-  active     Boolean  @default(true)
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
+  active     Boolean    @default(true)
+  createdAt  DateTime   @default(now())
+  updatedAt  DateTime   @updatedAt
 
   dataOrders     Order[] @relation("OrderDataEmployee")
   deliveryOrders Order[] @relation("OrderDeliveryEmployee")
@@ -99,46 +122,89 @@ model Employee {
 }
 
 model Category {
-  id        String   @id
-  name      String
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id               String            @id
+  name             String
+  department       ProductDepartment @default(KITCHEN)
+  color            String?
+  active           Boolean           @default(true)
+  showInDataOrder  Boolean           @default(true)
+  showInQuickOrder Boolean           @default(true)
+  sortOrder        Int               @default(100)
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
 
   products Product[]
+
+  @@index([department])
+  @@index([department, active])
 }
 
 model Product {
-  id         String   @id
-  name       String
-  price      Float
-  imageUrl   String?
-  active     Boolean  @default(true)
-  popular    Boolean  @default(false)
-  sortOrder  Int      @default(100)
-  categoryId String
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
+  id                String            @id
+  name              String
+  price             Float
+  originalPrice     Float?
+  netSales          Float?
+  taxAmount         Float?
+  taxRate           Float?
+  department        ProductDepartment @default(KITCHEN)
+  etaItemCode       String?
+  etaCodeType       String?
+  etaUnitType       String?
+  etaTaxType        String?
+  etaTaxSubType     String?
+  imageUrl          String?
+  iconText          String?
+  cardColorStart    String?
+  cardColorEnd      String?
+  cardTextColor     String?
+  cardAccentColor   String?
+  availabilityRules String?
+  active            Boolean           @default(true)
+  popular           Boolean           @default(false)
+  printOnKitchen    Boolean           @default(true)
+  showInDataOrder   Boolean           @default(true)
+  showInQuickOrder  Boolean           @default(true)
+  sortOrder         Int               @default(100)
+  categoryId        String
+  createdAt         DateTime          @default(now())
+  updatedAt         DateTime          @updatedAt
 
   category Category    @relation(fields: [categoryId], references: [id])
   items    OrderItem[]
+
+  @@index([department])
+  @@index([department, active])
 }
 
 model Order {
   id                 String        @id
   businessDate       String?
+  invoiceSerial      String?       @unique
+  deviceId           String?
+  customerId         String?
+  customerName       String?
   braceletNo         String
   customerPhone      String?
   childNames         String
   childrenCount      Int           @default(1)
+  allowOpenCharges   Boolean       @default(false)
+  comments           String?
   total              Float         @default(0)
   status             OrderStatus   @default(OPEN)
   workflowState      WorkflowState @default(OPEN)
   kitchenStatus      KitchenStatus @default(PENDING)
   paymentStatus      PaymentStatus @default(UNPAID)
   paymentMethod      PaymentMethod @default(CASH)
+  paymentProviderId  String?
   customerLeft       Boolean       @default(false)
   customerLeftAt     DateTime?
   geideaRegisteredAt DateTime?
+  etaUuid            String?
+  etaSubmissionId    String?
+  etaStatus          String?
+  etaQrCode          String?
+  internalQrPayload  String?
   archivedAt         DateTime?
   cashierId          String?
   dataEmployeeId     String?
@@ -149,6 +215,9 @@ model Order {
   createdAt          DateTime      @default(now())
   updatedAt          DateTime      @updatedAt
 
+  device             Device?             @relation(fields: [deviceId], references: [id], onDelete: SetNull)
+  customer           Customer?           @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  paymentProvider    PaymentProvider?    @relation(fields: [paymentProviderId], references: [id], onDelete: SetNull)
   cashier            User?               @relation("CashierOrders", fields: [cashierId], references: [id])
   dataEmployee       Employee?           @relation("OrderDataEmployee", fields: [dataEmployeeId], references: [id])
   deliveryEmployee   Employee?           @relation("OrderDeliveryEmployee", fields: [deliveryEmployeeId], references: [id])
@@ -156,10 +225,15 @@ model Order {
   paymentEmployee    Employee?           @relation("OrderPaymentEmployee", fields: [paymentEmployeeId], references: [id])
   exitEmployee       Employee?           @relation("OrderExitEmployee", fields: [exitEmployeeId], references: [id])
   items              OrderItem[]
+  children           Child[]
+  payments           OrderPayment[]
   auditLogs          AuditLog[]
   printJobs          PrintJob[]
   activeBraceletLock ActiveBraceletLock?
 
+  @@index([invoiceSerial])
+  @@index([deviceId])
+  @@index([customerId])
   @@index([businessDate])
   @@index([workflowState])
   @@index([archivedAt])
@@ -186,11 +260,106 @@ model OrderItem {
   name      String
   qty       Int      @default(1)
   price     Float
+  netSales  Float?
+  taxAmount Float?
   total     Float
   createdAt DateTime @default(now())
 
   order   Order   @relation(fields: [orderId], references: [id], onDelete: Cascade)
   product Product @relation(fields: [productId], references: [id])
+}
+
+model Customer {
+  id        String   @id @default(cuid())
+  name      String
+  phone     String?
+  comments  String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  children Child[]
+  orders   Order[]
+
+  @@index([phone])
+  @@index([name])
+}
+
+model Child {
+  id               String    @id @default(cuid())
+  customerId       String?
+  orderId          String?
+  name             String
+  birthDate        DateTime?
+  comments         String?
+  allowOpenCharges Boolean   @default(false)
+  active           Boolean   @default(true)
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  customer Customer? @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  order    Order?    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@index([customerId])
+  @@index([orderId])
+  @@index([name])
+}
+
+model Device {
+  id                 String     @id
+  deviceNo           Int        @unique
+  name               String
+  type               DeviceType @default(FRONT)
+  active             Boolean    @default(true)
+  invoicePrinterName String?
+  kitchenPrinterName String?
+  posSerial          String?
+  branchCode         String?
+  createdAt          DateTime   @default(now())
+  updatedAt          DateTime   @updatedAt
+
+  orders Order[]
+
+  @@index([type])
+  @@index([active])
+}
+
+model PaymentProvider {
+  id               String              @id
+  name             String
+  type             PaymentProviderType @default(CUSTOM)
+  method           PaymentMethod
+  active           Boolean             @default(true)
+  editable         Boolean             @default(true)
+  showInDataOrder  Boolean             @default(true)
+  showInQuickOrder Boolean             @default(true)
+  sortOrder        Int                 @default(100)
+  reportBucket     String?
+  createdAt        DateTime            @default(now())
+  updatedAt        DateTime            @updatedAt
+
+  orders   Order[]
+  payments OrderPayment[]
+
+  @@index([type])
+  @@index([active])
+}
+
+model OrderPayment {
+  id                String        @id @default(cuid())
+  orderId           String
+  paymentProviderId String?
+  method            PaymentMethod
+  amount            Float
+  reference         String?
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
+
+  order           Order            @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  paymentProvider PaymentProvider? @relation(fields: [paymentProviderId], references: [id], onDelete: SetNull)
+
+  @@index([orderId])
+  @@index([paymentProviderId])
+  @@index([method])
 }
 
 model OrderTransactionRecord {
@@ -332,6 +501,7 @@ model OrderHistory {
   customerPhone        String?
   childNames           String
   childrenCount        Int
+  allowOpenCharges     Boolean   @default(false)
   total                Float
   status               String
   kitchenStatus        String

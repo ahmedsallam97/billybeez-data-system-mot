@@ -5,7 +5,7 @@ import { writeAudit } from "@/lib/audit";
 import { releaseActiveBracelet } from "@/lib/active-bracelets";
 import { ensureBusinessDayState } from "@/lib/business-day";
 import { actorFields, upsertOrderRecord } from "@/lib/order-records";
-import { includeOrderDetails, routeOrderId, serializeOrder } from "@/lib/orders";
+import { findSerializedOrder, routeOrderId } from "@/lib/orders";
 import { orderAuditSnapshot } from "@/lib/order-workflow";
 
 export async function POST(request, { params }) {
@@ -76,25 +76,27 @@ export async function POST(request, { params }) {
     return order;
   });
 
-  await writeAudit({
-    action: "ORDER_GEIDEA_REGISTERED",
-    orderId: id,
-    user,
-    summary: "Registered order on Geidea",
-    metadata: {
-      total: current.total,
-      paymentMethod: current.paymentMethod,
-      forcedByManager: canForceRegister,
-      geideaEmployee: geideaEmployee?.name || null,
-      registeredAt,
-    },
-    before: orderAuditSnapshot(current),
-    after: orderAuditSnapshot(updatedOrder),
-    reason: "Registered order on Geidea",
-  });
+  const auditTasks = [
+    writeAudit({
+      action: "ORDER_GEIDEA_REGISTERED",
+      orderId: id,
+      user,
+      summary: "Registered order on system",
+      metadata: {
+        total: current.total,
+        paymentMethod: current.paymentMethod,
+        forcedByManager: canForceRegister,
+        geideaEmployee: geideaEmployee?.name || null,
+        registeredAt,
+      },
+      before: orderAuditSnapshot(current),
+      after: orderAuditSnapshot(updatedOrder),
+      reason: "Registered order on system",
+    }),
+  ];
 
   if (shouldArchive && !current.archivedAt) {
-    await writeAudit({
+    auditTasks.push(writeAudit({
       action: "ORDER_ARCHIVED",
       orderId: id,
       user,
@@ -106,18 +108,17 @@ export async function POST(request, { params }) {
         archivedAt,
         automatic: true,
       },
-    });
+    }));
   }
 
-  const freshOrder = await prisma.order.findUnique({
-    where: { id },
-    include: includeOrderDetails(),
-  });
-  const record = await prisma.orderTransactionRecord.findUnique({ where: { orderId: id } });
+  const [serializedOrder] = await Promise.all([
+    findSerializedOrder(id),
+    ...auditTasks,
+  ]);
 
   return NextResponse.json({
     success: true,
-    order: serializeOrder(freshOrder, record),
+    order: serializedOrder,
     geideaRegisteredAt: registeredAt,
     archivedAt,
     geideaEmployee: geideaEmployee?.name || user.employee?.name || user.name || "",

@@ -13,8 +13,15 @@ const editableKeys = new Set([
   "BRANCH_NAME",
   "BRANCH_PHONE",
   "BRANCH_TIN",
+  "BRANCH_ACTIVITY_CODE",
   "COMPANY_NAME",
   "POS_NAME",
+  "ETA_ENVIRONMENT",
+  "ETA_QR_MODE",
+  "PUBLIC_APP_BASE_URL",
+  "DEFAULT_FRONT_DEVICE_ID",
+  "DEFAULT_KITCHEN_DEVICE_ID",
+  "DEFAULT_KITCHEN_CASHIER_DEVICE_ID",
   "INVOICE_LOGO_URL",
   "INVOICE_PAPER_SIZE",
   "INVOICE_FOOTER_MESSAGE",
@@ -30,6 +37,8 @@ const editableKeys = new Set([
   "PRINT_AUTO_INVOICE",
   "PRINT_AUTO_KITCHEN",
   "KITCHEN_TICKET_CATEGORIES",
+  "CUSTOM_PAYMENT_PROVIDER_1",
+  "CUSTOM_PAYMENT_PROVIDER_2",
   "ARCHIVE_REQUIRES_CUSTOMER_LEFT",
   "WORKFLOW_ALLOW_PAID_ORDER_EDIT_ROLES",
   "WORKFLOW_ALLOW_PAYMENT_BEFORE_DELIVERY",
@@ -48,6 +57,7 @@ const editableKeys = new Set([
   "EMPLOYEE_NAME_STYLE_CONFIG",
   "EMPLOYEE_DEPARTMENT_CONFIG",
   "RECORD_TABLE_STYLE_CONFIG",
+  "INVOICE_LAYOUT_CONFIG",
   "ROLE_PERMISSION_CONFIG",
 ]);
 
@@ -61,12 +71,18 @@ function serializeSetting(setting) {
   };
 }
 
-export async function GET() {
+export async function GET(request) {
   const { error } = await authorizeApi("SYSTEM_SETTING_READ");
   if (error) return error;
 
   await ensureDefaultSettings();
-  const settings = await getSettingsRows();
+  const requestedKeys = String(request.nextUrl.searchParams.get("keys") || "")
+    .split(",")
+    .map((key) => key.trim())
+    .filter(Boolean);
+  const requestedKeySet = new Set(requestedKeys);
+  const settings = (await getSettingsRows())
+    .filter((setting) => !requestedKeySet.size || requestedKeySet.has(setting.key));
 
   return NextResponse.json({ success: true, settings: settings.map(serializeSetting) });
 }

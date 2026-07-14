@@ -35,10 +35,10 @@ test("validateCustomerExitAllowed blocks unpaid exit when disabled", () => {
   );
 });
 
-test("validateArchiveAllowed follows Geidea and customer-left rules", () => {
+test("validateArchiveAllowed follows system registration and customer-left rules", () => {
   assert.deepEqual(
     validateArchiveAllowed({ geideaRegisteredAt: null, customerLeft: true }, { requireGeideaBeforeArchive: true, archiveRequiresCustomerLeft: true }),
-    { message: "Order must be registered on Geidea first", status: 400 },
+    { message: "Order must be registered on system first", status: 400 },
   );
   assert.deepEqual(
     validateArchiveAllowed({ geideaRegisteredAt: new Date(), customerLeft: false }, { requireGeideaBeforeArchive: true, archiveRequiresCustomerLeft: true }),

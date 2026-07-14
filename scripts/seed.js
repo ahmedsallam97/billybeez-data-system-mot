@@ -9,14 +9,18 @@ const employees = [
   "محمد جمال",
   "صلاح محمد",
   "مصطفي عمارة",
-  "محمد مدكور",
   "يوسف فهمي",
   "محمد عادل",
   "عبدالرحمن هشام",
   "مصطفي خالد",
-  "مهرا سمير",
-  "الاء نصار",
   "سلمي سلطان",
+];
+
+const cashierEmployees = [
+  "مهرا سمير",
+  "ألاء نصار",
+  "محمد مدكور",
+  "أحمد السيد",
 ];
 
 const restaurantEmployees = [
@@ -26,10 +30,14 @@ const restaurantEmployees = [
 ];
 
 const categories = [
-  { id: "DRINKS", name: "Drinks" },
-  { id: "BURGERS", name: "Burgers" },
-  { id: "MEALS", name: "Meals" },
-  { id: "SNACKS", name: "Snacks" },
+  { id: "DRINKS", name: "Drinks", department: "KITCHEN" },
+  { id: "BURGERS", name: "Burgers", department: "KITCHEN" },
+  { id: "MEALS", name: "Meals", department: "KITCHEN" },
+  { id: "SNACKS", name: "Snacks", department: "KITCHEN" },
+  { id: "KC_DRINKS", name: "Drinks", department: "KITCHEN_CASHIER" },
+  { id: "KC_BURGERS", name: "Burgers", department: "KITCHEN_CASHIER" },
+  { id: "KC_MEALS", name: "Meals", department: "KITCHEN_CASHIER" },
+  { id: "KC_SNACKS", name: "Snacks", department: "KITCHEN_CASHIER" },
 ];
 
 const products = [
@@ -47,6 +55,36 @@ const users = [
   { name: "Data", username: "data", password: "data112411", role: "DATA" },
   { name: "Cashier", username: "cashier", password: "cashier112411", role: "CASHIER" },
   { name: "Kitchen", username: "kitchen", password: "kitchen123", role: "KITCHEN" },
+];
+
+function uniqueNames(names) {
+  return [...new Set(names.map((name) => String(name || "").trim()).filter(Boolean))];
+}
+
+function roleForEmployee(employee) {
+  return employee.department === "KITCHEN" ? "KITCHEN" : "DATA";
+}
+
+const devices = Array.from({ length: 10 }, (_, index) => {
+  const deviceNo = index + 1;
+  const type = deviceNo <= 4 ? "FRONT" : deviceNo <= 8 ? "KITCHEN" : "KITCHEN_CASHIER";
+  return {
+    id: `DEVICE_${deviceNo}`,
+    deviceNo,
+    name: type === "FRONT" ? `Front Device ${deviceNo}` : type === "KITCHEN_CASHIER" ? `Kitchen Cashier Device ${deviceNo}` : `Kitchen Device ${deviceNo}`,
+    type,
+    active: true,
+  };
+});
+
+const paymentProviders = [
+  { id: "CASH", name: "Cash", type: "CASH", method: "CASH", editable: false, showInDataOrder: true, showInQuickOrder: true, sortOrder: 1, reportBucket: "CASH" },
+  { id: "VISA", name: "Visa", type: "VISA", method: "VISA", editable: false, showInDataOrder: true, showInQuickOrder: true, sortOrder: 2, reportBucket: "VISA" },
+  { id: "KIDZAPP", name: "Kidzapp", type: "CUSTOM", method: "KIDZAPP", editable: true, showInDataOrder: false, showInQuickOrder: false, sortOrder: 10, reportBucket: "PARTNER" },
+  { id: "WAFFARHA", name: "Waffarha", type: "CUSTOM", method: "WAFFARHA", editable: true, showInDataOrder: true, showInQuickOrder: true, sortOrder: 11, reportBucket: "PARTNER" },
+  { id: "E_INVOICE", name: "E-Invoice", type: "CUSTOM", method: "E_INVOICE", editable: true, showInDataOrder: false, showInQuickOrder: false, sortOrder: 12, reportBucket: "PARTNER" },
+  { id: "CUSTOM_1", name: "Custom 1", type: "CUSTOM", method: "CUSTOM_1", editable: true, showInDataOrder: false, showInQuickOrder: false, sortOrder: 13, reportBucket: "CUSTOM" },
+  { id: "CUSTOM_2", name: "Custom 2", type: "CUSTOM", method: "CUSTOM_2", editable: true, showInDataOrder: false, showInQuickOrder: false, sortOrder: 14, reportBucket: "CUSTOM" },
 ];
 
 function normalizeProductName(value) {
@@ -85,8 +123,56 @@ async function main() {
 
     await prisma.product.upsert({
       where: { id: productId },
-      create: { ...productData, imageUrl: productImagePath(productId) },
-      update: { ...productData, imageUrl: productImagePath(productId) },
+      create: { ...productData, department: "KITCHEN", printOnKitchen: true, imageUrl: productImagePath(productId) },
+      update: { ...productData, department: "KITCHEN", printOnKitchen: true, imageUrl: productImagePath(productId) },
+    });
+
+    const kitchenCashierProductId = `KC_${product.id}`;
+    const kitchenCashierCategoryId = `KC_${product.categoryId}`;
+    ensureProductImage({
+      id: kitchenCashierProductId,
+      name: product.name,
+      categoryName: category?.name || product.categoryId,
+    });
+
+    await prisma.product.upsert({
+      where: { id: kitchenCashierProductId },
+      create: {
+        ...product,
+        id: kitchenCashierProductId,
+        categoryId: kitchenCashierCategoryId,
+        department: "KITCHEN_CASHIER",
+        printOnKitchen: true,
+        imageUrl: productImagePath(kitchenCashierProductId),
+      },
+      update: {
+        ...product,
+        id: kitchenCashierProductId,
+        categoryId: kitchenCashierCategoryId,
+        department: "KITCHEN_CASHIER",
+        printOnKitchen: true,
+        imageUrl: productImagePath(kitchenCashierProductId),
+      },
+    });
+  }
+
+  for (const device of devices) {
+    await prisma.device.upsert({
+      where: { id: device.id },
+      create: device,
+      update: {
+        name: device.name,
+        type: device.type,
+        active: device.active,
+      },
+    });
+  }
+
+  for (const provider of paymentProviders) {
+    await prisma.paymentProvider.upsert({
+      where: { id: provider.id },
+      create: provider,
+      update: provider,
     });
   }
 
@@ -95,6 +181,23 @@ async function main() {
       where: { name: employee },
       create: { name: employee, department: "OPERATION" },
       update: { active: true, department: "OPERATION" },
+    });
+  }
+
+  const oldAlaa = await prisma.employee.findUnique({ where: { name: "الاء نصار" } });
+  const newAlaa = await prisma.employee.findUnique({ where: { name: "ألاء نصار" } });
+  if (oldAlaa && !newAlaa) {
+    await prisma.employee.update({
+      where: { id: oldAlaa.id },
+      data: { name: "ألاء نصار", department: "CASHIER", active: true },
+    });
+  }
+
+  for (const employee of cashierEmployees) {
+    await prisma.employee.upsert({
+      where: { name: employee },
+      create: { name: employee, department: "CASHIER" },
+      update: { active: true, department: "CASHIER" },
     });
   }
 
@@ -115,6 +218,57 @@ async function main() {
       create: secureUser,
       update: secureUser,
     });
+  }
+
+  const preferredEmployeeOrder = uniqueNames([...cashierEmployees, ...employees, ...restaurantEmployees]);
+  const activeEmployees = await prisma.employee.findMany({
+    where: { active: true },
+  });
+  const employeeMap = new Map(activeEmployees.map((employee) => [employee.name, employee]));
+  const orderedEmployees = [
+    ...preferredEmployeeOrder.map((name) => employeeMap.get(name)).filter(Boolean),
+    ...activeEmployees
+      .filter((employee) => !preferredEmployeeOrder.includes(employee.name))
+      .sort((a, b) => a.name.localeCompare(b.name, "ar")),
+  ];
+
+  for (const [index, employee] of orderedEmployees.entries()) {
+    const username = String(1111 + index);
+    const password = await bcrypt.hash(username, 12);
+    await prisma.user.upsert({
+      where: { username },
+      create: {
+        name: employee.name,
+        username,
+        password,
+        role: roleForEmployee(employee),
+        employeeId: employee.id,
+        active: true,
+      },
+      update: {
+        name: employee.name,
+        password,
+        role: roleForEmployee(employee),
+        employeeId: employee.id,
+        active: true,
+      },
+    });
+  }
+
+  const roleSetting = await prisma.systemSetting.findUnique({ where: { key: "ROLE_PERMISSION_CONFIG" } });
+  if (roleSetting?.value) {
+    try {
+      const parsed = JSON.parse(roleSetting.value);
+      const orderCreateRoles = Array.isArray(parsed.ORDER_CREATE) ? parsed.ORDER_CREATE : [];
+      const nextOrderCreateRoles = [...new Set([...orderCreateRoles, "MANAGER", "KITCHEN", "DATA"])];
+      if (nextOrderCreateRoles.length !== orderCreateRoles.length) {
+        parsed.ORDER_CREATE = nextOrderCreateRoles;
+        await prisma.systemSetting.update({
+          where: { key: "ROLE_PERMISSION_CONFIG" },
+          data: { value: JSON.stringify(parsed) },
+        });
+      }
+    } catch {}
   }
 }
 

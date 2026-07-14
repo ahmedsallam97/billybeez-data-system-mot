@@ -37,7 +37,7 @@ test("workflow blocks customer exit before payment when configured", () => {
   assert.equal(validateCustomerExitAllowed({ paymentStatus: "PAID" }, rules), null);
 });
 
-test("workflow archive requires payment, Geidea, and customer exit when configured", () => {
+test("workflow archive requires payment, system registration, and customer exit when configured", () => {
   const rules = {
     requirePaymentBeforeArchive: true,
     requireGeideaBeforeArchive: true,
@@ -45,7 +45,7 @@ test("workflow archive requires payment, Geidea, and customer exit when configur
   };
 
   assert.equal(validateArchiveAllowed({ paymentStatus: "UNPAID" }, rules).message, "Order must be paid before archive");
-  assert.equal(validateArchiveAllowed({ paymentStatus: "PAID", geideaRegisteredAt: null }, rules).message, "Order must be registered on Geidea first");
+  assert.equal(validateArchiveAllowed({ paymentStatus: "PAID", geideaRegisteredAt: null }, rules).message, "Order must be registered on system first");
   assert.equal(validateArchiveAllowed({ paymentStatus: "PAID", geideaRegisteredAt: new Date(), customerLeft: false }, rules).message, "Customer must be marked as left first");
   assert.equal(validateArchiveAllowed({ paymentStatus: "PAID", geideaRegisteredAt: new Date(), customerLeft: true }, rules), null);
 });

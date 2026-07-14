@@ -98,6 +98,7 @@ export async function GET(request) {
   const totalSales = paid.reduce((sum, order) => sum + order.total, 0);
   const cashSales = paid.filter((order) => order.paymentMethod === "CASH").reduce((sum, order) => sum + order.total, 0);
   const visaSales = paid.filter((order) => order.paymentMethod === "VISA").reduce((sum, order) => sum + order.total, 0);
+  const paymentMap = new Map();
   const productMap = new Map();
   const cashierMap = new Map();
   const employeeMap = new Map();
@@ -106,6 +107,23 @@ export async function GET(request) {
   const dailyMap = new Map();
 
   reportOrders.forEach((order) => {
+    if ((order.payments || []).length) {
+      order.payments.forEach((payment) => {
+        const method = ["CASH", "VISA"].includes(payment.method)
+          ? payment.method
+          : payment.providerName || payment.method || "UNKNOWN";
+        const current = paymentMap.get(method) || { method, total: 0, count: 0 };
+        current.total += Number(payment.amount || 0);
+        current.count += 1;
+        paymentMap.set(method, current);
+      });
+    } else if (order.paymentStatus === "PAID") {
+      const method = order.paymentMethod || "UNKNOWN";
+      const current = paymentMap.get(method) || { method, total: 0, count: 0 };
+      current.total += order.total;
+      current.count += 1;
+      paymentMap.set(method, current);
+    }
     cashierMap.set(order.cashier || "Unknown", (cashierMap.get(order.cashier || "Unknown") || 0) + order.total);
     employeeMap.set(order.dataEmployee || "Unassigned", (employeeMap.get(order.dataEmployee || "Unassigned") || 0) + order.total);
     braceletMap.set(order.braceletNo, (braceletMap.get(order.braceletNo) || 0) + order.total);
@@ -138,8 +156,7 @@ export async function GET(request) {
     archivedOrders: reportOrders.filter((order) => order.archivedAt).length,
     geideaRegisteredOrders: reportOrders.filter((order) => order.geideaRegisteredAt).length,
     paymentBreakdown: [
-      { method: "CASH", total: cashSales, count: paid.filter((order) => order.paymentMethod === "CASH").length },
-      { method: "VISA", total: visaSales, count: paid.filter((order) => order.paymentMethod === "VISA").length },
+      ...Array.from(paymentMap.values()).sort((a, b) => b.total - a.total),
       { method: "UNPAID", total: unpaid.reduce((sum, order) => sum + order.total, 0), count: unpaid.length },
     ],
     statusBreakdown: Array.from(statusMap.entries()).map(([status, count]) => ({ status, count })),

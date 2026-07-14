@@ -29,10 +29,11 @@ export default function AppShell({ title, user, children }) {
         </div>
         <nav className="nav">
           {(user.role === "ADMIN" || user.role === "MANAGER") && <Link className="nav-manager" href="/manager">{t("nav.manager")}</Link>}
+          {(user.role === "ADMIN" || user.role === "MANAGER" || user.role === "CASHIER" || user.role === "DATA") && <Link className="nav-front" href="/front">{t("nav.front")}</Link>}
           {(user.role === "ADMIN" || user.role === "CASHIER" || user.role === "DATA") && <Link className="nav-data" href="/data">{t("nav.data")}</Link>}
-          {(user.role === "ADMIN" || user.role === "KITCHEN") && <Link className="nav-kitchen" href="/kitchen">{t("nav.kitchen")}</Link>}
+          {(user.role === "ADMIN" || user.role === "MANAGER" || user.role === "KITCHEN") && <Link className="nav-kitchen" href="/kitchen">{t("nav.kitchen")}</Link>}
           {(user.role === "ADMIN" || user.role === "MANAGER") && (
-            <a className="nav-database" href="http://127.0.0.1:5555" target="_blank" rel="noreferrer">
+            <a className="nav-database" href="http://127.0.0.1:5556" target="_blank" rel="noreferrer">
               {t("nav.database")}
             </a>
           )}

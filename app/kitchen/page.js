@@ -3,7 +3,7 @@ import AppShell from "../AppShell";
 import KitchenClient from "./KitchenClient";
 
 export default async function KitchenPage() {
-  const user = await requireUser(["ADMIN", "KITCHEN"]);
+  const user = await requireUser(["ADMIN", "MANAGER", "KITCHEN"]);
 
   return (
     <AppShell title="title.kitchen" user={user}>

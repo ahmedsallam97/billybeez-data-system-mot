@@ -9,6 +9,12 @@ import { applyEmployeeNameStyles, employeeGenderClass, normalizeEmployeeNameStyl
 import { applyRecordTableStyles, normalizeRecordTableStyles, recordTableStylePresets } from "../recordTableStyles";
 import { formatUiMessage, normalizeUiMessages, uiMessageStyle } from "../uiMessages";
 import { formatCairoDateLabel, formatCairoTime } from "../dateTime";
+import {
+  departmentLabel as configuredDepartmentLabel,
+  employeeDepartmentValue,
+  normalizeDepartmentId,
+  normalizeEmployeeDepartments,
+} from "../../lib/employee-departments";
 import { kitchenTicketRuleValue, parseKitchenTicketRules } from "../../lib/kitchen-ticket-rules";
 
 const roles = ["ADMIN", "MANAGER", "CASHIER", "KITCHEN", "DATA"];
@@ -34,6 +40,10 @@ const permissionKeys = [
   "SYSTEM_SETTING_MANAGE",
   "PRODUCT_READ",
   "PRODUCT_MANAGE",
+  "DEVICE_READ",
+  "DEVICE_MANAGE",
+  "PAYMENT_PROVIDER_READ",
+  "PAYMENT_PROVIDER_MANAGE",
   "USER_MANAGE",
   "BACKUP_MANAGE",
 ];
@@ -54,6 +64,53 @@ function normalizeRolePermissions(value) {
   }));
 }
 
+const invoiceLayoutTypes = ["front", "data", "restaurant"];
+const defaultInvoiceLayout = {
+  paperSize: "80mm",
+  logoUrl: "/bb-logo.png",
+  footerMessage: "Thanks for making memories with us!",
+  fontSize: 11,
+  lineHeight: 1.25,
+  logoWidthMm: 38,
+  qrSizeMm: 34,
+  showLogo: true,
+  showCompany: true,
+  showBranch: true,
+  showTin: true,
+  showSerial: true,
+  showOrderId: true,
+  showBracelet: true,
+  showCustomer: true,
+  showPhone: true,
+  showChildren: true,
+  showCashier: true,
+  showEmployee: true,
+  showPayment: true,
+  showSystemRegistration: true,
+  showTax: false,
+  showQr: true,
+  showFooter: true,
+};
+
+function normalizeInvoiceLayouts(value) {
+  let parsed = value;
+  if (typeof value === "string") {
+    try {
+      parsed = JSON.parse(value);
+    } catch {
+      parsed = {};
+    }
+  }
+  return Object.fromEntries(invoiceLayoutTypes.map((type) => {
+    const savedLayout = parsed?.[type] && typeof parsed[type] === "object" ? parsed[type] : null;
+    return [type, {
+      ...defaultInvoiceLayout,
+      ...(type === "restaurant" && !savedLayout ? { showBracelet: false, showCustomer: false, showPhone: false, showChildren: false, showEmployee: false } : {}),
+      ...(savedLayout || {}),
+    }];
+  }));
+}
+
 const emptyEmployeeForm = {
   id: "",
   name: "",
@@ -61,15 +118,56 @@ const emptyEmployeeForm = {
   active: true,
 };
 
+const emptyEmployeeDepartmentForm = {
+  id: "",
+  name: "",
+  nameEn: "",
+  kind: "DATA",
+  active: true,
+  locked: false,
+};
+
 const emptyProductForm = {
   id: "",
   name: "",
   price: "",
+  originalPrice: "",
+  netSales: "",
+  taxAmount: "",
+  taxRate: "",
+  etaItemCode: "",
+  etaCodeType: "",
+  etaUnitType: "",
+  etaTaxType: "",
+  etaTaxSubType: "",
+  department: "KITCHEN",
   categoryId: "",
   categoryName: "",
   imageUrl: "",
+  iconText: "",
+  cardColorStart: "#3d1859",
+  cardColorEnd: "#8a62b2",
+  cardTextColor: "#ffffff",
+  cardAccentColor: "#e31937",
+  availabilityDays: [],
+  availabilityStartTime: "",
+  availabilityEndTime: "",
   popular: false,
+  printOnKitchen: true,
+  showInDataOrder: true,
+  showInQuickOrder: true,
   active: true,
+  sortOrder: 100,
+};
+
+const emptyCategoryForm = {
+  id: "",
+  name: "",
+  department: "KITCHEN",
+  color: "#3d1859",
+  active: true,
+  showInDataOrder: true,
+  showInQuickOrder: true,
   sortOrder: 100,
 };
 
@@ -83,6 +181,72 @@ const emptyUserForm = {
   role: "DATA",
   active: true,
 };
+
+const emptyDeviceForm = {
+  id: "",
+  deviceNo: 1,
+  name: "",
+  type: "FRONT",
+  active: true,
+  invoicePrinterName: "",
+  kitchenPrinterName: "",
+  posSerial: "",
+  branchCode: "",
+};
+
+const emptyPaymentProviderForm = {
+  id: "",
+  name: "",
+  type: "CUSTOM",
+  method: "CUSTOM_1",
+  active: true,
+  editable: true,
+  showInDataOrder: true,
+  showInQuickOrder: true,
+  sortOrder: 100,
+  reportBucket: "CUSTOM",
+};
+
+const productDepartments = ["ENTRANCE", "KITCHEN", "KITCHEN_CASHIER"];
+const deviceTypes = ["FRONT", "KITCHEN", "KITCHEN_CASHIER"];
+const paymentProviderTypes = ["CASH", "VISA", "CUSTOM"];
+const paymentProviderMethods = ["CASH", "VISA", "KIDZAPP", "WAFFARHA", "E_INVOICE", "CUSTOM_1", "CUSTOM_2"];
+const productAvailabilityDays = ["sun", "mon", "tue", "wed", "thu", "fri", "sat"];
+
+function parseProductAvailabilityRules(value) {
+  if (!value) return { days: [], startTime: "", endTime: "" };
+  try {
+    const parsed = typeof value === "string" ? JSON.parse(value) : value;
+    return {
+      days: Array.isArray(parsed.days) ? parsed.days.filter((day) => productAvailabilityDays.includes(day)) : [],
+      startTime: /^\d{2}:\d{2}$/.test(String(parsed.startTime || "")) ? parsed.startTime : "",
+      endTime: /^\d{2}:\d{2}$/.test(String(parsed.endTime || "")) ? parsed.endTime : "",
+    };
+  } catch {
+    return { days: [], startTime: "", endTime: "" };
+  }
+}
+
+function buildProductAvailabilityRules(form) {
+  if (!form.availabilityDays.length && !form.availabilityStartTime && !form.availabilityEndTime) return "";
+  return JSON.stringify({
+    days: form.availabilityDays,
+    startTime: form.availabilityStartTime,
+    endTime: form.availabilityEndTime,
+  });
+}
+
+function productPreviewText(form) {
+  const icon = String(form.iconText || "").trim();
+  if (icon) return icon.slice(0, 4).toUpperCase();
+
+  const name = String(form.name || "").trim();
+  if (!name) return "S2";
+
+  const words = name.split(/\s+/).filter(Boolean);
+  if (words.length === 1) return words[0].slice(0, 2).toUpperCase();
+  return words.slice(0, 2).map((word) => word[0]).join("").toUpperCase();
+}
 
 const uiMessageGroups = [
   {
@@ -106,6 +270,34 @@ const uiMessageGroups = [
     keys: ["settingsSaved", "uiMessagesSaved", "employeeStyleSaved", "employeeSaved", "productSaved", "userSaved", "rolePermissionsSaved", "backupCreated", "backupRestored"],
   },
 ];
+
+const managerBootSettingsKeys = [
+  "UI_MESSAGE_CONFIG",
+  "ROLE_PERMISSION_CONFIG",
+  "EMPLOYEE_NAME_STYLE_CONFIG",
+  "EMPLOYEE_DEPARTMENT_CONFIG",
+  "RECORD_TABLE_STYLE_CONFIG",
+  "REPORT_DEFAULT_TAB",
+  "REPORT_SHOW_CASH_VISA_GEIDEA",
+  "REPORT_ENABLE_EXCEL_EXPORT",
+  "REPORT_ENABLE_PDF_EXPORT",
+  "REPORT_ORDERS_CARD_ICON_URL",
+  "REPORT_ORDERS_CARD_COLOR_START",
+  "REPORT_ORDERS_CARD_COLOR_END",
+  "REPORT_ORDERS_CARD_TEXT_COLOR",
+  "REPORT_AVERAGE_CARD_ICON_URL",
+  "REPORT_AVERAGE_CARD_COLOR_START",
+  "REPORT_AVERAGE_CARD_COLOR_END",
+  "REPORT_AVERAGE_CARD_TEXT_COLOR",
+  "REPORT_GEIDEA_CARD_ICON_URL",
+  "REPORT_GEIDEA_CARD_COLOR_START",
+  "REPORT_GEIDEA_CARD_COLOR_END",
+  "REPORT_GEIDEA_CARD_TEXT_COLOR",
+  "REPORT_PAID_CARD_ICON_URL",
+  "REPORT_PAID_CARD_COLOR_START",
+  "REPORT_PAID_CARD_COLOR_END",
+  "REPORT_PAID_CARD_TEXT_COLOR",
+].join(",");
 
 function cairoTodayIso() {
   const parts = new Intl.DateTimeFormat("en-CA", {
@@ -135,10 +327,18 @@ export default function ManagerClient() {
   const [data, setData] = useState(null);
   const [employees, setEmployees] = useState([]);
   const [products, setProducts] = useState([]);
+  const [categories, setCategories] = useState([]);
+  const [customers, setCustomers] = useState([]);
   const [users, setUsers] = useState([]);
+  const [devices, setDevices] = useState([]);
+  const [paymentProviders, setPaymentProviders] = useState([]);
   const [employeeForm, setEmployeeForm] = useState(emptyEmployeeForm);
+  const [employeeDepartmentForm, setEmployeeDepartmentForm] = useState(emptyEmployeeDepartmentForm);
   const [productForm, setProductForm] = useState(emptyProductForm);
+  const [categoryForm, setCategoryForm] = useState(emptyCategoryForm);
   const [userForm, setUserForm] = useState(emptyUserForm);
+  const [deviceForm, setDeviceForm] = useState(emptyDeviceForm);
+  const [paymentProviderForm, setPaymentProviderForm] = useState(emptyPaymentProviderForm);
   const [viewMode, setViewMode] = useState("TODAY");
   const [dateFilterMode, setDateFilterMode] = useState("RANGE");
   const [dateFilter, setDateFilter] = useState(() => monthToDateFilter());
@@ -149,14 +349,20 @@ export default function ManagerClient() {
   const [managerTab, setManagerTab] = useState("orders");
   const [settingsTab, setSettingsTab] = useState("employees");
   const [employeeFilter, setEmployeeFilter] = useState({ query: "", department: "ALL", status: "ALL" });
-  const [productFilter, setProductFilter] = useState({ query: "", category: "ALL", status: "ALL", popular: "ALL" });
+  const [productFilter, setProductFilter] = useState({ query: "", department: "ALL", category: "ALL", status: "ALL", popular: "ALL" });
+  const [categoryFilter, setCategoryFilter] = useState({ query: "", department: "ALL", status: "ALL" });
+  const [selectedProductIds, setSelectedProductIds] = useState([]);
+  const [customerFilter, setCustomerFilter] = useState("");
   const [userFilter, setUserFilter] = useState({ query: "", role: "ALL", status: "ALL" });
+  const [deviceFilter, setDeviceFilter] = useState({ query: "", type: "ALL", status: "ALL" });
+  const [paymentProviderFilter, setPaymentProviderFilter] = useState({ query: "", type: "ALL", status: "ALL" });
   const [healthFilter, setHealthFilter] = useState("ALL");
   const [recordQuery, setRecordQuery] = useState("");
   const [settingsSearch, setSettingsSearch] = useState("");
   const [query, setQuery] = useState("");
   const [orderRenderLimit, setOrderRenderLimit] = useState(30);
   const [selectedOrder, setSelectedOrder] = useState(null);
+  const [selectedCustomer, setSelectedCustomer] = useState(null);
   const [orderItemForm, setOrderItemForm] = useState({ productId: "", qty: 1 });
   const [managerPaymentEmployeeId, setManagerPaymentEmployeeId] = useState("");
   const [managerGeideaEmployeeId, setManagerGeideaEmployeeId] = useState("");
@@ -166,17 +372,43 @@ export default function ManagerClient() {
   const [employeeNameStyles, setEmployeeNameStyles] = useState(normalizeEmployeeNameStyles());
   const [recordTableStyles, setRecordTableStyles] = useState(normalizeRecordTableStyles());
   const [settingsMap, setSettingsMap] = useState({});
+  const [settingsLoadMode, setSettingsLoadMode] = useState("boot");
+  const [invoiceLayouts, setInvoiceLayouts] = useState(normalizeInvoiceLayouts());
+  const [invoiceDesignerTab, setInvoiceDesignerTab] = useState("front");
   const [backups, setBackups] = useState([]);
   const [rolePermissions, setRolePermissions] = useState(normalizeRolePermissions());
   const [dashboardMode, setDashboardMode] = useState("light");
   const [resourceStatus, setResourceStatus] = useState({
     employees: "idle",
     products: "idle",
+    categories: "idle",
+    customers: "idle",
     users: "idle",
+    devices: "idle",
+    paymentProviders: "idle",
     backups: "idle",
   });
   const [loadError, setLoadError] = useState("");
   const [uiPrefsReady, setUiPrefsReady] = useState(false);
+
+  const employeeDepartments = normalizeEmployeeDepartments(settingsMap.EMPLOYEE_DEPARTMENT_CONFIG || "");
+  const activeEmployeeDepartments = employeeDepartments.filter((department) => department.active);
+  const restaurantDepartmentIds = new Set(employeeDepartments.filter((department) => department.kind === "KITCHEN" && department.active).map((department) => department.id));
+
+  function labelEmployeeDepartment(department) {
+    return configuredDepartmentLabel(department, settingsMap.EMPLOYEE_DEPARTMENT_CONFIG || "", language);
+  }
+
+  function isRestaurantEmployee(employee) {
+    return restaurantDepartmentIds.has(employee?.department);
+  }
+
+  function roleForEmployeeDepartment(department) {
+    const row = employeeDepartments.find((item) => item.id === department);
+    if (department === "CASHIER") return "CASHIER";
+    if (row?.kind === "KITCHEN") return "KITCHEN";
+    return "DATA";
+  }
 
   useEffect(() => {
     load();
@@ -194,7 +426,7 @@ export default function ManagerClient() {
     const shouldUseSavedDateFilter = savedDateDefaultVersion === "month-to-date-v1";
 
     if (["orders", "review", "reports", "settings", "records", "activity"].includes(savedManagerTab)) setManagerTab(savedManagerTab);
-    if (["employees", "products", "users", "branch", "invoice", "printing", "business", "workflow", "reports", "recordsStyle", "auditBackup", "backupRestore", "messages"].includes(savedSettingsTab)) setSettingsTab(savedSettingsTab);
+    if (["employees", "products", "users", "devices", "paymentProviders", "branch", "invoice", "printing", "business", "workflow", "reports", "recordsStyle", "auditBackup", "backupRestore", "messages"].includes(savedSettingsTab)) setSettingsTab(savedSettingsTab);
     if (["TODAY", "HISTORY"].includes(savedViewMode)) setViewMode(savedViewMode);
     if (["ALL", "CASH", "VISA", "UNPAID"].includes(savedFilter)) setFilter(savedFilter);
     if (["ALL", "ACTIVE", "ARCHIVED", "UNREGISTERED"].includes(savedArchiveFilter)) setArchiveFilter(savedArchiveFilter);
@@ -263,19 +495,26 @@ export default function ManagerClient() {
     if (!selectedOrder) return;
     ensureEmployeesLoaded();
     ensureProductsLoaded();
-    const restaurantEmployees = employees.filter((employee) => employee.department === "KITCHEN" && employee.active);
+    const restaurantEmployees = employees.filter((employee) => isRestaurantEmployee(employee) && employee.active);
     setManagerPaymentEmployeeId(selectedOrder.paymentEmployeeId || restaurantEmployees[0]?.id || "");
     setManagerGeideaEmployeeId(selectedOrder.geideaEmployeeId || restaurantEmployees[0]?.id || "");
     setOrderItemForm((current) => ({ productId: current.productId || products[0]?.id || "", qty: current.qty || 1 }));
-  }, [selectedOrder, employees, products]);
+  }, [selectedOrder, employees, products, settingsMap.EMPLOYEE_DEPARTMENT_CONFIG]);
 
   useEffect(() => {
     if (managerTab !== "settings") return;
+    if (settingsLoadMode !== "full") loadSettingsOnly();
     if (["employees", "users"].includes(settingsTab)) ensureEmployeesLoaded();
-    if (["products", "printing"].includes(settingsTab)) ensureProductsLoaded();
+    if (["products", "printing"].includes(settingsTab)) {
+      ensureProductsLoaded();
+      ensureCategoriesLoaded();
+    }
+    if (settingsTab === "customers") ensureCustomersLoaded();
     if (settingsTab === "users") ensureUsersLoaded();
+    if (settingsTab === "devices") ensureDevicesLoaded();
+    if (settingsTab === "paymentProviders") ensurePaymentProvidersLoaded();
     if (settingsTab === "backupRestore") ensureBackupsLoaded();
-  }, [managerTab, settingsTab]);
+  }, [managerTab, settingsTab, settingsLoadMode]);
 
   useEffect(() => {
     if (!data || dashboardMode === "full") return;
@@ -302,7 +541,7 @@ export default function ManagerClient() {
     try {
       [dashboardRes, settingsRes] = await Promise.all([
         fetch("/api/dashboard?light=1", fetchOptions),
-        fetch("/api/settings", fetchOptions),
+        fetch(`/api/settings?keys=${managerBootSettingsKeys}`, fetchOptions),
       ]);
     } catch (error) {
       setLoadError(error?.message || t("common.loading"));
@@ -321,10 +560,12 @@ export default function ManagerClient() {
 
     setData(dashboardData);
     setDashboardMode("light");
+    setSettingsLoadMode("boot");
     const nextSettingsMap = Object.fromEntries((settingsData.settings || []).map((setting) => [setting.key, setting.value]));
     setSettingsMap(nextSettingsMap);
     setUiMessages(normalizeUiMessages(nextSettingsMap.UI_MESSAGE_CONFIG));
     setRolePermissions(normalizeRolePermissions(nextSettingsMap.ROLE_PERMISSION_CONFIG));
+    setInvoiceLayouts(normalizeInvoiceLayouts(nextSettingsMap.INVOICE_LAYOUT_CONFIG));
     const employeeStyleSetting = settingsData.settings?.find((item) => item.key === "EMPLOYEE_NAME_STYLE_CONFIG");
     const normalizedEmployeeStyles = normalizeEmployeeNameStyles(employeeStyleSetting?.value);
     setEmployeeNameStyles(normalizedEmployeeStyles);
@@ -348,8 +589,10 @@ export default function ManagerClient() {
     const settingsData = await res.json();
     const nextSettingsMap = Object.fromEntries((settingsData.settings || []).map((setting) => [setting.key, setting.value]));
     setSettingsMap(nextSettingsMap);
+    setSettingsLoadMode("full");
     setUiMessages(normalizeUiMessages(nextSettingsMap.UI_MESSAGE_CONFIG));
     setRolePermissions(normalizeRolePermissions(nextSettingsMap.ROLE_PERMISSION_CONFIG));
+    setInvoiceLayouts(normalizeInvoiceLayouts(nextSettingsMap.INVOICE_LAYOUT_CONFIG));
   }
 
   async function loadEmployees() {
@@ -374,6 +617,33 @@ export default function ManagerClient() {
     setResourceStatus((current) => ({ ...current, products: "loaded" }));
   }
 
+  async function loadCategories() {
+    setResourceStatus((current) => ({ ...current, categories: "loading" }));
+    const res = await fetch("/api/categories?includeInactive=true", { cache: "no-store", credentials: "include" });
+    if (!res.ok) {
+      setResourceStatus((current) => ({ ...current, categories: "error" }));
+      return;
+    }
+    const result = await res.json();
+    setCategories(Array.isArray(result.categories) ? result.categories : []);
+    setResourceStatus((current) => ({ ...current, categories: "loaded" }));
+  }
+
+  async function loadCustomers(queryValue = customerFilter) {
+    setResourceStatus((current) => ({ ...current, customers: "loading" }));
+    const params = queryValue.trim() ? `?q=${encodeURIComponent(queryValue.trim())}` : "";
+    const res = await fetch(`/api/customers${params}`, { cache: "no-store", credentials: "include" });
+    if (!res.ok) {
+      setResourceStatus((current) => ({ ...current, customers: "error" }));
+      return;
+    }
+    const result = await res.json();
+    const nextCustomers = Array.isArray(result.customers) ? result.customers : [];
+    setCustomers(nextCustomers);
+    setSelectedCustomer((current) => current ? nextCustomers.find((customer) => customer.id === current.id) || current : current);
+    setResourceStatus((current) => ({ ...current, customers: "loaded" }));
+  }
+
   async function loadUsers() {
     setResourceStatus((current) => ({ ...current, users: "loading" }));
     const res = await fetch("/api/users", { cache: "no-store", credentials: "include" });
@@ -384,6 +654,30 @@ export default function ManagerClient() {
     const usersData = await res.json();
     setUsers(Array.isArray(usersData) ? usersData : []);
     setResourceStatus((current) => ({ ...current, users: "loaded" }));
+  }
+
+  async function loadDevices() {
+    setResourceStatus((current) => ({ ...current, devices: "loading" }));
+    const res = await fetch("/api/devices", { cache: "no-store", credentials: "include" });
+    if (!res.ok) {
+      setResourceStatus((current) => ({ ...current, devices: "error" }));
+      return;
+    }
+    const result = await res.json();
+    setDevices(Array.isArray(result.devices) ? result.devices : []);
+    setResourceStatus((current) => ({ ...current, devices: "loaded" }));
+  }
+
+  async function loadPaymentProviders() {
+    setResourceStatus((current) => ({ ...current, paymentProviders: "loading" }));
+    const res = await fetch("/api/payment-providers", { cache: "no-store", credentials: "include" });
+    if (!res.ok) {
+      setResourceStatus((current) => ({ ...current, paymentProviders: "error" }));
+      return;
+    }
+    const result = await res.json();
+    setPaymentProviders(Array.isArray(result.providers) ? result.providers : []);
+    setResourceStatus((current) => ({ ...current, paymentProviders: "loaded" }));
   }
 
   async function loadBackups() {
@@ -406,8 +700,24 @@ export default function ManagerClient() {
     if (resourceStatus.products === "idle" || resourceStatus.products === "error") loadProducts();
   }
 
+  function ensureCategoriesLoaded() {
+    if (resourceStatus.categories === "idle" || resourceStatus.categories === "error") loadCategories();
+  }
+
+  function ensureCustomersLoaded() {
+    if (resourceStatus.customers === "idle" || resourceStatus.customers === "error") loadCustomers();
+  }
+
   function ensureUsersLoaded() {
     if (resourceStatus.users === "idle" || resourceStatus.users === "error") loadUsers();
+  }
+
+  function ensureDevicesLoaded() {
+    if (resourceStatus.devices === "idle" || resourceStatus.devices === "error") loadDevices();
+  }
+
+  function ensurePaymentProvidersLoaded() {
+    if (resourceStatus.paymentProviders === "idle" || resourceStatus.paymentProviders === "error") loadPaymentProviders();
   }
 
   function ensureBackupsLoaded() {
@@ -472,6 +782,38 @@ export default function ManagerClient() {
       }
     }
 
+    showUiToast("settingsSaved");
+    await loadSettingsOnly();
+  }
+
+  function updateInvoiceLayoutValue(key, value) {
+    setInvoiceLayouts((current) => ({
+      ...current,
+      [invoiceDesignerTab]: {
+        ...current[invoiceDesignerTab],
+        [key]: value,
+      },
+    }));
+  }
+
+  async function saveInvoiceSettings() {
+    const invoiceFields = [
+      ...settingsGroups.invoice.map((field) => ({ key: field.key, value: String(settingsMap[field.key] ?? "") })),
+      { key: "INVOICE_LAYOUT_CONFIG", value: JSON.stringify(invoiceLayouts) },
+    ];
+
+    for (const field of invoiceFields) {
+      const res = await fetch("/api/settings", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(field),
+      });
+      const result = await res.json();
+      if (!result.success) {
+        toast(result.error || t("manager.settingsSaveFailed"), "error");
+        return;
+      }
+    }
     showUiToast("settingsSaved");
     await loadSettingsOnly();
   }
@@ -602,6 +944,148 @@ export default function ManagerClient() {
     );
   }
 
+  function invoiceLayoutLabel(type) {
+    if (type === "front") return t("settings.invoiceFront");
+    if (type === "restaurant") return t("settings.invoiceRestaurant");
+    return t("settings.invoiceData");
+  }
+
+  function renderInvoiceSettings() {
+    if (settingsTab !== "invoice") return null;
+
+    const layout = invoiceLayouts[invoiceDesignerTab] || defaultInvoiceLayout;
+    const invoicePreviewStyle = {
+      "--invoice-width": layout.paperSize === "A4" ? "190mm" : layout.paperSize,
+      "--invoice-font-size": `${Number(layout.fontSize) || 11}px`,
+      "--invoice-line-height": Number(layout.lineHeight) || 1.25,
+      "--invoice-logo-width": `${Number(layout.logoWidthMm) || 38}mm`,
+      "--invoice-qr-size": `${Number(layout.qrSizeMm) || 30}mm`,
+    };
+    const booleanFields = [
+      ["showLogo", t("settings.invoiceShowLogo")],
+      ["showCompany", t("settings.invoiceShowCompany")],
+      ["showBranch", t("settings.invoiceShowBranch")],
+      ["showTin", t("settings.invoiceShowTin")],
+      ["showSerial", t("settings.invoiceShowSerial")],
+      ["showOrderId", t("settings.invoiceShowOrderId")],
+      ["showBracelet", t("settings.invoiceShowBracelet")],
+      ["showCustomer", t("settings.invoiceShowCustomer")],
+      ["showPhone", t("settings.invoiceShowPhone")],
+      ["showChildren", t("settings.invoiceShowChildren")],
+      ["showCashier", t("settings.invoiceShowCashier")],
+      ["showEmployee", t("settings.invoiceShowEmployee")],
+      ["showPayment", t("settings.invoiceShowPayment")],
+      ["showSystemRegistration", t("settings.invoiceShowSystem")],
+      ["showTax", t("settings.showTax")],
+      ["showQr", t("settings.invoiceShowQr")],
+      ["showFooter", t("settings.invoiceShowFooter")],
+    ];
+
+    return (
+      <section className="employee-manager invoice-designer-section">
+        <div className="row">
+          <div>
+            <h3>{t("settings.invoiceSettings")}</h3>
+            <div className="muted">{t("settings.invoiceDesignerHint")}</div>
+          </div>
+          <button className="btn-confirm" onClick={saveInvoiceSettings}>{t("common.save")}</button>
+        </div>
+        {renderSettingsFields(settingsGroups.invoice)}
+        <div className="tabs invoice-layout-tabs">
+          {invoiceLayoutTypes.map((type) => (
+            <button key={type} className={invoiceDesignerTab === type ? "active" : ""} onClick={() => setInvoiceDesignerTab(type)}>
+              {invoiceLayoutLabel(type)}
+            </button>
+          ))}
+        </div>
+        <div className="invoice-designer-grid">
+          <div className="invoice-layout-editor">
+            <div className="form-grid invoice-layout-form">
+              <label>
+                <span>{t("settings.invoiceLogo")}</span>
+                <input value={layout.logoUrl || ""} onChange={(event) => updateInvoiceLayoutValue("logoUrl", event.target.value)} />
+              </label>
+              <label>
+                <span>{t("settings.footerMessage")}</span>
+                <input value={layout.footerMessage || ""} onChange={(event) => updateInvoiceLayoutValue("footerMessage", event.target.value)} />
+              </label>
+              <label>
+                <span>{t("settings.paperSize")}</span>
+                <select value={layout.paperSize || "80mm"} onChange={(event) => updateInvoiceLayoutValue("paperSize", event.target.value)}>
+                  <option value="80mm">80mm</option>
+                  <option value="58mm">58mm</option>
+                  <option value="A4">A4</option>
+                </select>
+              </label>
+              <label>
+                <span>{t("settings.invoiceFontSize")}</span>
+                <input type="number" min="8" max="24" value={layout.fontSize} onChange={(event) => updateInvoiceLayoutValue("fontSize", event.target.value)} />
+              </label>
+              <label>
+                <span>{t("settings.invoiceLineHeight")}</span>
+                <input type="number" min="1" max="2" step="0.05" value={layout.lineHeight} onChange={(event) => updateInvoiceLayoutValue("lineHeight", event.target.value)} />
+              </label>
+              <label>
+                <span>{t("settings.invoiceLogoWidth")}</span>
+                <input type="number" min="10" max="90" value={layout.logoWidthMm} onChange={(event) => updateInvoiceLayoutValue("logoWidthMm", event.target.value)} />
+              </label>
+              <label>
+                <span>{t("settings.invoiceQrSize")}</span>
+                <input type="number" min="12" max="70" value={layout.qrSizeMm} onChange={(event) => updateInvoiceLayoutValue("qrSizeMm", event.target.value)} />
+              </label>
+            </div>
+            <div className="invoice-layout-toggles">
+              {booleanFields.map(([key, label]) => (
+                <label className="toggle-row" key={key}>
+                  <input type="checkbox" checked={Boolean(layout[key])} onChange={(event) => updateInvoiceLayoutValue(key, event.target.checked)} />
+                  <span>{label}</span>
+                </label>
+              ))}
+            </div>
+          </div>
+          <div className="invoice-preview-wrap">
+            <div className="invoice invoice-preview" style={invoicePreviewStyle}>
+              {layout.showLogo && <div className="invoice-logo-wrap"><img src={layout.logoUrl || "/bb-logo.png"} alt="Billy Beez" className="invoice-logo" /></div>}
+              <div className="receipt-center">
+                {layout.showCompany && <><b>{t("invoice.welcome")}</b><div>{settingsMap.COMPANY_NAME || "BillyBeez"}</div></>}
+                {layout.showBranch && <div>{settingsMap.BRANCH_NAME || "BillyBeez MOA"}</div>}
+                {layout.showTin && <div>{t("invoice.tin")}: {settingsMap.BRANCH_TIN || "474-214-206"}</div>}
+              </div>
+              <div className="receipt-rule" />
+              <div className="receipt-meta">
+                {layout.showSerial && <><span>{t("invoice.serial")}</span><b>0000100001</b></>}
+                {layout.showOrderId && <><span>{t("common.orderId")}</span><b>ORD#24</b></>}
+                {layout.showBracelet && <><span>{t("common.bracelet")}</span><b>211333</b></>}
+                <span>{t("invoice.date")}</span><b>12:45 PM</b>
+                {layout.showCustomer && <><span>{t("common.customer")}</span><b>Ahmed Salam</b></>}
+                {layout.showPhone && <><span>{t("common.phone")}</span><b>01027606747</b></>}
+                {layout.showChildren && <><span>{t("common.children")}</span><b>Adam, Salim</b></>}
+                {layout.showCashier && <><span>{t("common.cashier")}</span><b>Admin</b></>}
+                {layout.showEmployee && <><span>{t("common.employee")}</span><b>محمد جمال</b></>}
+                {layout.showPayment && <><span>{t("common.payment")}</span><b>{t("common.cash")}</b></>}
+                {layout.showSystemRegistration && <><span>{t("common.geideaRegisteredBy")}</span><b>محمد أيمن · 12:46 PM</b></>}
+              </div>
+              <div className="receipt-rule" />
+              <div className="receipt-items">
+                <div className="receipt-item receipt-item-head"><span>{t("invoice.item")}</span><span>{t("common.qty")}</span><span>{t("invoice.rate")}</span><span>{t("invoice.amount")}</span></div>
+                <div className="receipt-item"><span>Pepsi</span><span>1</span><span>30.00</span><b>30.00</b></div>
+                <div className="receipt-item"><span>Chicken Burger</span><span>1</span><span>155.00</span><b>155.00</b></div>
+              </div>
+              <div className="receipt-rule" />
+              <div className="receipt-totals">
+                <span>{t("invoice.subtotal")}</span><b>185.00</b>
+                {layout.showTax && <><span>VAT {settingsMap.INVOICE_TAX_RATE || 14}%</span><b>25.90</b></>}
+                <span>{t("common.orderTotal")}</span><b>185.00</b>
+              </div>
+              {layout.showQr && <><div className="receipt-rule" /><div className="receipt-qr"><div className="invoice-qr-placeholder">QR</div><span>{t("invoice.qrCode")}</span></div></>}
+              {layout.showFooter && <><div className="receipt-rule" /><div className="receipt-footer"><div>{layout.footerMessage || settingsMap.INVOICE_FOOTER_MESSAGE || t("invoice.thanks")}</div><div>{t("invoice.contact")}: {settingsMap.INVOICE_CONTACT_NUMBER || "19881"}</div></div></>}
+            </div>
+          </div>
+        </div>
+      </section>
+    );
+  }
+
   function paymentButtonClass(order, method, baseClass) {
     return `${baseClass} ${order.paymentStatus === "PAID" && order.paymentMethod === method ? "payment-selected" : ""}`;
   }
@@ -626,8 +1110,35 @@ export default function ManagerClient() {
     return t("common.archived");
   }
 
+  function labelDeviceType(type) {
+    if (type === "FRONT") return t("manager.frontDevice");
+    if (type === "KITCHEN") return t("manager.restaurantDevice");
+    if (type === "KITCHEN_CASHIER") return t("manager.kitchenCashierDevice");
+    return type || "-";
+  }
+
+  function orderSourceKey(order) {
+    if (order.deviceType === "FRONT") return "FRONT";
+    if (order.deviceType === "KITCHEN_CASHIER") return "QUICK_RESTAURANT";
+    const items = order.items || [];
+    if (items.some((item) => item.department === "KITCHEN_CASHIER")) return "QUICK_RESTAURANT";
+    if (items.some((item) => item.department === "KITCHEN")) return "DATA_RESTAURANT";
+    return "DATA";
+  }
+
+  function labelOrderSource(source) {
+    return t(`source.${source}`);
+  }
+
+  function labelPaymentProviderType(type) {
+    if (type === "CASH") return t("common.cash");
+    if (type === "VISA") return t("common.visa");
+    if (type === "CUSTOM") return t("manager.customPayment");
+    return type || "-";
+  }
+
   function restaurantEmployees() {
-    return employees.filter((employee) => employee.department === "KITCHEN" && employee.active);
+    return employees.filter((employee) => isRestaurantEmployee(employee) && employee.active);
   }
 
   function confirmDanger(message = t("manager.confirmDanger")) {
@@ -993,6 +1504,7 @@ export default function ManagerClient() {
     const productMap = new Map();
     const productQtyMap = new Map();
     const statusMap = new Map();
+    const sourceMap = new Map();
     const cashierMap = new Map();
     const employeeMap = new Map();
     const braceletMap = new Map();
@@ -1012,6 +1524,14 @@ export default function ManagerClient() {
       paymentRow.count += 1;
       paymentRow.total += paymentKey === "UNPAID" ? 0 : total;
       paymentMap.set(paymentKey, paymentRow);
+
+      const sourceKey = orderSourceKey(order);
+      const sourceRow = sourceMap.get(sourceKey) || { source: sourceKey, count: 0, total: 0, paidTotal: 0, unpaidTotal: 0 };
+      sourceRow.count += 1;
+      sourceRow.total += total;
+      if (order.paymentStatus === "PAID") sourceRow.paidTotal += total;
+      else sourceRow.unpaidTotal += total;
+      sourceMap.set(sourceKey, sourceRow);
 
       const statusKey = order.archivedAt ? "ARCHIVED" : order.paymentStatus;
       const statusRow = statusMap.get(statusKey) || { status: statusKey, count: 0 };
@@ -1074,6 +1594,7 @@ export default function ManagerClient() {
         geideaRate: orderCount ? Math.round((geideaCount / orderCount) * 100) : 0,
       },
       paymentBreakdown: [...paymentMap.values()].sort(byTotal),
+      sourceBreakdown: [...sourceMap.values()].sort(byTotal),
       topProducts: [...productMap.values()].sort(byTotal).slice(0, 8),
       topProductQty: [...productQtyMap.values()].sort((a, b) => b.qty - a.qty).slice(0, 8),
       statusBreakdown: [...statusMap.values()].sort((a, b) => b.count - a.count),
@@ -1270,12 +1791,28 @@ export default function ManagerClient() {
     setEmployeeForm(emptyEmployeeForm);
   }
 
+  function resetEmployeeDepartmentForm() {
+    setEmployeeDepartmentForm(emptyEmployeeDepartmentForm);
+  }
+
   function resetProductForm() {
     setProductForm(emptyProductForm);
   }
 
+  function resetCategoryForm() {
+    setCategoryForm(emptyCategoryForm);
+  }
+
   function resetUserForm() {
     setUserForm(emptyUserForm);
+  }
+
+  function resetDeviceForm() {
+    setDeviceForm(emptyDeviceForm);
+  }
+
+  function resetPaymentProviderForm() {
+    setPaymentProviderForm(emptyPaymentProviderForm);
   }
 
   function editEmployee(employee) {
@@ -1287,15 +1824,48 @@ export default function ManagerClient() {
     });
   }
 
+  function editEmployeeDepartment(department) {
+    setEmployeeDepartmentForm({
+      id: department.id,
+      name: department.name || "",
+      nameEn: department.nameEn || "",
+      kind: department.kind || "DATA",
+      active: department.active !== false,
+      locked: Boolean(department.locked),
+    });
+  }
+
   function editProduct(product) {
+    const availabilityRules = parseProductAvailabilityRules(product.availabilityRules);
     setProductForm({
       id: product.id,
       name: product.name,
       price: product.price,
+      originalPrice: product.originalPrice ?? "",
+      netSales: product.netSales ?? "",
+      taxAmount: product.taxAmount ?? "",
+      taxRate: product.taxRate ?? "",
+      etaItemCode: product.etaItemCode || "",
+      etaCodeType: product.etaCodeType || "",
+      etaUnitType: product.etaUnitType || "",
+      etaTaxType: product.etaTaxType || "",
+      etaTaxSubType: product.etaTaxSubType || "",
+      department: product.department || "KITCHEN",
       categoryId: product.categoryId,
       categoryName: product.categoryName,
       imageUrl: product.imageUrl || "",
+      iconText: product.iconText || "",
+      cardColorStart: product.cardColorStart || "#3d1859",
+      cardColorEnd: product.cardColorEnd || "#8a62b2",
+      cardTextColor: product.cardTextColor || "#ffffff",
+      cardAccentColor: product.cardAccentColor || "#e31937",
+      availabilityDays: availabilityRules.days,
+      availabilityStartTime: availabilityRules.startTime,
+      availabilityEndTime: availabilityRules.endTime,
       popular: product.popular,
+      printOnKitchen: product.printOnKitchen !== false,
+      showInDataOrder: product.department === "KITCHEN" && product.showInDataOrder !== false,
+      showInQuickOrder: product.department !== "ENTRANCE" && product.showInQuickOrder !== false,
       active: product.active,
       sortOrder: product.sortOrder || 100,
     });
@@ -1311,6 +1881,48 @@ export default function ManagerClient() {
       password: "",
       role: user.role,
       active: user.active,
+    });
+  }
+
+  function editCategory(category) {
+    setCategoryForm({
+      id: category.id,
+      name: category.name,
+      department: category.department || "KITCHEN",
+      color: category.color || "#3d1859",
+      active: category.active,
+      showInDataOrder: category.department === "KITCHEN" && category.showInDataOrder !== false,
+      showInQuickOrder: category.department !== "ENTRANCE" && category.showInQuickOrder !== false,
+      sortOrder: category.sortOrder || 100,
+    });
+  }
+
+  function editDevice(device) {
+    setDeviceForm({
+      id: device.id,
+      deviceNo: device.deviceNo || 1,
+      name: device.name || "",
+      type: device.type || "FRONT",
+      active: device.active !== false,
+      invoicePrinterName: device.invoicePrinterName || "",
+      kitchenPrinterName: device.kitchenPrinterName || "",
+      posSerial: device.posSerial || "",
+      branchCode: device.branchCode || "",
+    });
+  }
+
+  function editPaymentProvider(provider) {
+    setPaymentProviderForm({
+      id: provider.id,
+      name: provider.name || "",
+      type: provider.type || "CUSTOM",
+      method: provider.method || "CUSTOM_1",
+      active: provider.active !== false,
+      editable: provider.editable !== false,
+      showInDataOrder: provider.showInDataOrder !== false,
+      showInQuickOrder: provider.showInQuickOrder !== false,
+      sortOrder: provider.sortOrder || 100,
+      reportBucket: provider.reportBucket || provider.type || "CUSTOM",
     });
   }
 
@@ -1331,6 +1943,65 @@ export default function ManagerClient() {
     showUiToast("employeeSaved");
     resetEmployeeForm();
     await loadEmployees();
+  }
+
+  async function saveEmployeeDepartments(nextDepartments) {
+    const value = employeeDepartmentValue(nextDepartments);
+    const res = await fetch("/api/settings", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ key: "EMPLOYEE_DEPARTMENT_CONFIG", value }),
+    });
+    const result = await res.json();
+
+    if (!result.success) {
+      toast(result.error || t("manager.departmentSaveFailed"), "error");
+      return false;
+    }
+
+    setSettingsMap((current) => ({ ...current, EMPLOYEE_DEPARTMENT_CONFIG: value }));
+    toast(t("manager.departmentSaved"), "success");
+    return true;
+  }
+
+  async function saveEmployeeDepartment() {
+    const id = normalizeDepartmentId(employeeDepartmentForm.id);
+    const name = employeeDepartmentForm.name.trim();
+    const nameEn = employeeDepartmentForm.nameEn.trim();
+
+    if (!id || !name) {
+      toast(t("manager.departmentRequired"), "error");
+      return;
+    }
+
+    const existing = employeeDepartments.find((department) => department.id === id);
+    const nextDepartments = [
+      ...employeeDepartments.filter((department) => department.id !== id),
+      {
+        id,
+        name,
+        nameEn: nameEn || name,
+        kind: employeeDepartmentForm.kind === "KITCHEN" ? "KITCHEN" : "DATA",
+        active: employeeDepartmentForm.active !== false,
+        locked: Boolean(existing?.locked || employeeDepartmentForm.locked),
+      },
+    ];
+
+    const saved = await saveEmployeeDepartments(nextDepartments);
+    if (saved) resetEmployeeDepartmentForm();
+  }
+
+  async function toggleEmployeeDepartment(department) {
+    if (department.locked) {
+      toast(t("manager.departmentLocked"), "error");
+      return;
+    }
+    if (!confirmDanger()) return;
+
+    const nextDepartments = employeeDepartments.map((item) => (
+      item.id === department.id ? { ...item, active: !item.active } : item
+    ));
+    await saveEmployeeDepartments(nextDepartments);
   }
 
   async function toggleEmployee(employee) {
@@ -1359,10 +2030,20 @@ export default function ManagerClient() {
 
   async function saveProduct() {
     const method = productForm.id ? "PATCH" : "POST";
+    const productPayload = {
+      ...productForm,
+      showInDataOrder: productForm.department === "KITCHEN" && productForm.showInDataOrder !== false,
+      showInQuickOrder: productForm.department !== "ENTRANCE" && productForm.showInQuickOrder !== false,
+      printOnKitchen: productForm.department !== "ENTRANCE" && productForm.printOnKitchen !== false,
+      availabilityRules: buildProductAvailabilityRules(productForm),
+    };
+    delete productPayload.availabilityDays;
+    delete productPayload.availabilityStartTime;
+    delete productPayload.availabilityEndTime;
     const res = await fetch("/api/products", {
       method,
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(productForm),
+      body: JSON.stringify(productPayload),
     });
     const result = await res.json();
 
@@ -1374,6 +2055,36 @@ export default function ManagerClient() {
     showUiToast("productSaved");
     resetProductForm();
     await loadProducts();
+    await loadCategories();
+  }
+
+  async function saveCategory() {
+    const method = categoryForm.id ? "PATCH" : "POST";
+    const payload = {
+      ...categoryForm,
+      showInDataOrder: categoryForm.department === "KITCHEN" && categoryForm.showInDataOrder !== false,
+      showInQuickOrder: categoryForm.department !== "ENTRANCE" && categoryForm.showInQuickOrder !== false,
+    };
+    const res = await fetch("/api/categories", {
+      method,
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    const result = await res.json();
+
+    if (!result.success) {
+      toast(result.error || t("manager.categorySaveFailed"), "error");
+      return;
+    }
+
+    toast(t("manager.categorySaved"), "success");
+    resetCategoryForm();
+    await loadCategories();
+  }
+
+  function exportCustomersCsv() {
+    const queryPart = customerFilter.trim() ? `&q=${encodeURIComponent(customerFilter.trim())}` : "";
+    window.open(`/api/customers?export=csv${queryPart}`, "_blank", "noopener,noreferrer");
   }
 
   async function toggleProduct(product) {
@@ -1392,6 +2103,89 @@ export default function ManagerClient() {
     }
 
     showUiToast("productSaved");
+    await loadProducts();
+  }
+
+  async function toggleCategory(category) {
+    if (!confirmDanger()) return;
+
+    const res = await fetch("/api/categories", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ...category, active: !category.active }),
+    });
+    const result = await res.json();
+
+    if (!result.success) {
+      toast(result.error || t("manager.categorySaveFailed"), "error");
+      return;
+    }
+
+    toast(t("manager.categorySaved"), "success");
+    await loadCategories();
+  }
+
+  function toggleProductSelection(productId) {
+    setSelectedProductIds((current) => (
+      current.includes(productId)
+        ? current.filter((id) => id !== productId)
+        : [...current, productId]
+    ));
+  }
+
+  function selectVisibleProducts() {
+    setSelectedProductIds([...new Set(visibleProductsSettings.map((product) => product.id))]);
+  }
+
+  function clearProductSelection() {
+    setSelectedProductIds([]);
+  }
+
+  async function bulkUpdateProducts(updates) {
+    if (!selectedProductIds.length) {
+      toast(t("manager.noProductsSelected"), "error");
+      return;
+    }
+
+    const res = await fetch("/api/products", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ids: selectedProductIds, updates }),
+    });
+    const result = await res.json();
+
+    if (!result.success) {
+      toast(result.error || t("manager.productSaveFailed"), "error");
+      return;
+    }
+
+    toast(t("manager.bulkProductsSaved"), "success");
+    clearProductSelection();
+    await loadProducts();
+  }
+
+  async function rankProductsBySales() {
+    const ids = selectedProductIds.length ? selectedProductIds : visibleProductsSettings.map((product) => product.id);
+
+    if (!ids.length) {
+      toast(t("manager.noProductsSelected"), "error");
+      return;
+    }
+
+    const res = await fetch("/api/products", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ids, rankBySales: true }),
+    });
+    const result = await res.json();
+
+    if (!result.success) {
+      toast(result.error || t("manager.productSaveFailed"), "error");
+      return;
+    }
+
+    toast(t("manager.productsRankedBySales"), "success");
+    clearProductSelection();
     await loadProducts();
   }
 
@@ -1431,6 +2225,88 @@ export default function ManagerClient() {
 
     showUiToast("userSaved");
     await loadUsers();
+  }
+
+  async function saveDevice() {
+    const method = deviceForm.id ? "PATCH" : "POST";
+    const res = await fetch("/api/devices", {
+      method,
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        ...deviceForm,
+        deviceNo: Number(deviceForm.deviceNo) || 1,
+      }),
+    });
+    const result = await res.json();
+
+    if (!result.success) {
+      toast(result.error || t("manager.deviceSaveFailed"), "error");
+      return;
+    }
+
+    toast(t("manager.deviceSaved"), "info");
+    resetDeviceForm();
+    await loadDevices();
+  }
+
+  async function toggleDevice(device) {
+    if (!confirmDanger()) return;
+
+    const res = await fetch("/api/devices", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ...device, active: !device.active }),
+    });
+    const result = await res.json();
+
+    if (!result.success) {
+      toast(result.error || t("manager.deviceSaveFailed"), "error");
+      return;
+    }
+
+    toast(t("manager.deviceSaved"), "info");
+    await loadDevices();
+  }
+
+  async function savePaymentProvider() {
+    const method = paymentProviderForm.id ? "PATCH" : "POST";
+    const res = await fetch("/api/payment-providers", {
+      method,
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        ...paymentProviderForm,
+        sortOrder: Number(paymentProviderForm.sortOrder) || 100,
+      }),
+    });
+    const result = await res.json();
+
+    if (!result.success) {
+      toast(result.error || t("manager.paymentProviderSaveFailed"), "error");
+      return;
+    }
+
+    toast(t("manager.paymentProviderSaved"), "info");
+    resetPaymentProviderForm();
+    await loadPaymentProviders();
+  }
+
+  async function togglePaymentProvider(provider) {
+    if (!confirmDanger()) return;
+
+    const res = await fetch("/api/payment-providers", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ...provider, active: !provider.active }),
+    });
+    const result = await res.json();
+
+    if (!result.success) {
+      toast(result.error || t("manager.paymentProviderSaveFailed"), "error");
+      return;
+    }
+
+    toast(t("manager.paymentProviderSaved"), "info");
+    await loadPaymentProviders();
   }
 
   function updateUiMessage(key, field, value) {
@@ -1598,6 +2474,13 @@ export default function ManagerClient() {
     });
   }
 
+  function setAllRolePermissions(checked) {
+    setRolePermissions(Object.fromEntries(permissionKeys.map((permission) => [
+      permission,
+      checked ? [...roles] : [],
+    ])));
+  }
+
   async function saveRolePermissions() {
     const res = await fetch("/api/settings", {
       method: "PATCH",
@@ -1723,10 +2606,10 @@ export default function ManagerClient() {
       ["Business Date", selectedPeriodLabel()],
       ["Cash Total", review.cash],
       ["Visa Total", review.visa],
-      ["Not Registered Geidea", review.unregistered.length],
+      ["Not Registered System", review.unregistered.length],
       ["Left Without Paying", review.leftUnpaid.length],
       [],
-      ["Order", "Bracelet", "Children", "Phone", "Payment", "Method", "Total", "Geidea", "Left"],
+      ["Order", "Bracelet", "Children", "Phone", "Payment", "Method", "Total", "System", "Left"],
       ...review.orders.map((order) => [
         order.id,
         order.braceletNo,
@@ -1769,10 +2652,10 @@ export default function ManagerClient() {
       <div class="metrics">
         <div class="metric"><b>Cash</b><br>${escapeHtml(review.cash)}</div>
         <div class="metric"><b>Visa</b><br>${escapeHtml(review.visa)}</div>
-        <div class="metric"><b>Not Geidea</b><br>${review.unregistered.length}</div>
+        <div class="metric"><b>Not System</b><br>${review.unregistered.length}</div>
         <div class="metric"><b>Left Unpaid</b><br>${review.leftUnpaid.length}</div>
       </div>
-      <table><thead><tr><th>Order</th><th>Bracelet</th><th>Children</th><th>Payment</th><th>Total</th><th>Geidea</th></tr></thead><tbody>${rows}</tbody></table>
+      <table><thead><tr><th>Order</th><th>Bracelet</th><th>Children</th><th>Payment</th><th>Total</th><th>System</th></tr></thead><tbody>${rows}</tbody></table>
       <script>window.print()</script>
       </body></html>
     `);
@@ -1784,6 +2667,10 @@ export default function ManagerClient() {
       {
         title: t("manager.paymentBreakdown"),
         rows: periodReports.paymentBreakdown.map((row) => [labelMethod(row.method), `${currency(row.total)} (${formatNumber(row.count)})`]),
+      },
+      {
+        title: t("manager.sourceBreakdown"),
+        rows: periodReports.sourceBreakdown.map((row) => [labelOrderSource(row.source), `${currency(row.total)} (${formatNumber(row.count)})`]),
       },
       {
         title: t("manager.topProducts"),
@@ -1972,7 +2859,28 @@ export default function ManagerClient() {
   const selectedIsEditableOrder = selectedOrder && !selectedOrder.isHistory;
   const selectedIsActiveOrder = selectedIsEditableOrder;
   const selectedIsArchivedOrder = selectedOrder && !selectedOrder.isHistory && selectedOrder.archivedAt;
-  const productCategories = ["ALL", ...new Set(products.map((product) => product.categoryName).filter(Boolean))];
+  const employeeDepartmentOptions = [
+    ...activeEmployeeDepartments,
+    ...employeeDepartments.filter((department) => !department.active && department.id === employeeForm.department),
+  ];
+  const editingEmployeeDepartment = Boolean(employeeDepartmentForm.id && employeeDepartments.some((department) => department.id === employeeDepartmentForm.id));
+  const employeeFilterDepartmentOptions = employeeDepartments.filter((department) => department.active || employees.some((employee) => employee.department === department.id));
+  const productCategories = ["ALL", ...new Set([
+    ...categories.map((category) => category.name).filter(Boolean),
+    ...products.map((product) => product.categoryName).filter(Boolean),
+  ])];
+  const productDepartmentOptions = ["ALL", ...productDepartments];
+  const visibleCategories = categories.filter((category) => {
+    const search = categoryFilter.query.trim().toLowerCase();
+    if (categoryFilter.department !== "ALL" && category.department !== categoryFilter.department) return false;
+    if (categoryFilter.status === "ACTIVE" && !category.active) return false;
+    if (categoryFilter.status === "INACTIVE" && category.active) return false;
+    if (!search) return true;
+    return [category.name, category.id, category.department].some((value) => String(value || "").toLowerCase().includes(search));
+  });
+  const productFormCategoryOptions = categories
+    .filter((category) => category.department === productForm.department)
+    .sort((a, b) => (Number(a.sortOrder) || 100) - (Number(b.sortOrder) || 100) || String(a.name).localeCompare(String(b.name)));
   const visibleEmployees = employees.filter((employee) => {
     const search = employeeFilter.query.trim().toLowerCase();
     if (employeeFilter.department !== "ALL" && employee.department !== employeeFilter.department) return false;
@@ -1983,13 +2891,44 @@ export default function ManagerClient() {
   });
   const visibleProductsSettings = products.filter((product) => {
     const search = productFilter.query.trim().toLowerCase();
+    if (productFilter.department !== "ALL" && product.department !== productFilter.department) return false;
     if (productFilter.category !== "ALL" && product.categoryName !== productFilter.category) return false;
     if (productFilter.status === "ACTIVE" && !product.active) return false;
     if (productFilter.status === "INACTIVE" && product.active) return false;
     if (productFilter.popular === "POPULAR" && !product.popular) return false;
     if (productFilter.popular === "REGULAR" && product.popular) return false;
     if (!search) return true;
-    return [product.name, product.categoryName, product.id].some((value) => String(value || "").toLowerCase().includes(search));
+    return [product.name, product.department, product.categoryName, product.id].some((value) => String(value || "").toLowerCase().includes(search));
+  });
+  const selectedProductIdSet = new Set(selectedProductIds);
+  const selectedProducts = products.filter((product) => selectedProductIdSet.has(product.id));
+  const productSummaryCards = [
+    { key: "ALL", label: t("manager.allDepartments"), products, tone: "all" },
+    ...productDepartments.map((department) => ({
+      key: department,
+      label: labelDepartment(department),
+      products: products.filter((product) => product.department === department),
+      tone: department.toLowerCase().replace("_", "-"),
+    })),
+  ];
+  const productGroups = productDepartments
+    .map((department) => ({
+      department,
+      products: visibleProductsSettings.filter((product) => product.department === department),
+    }))
+    .filter((group) => productFilter.department === "ALL" ? group.products.length > 0 : group.department === productFilter.department);
+  const productHasSchedule = (product) => {
+    const rules = parseProductAvailabilityRules(product.availabilityRules);
+    return Boolean(rules.days.length || rules.startTime || rules.endTime);
+  };
+  const visibleCustomers = customers.filter((customer) => {
+    const search = customerFilter.trim().toLowerCase();
+    if (!search) return true;
+    return [
+      customer.name,
+      customer.phone,
+      ...(customer.children || []).map((child) => child.name),
+    ].some((value) => String(value || "").toLowerCase().includes(search));
   });
   const visibleUsers = users.filter((user) => {
     const search = userFilter.query.trim().toLowerCase();
@@ -1999,6 +2938,22 @@ export default function ManagerClient() {
     if (!search) return true;
     return [user.name, user.username, user.role, user.employeeName, user.employeeDepartment].some((value) => String(value || "").toLowerCase().includes(search));
   });
+  const visibleDevices = devices.filter((device) => {
+    const search = deviceFilter.query.trim().toLowerCase();
+    if (deviceFilter.type !== "ALL" && device.type !== deviceFilter.type) return false;
+    if (deviceFilter.status === "ACTIVE" && !device.active) return false;
+    if (deviceFilter.status === "INACTIVE" && device.active) return false;
+    if (!search) return true;
+    return [device.id, device.name, device.type, device.invoicePrinterName, device.kitchenPrinterName, device.posSerial, device.branchCode].some((value) => String(value || "").toLowerCase().includes(search));
+  });
+  const visiblePaymentProviders = paymentProviders.filter((provider) => {
+    const search = paymentProviderFilter.query.trim().toLowerCase();
+    if (paymentProviderFilter.type !== "ALL" && provider.type !== paymentProviderFilter.type) return false;
+    if (paymentProviderFilter.status === "ACTIVE" && !provider.active) return false;
+    if (paymentProviderFilter.status === "INACTIVE" && provider.active) return false;
+    if (!search) return true;
+    return [provider.id, provider.name, provider.type, provider.method, provider.reportBucket].some((value) => String(value || "").toLowerCase().includes(search));
+  });
   const activeEmployees = employees.filter((employee) => employee.active);
   const settingsGroups = {
     branch: [
@@ -2007,6 +2962,7 @@ export default function ManagerClient() {
       { key: "BRANCH_ADDRESS", label: t("settings.branchAddress") },
       { key: "BRANCH_PHONE", label: t("settings.branchPhone") },
       { key: "BRANCH_TIN", label: t("settings.branchTin") },
+      { key: "BRANCH_ACTIVITY_CODE", label: t("settings.activityCode") },
       { key: "POS_NAME", label: t("settings.posName") },
     ],
     invoice: [
@@ -2017,11 +2973,17 @@ export default function ManagerClient() {
       { key: "INVOICE_TAX_RATE", label: t("settings.taxRate"), type: "number", min: 0 },
       { key: "INVOICE_CONTACT_NUMBER", label: t("settings.contactNumber") },
       { key: "INVOICE_WEBSITE", label: t("settings.website") },
+      { key: "PUBLIC_APP_BASE_URL", label: t("settings.publicAppBaseUrl") },
+      { key: "ETA_ENVIRONMENT", label: t("settings.etaEnvironment"), type: "select", options: [{ value: "SANDBOX", label: "Sandbox" }, { value: "PRODUCTION", label: "Production" }] },
+      { key: "ETA_QR_MODE", label: t("settings.etaQrMode"), type: "select", options: [{ value: "INTERNAL", label: t("settings.qrInternal") }, { value: "ETA", label: t("settings.qrEta") }, { value: "BOTH", label: t("settings.qrBoth") }] },
     ],
     printing: [
       { key: "INVOICE_PRINTER_NAME", label: t("settings.invoicePrinter") },
       { key: "KITCHEN_PRINTER_NAME", label: t("settings.kitchenPrinter") },
       { key: "PRINT_AGENT_URL", label: t("settings.printAgentUrl") },
+      { key: "DEFAULT_FRONT_DEVICE_ID", label: t("settings.defaultFrontDevice") },
+      { key: "DEFAULT_KITCHEN_DEVICE_ID", label: t("settings.defaultKitchenDevice") },
+      { key: "DEFAULT_KITCHEN_CASHIER_DEVICE_ID", label: t("settings.defaultKitchenCashierDevice") },
       { key: "PRINT_COPIES_INVOICE", label: t("settings.invoiceCopies"), type: "number", min: 1 },
       { key: "PRINT_COPIES_KITCHEN", label: t("settings.kitchenCopies"), type: "number", min: 1 },
       { key: "PRINT_AUTO_INVOICE", label: t("settings.autoInvoicePrint"), type: "checkbox" },
@@ -2041,6 +3003,8 @@ export default function ManagerClient() {
       { key: "WORKFLOW_REQUIRE_GEIDEA_BEFORE_ARCHIVE", label: t("settings.requireGeideaBeforeArchive"), type: "checkbox" },
       { key: "WORKFLOW_REQUIRE_PAYMENT_BEFORE_ARCHIVE", label: t("settings.requirePaymentBeforeArchive"), type: "checkbox" },
       { key: "WORKFLOW_ALLOW_EXIT_BEFORE_PAYMENT", label: t("settings.allowExitBeforePayment"), type: "checkbox" },
+      { key: "CUSTOM_PAYMENT_PROVIDER_1", label: t("settings.customPaymentProvider1") },
+      { key: "CUSTOM_PAYMENT_PROVIDER_2", label: t("settings.customPaymentProvider2") },
     ],
     reports: [
       { key: "REPORT_DEFAULT_TAB", label: t("settings.defaultReportTab"), type: "select", options: [{ value: "daily", label: t("manager.tabReview") }, { value: "payments", label: t("manager.paymentBreakdown") }, { value: "products", label: t("manager.topProducts") }] },
@@ -2074,8 +3038,11 @@ export default function ManagerClient() {
 
   const settingsTabOptions = [
     ["employees", t("manager.employeeManagement")],
+    ["customers", t("manager.customerManagement")],
     ["products", t("manager.productManagement")],
     ["users", t("manager.userManagement")],
+    ["devices", t("manager.deviceManagement")],
+    ["paymentProviders", t("manager.paymentProviderManagement")],
     ["branch", t("settings.branchSettings")],
     ["invoice", t("settings.invoiceSettings")],
     ["printing", t("settings.printSettings")],
@@ -2102,6 +3069,12 @@ export default function ManagerClient() {
     endColor: settingsMap[`REPORT_${prefix}_CARD_COLOR_END`] || fallbackEnd,
     textColor: settingsMap[`REPORT_${prefix}_CARD_TEXT_COLOR`] || "#ffffff",
   });
+  const productPreviewStyle = {
+    "--product-card-start": productForm.cardColorStart || "#3d1859",
+    "--product-card-end": productForm.cardColorEnd || productForm.cardColorStart || "#8a62b2",
+    "--product-card-text": productForm.cardTextColor || "#ffffff",
+    "--product-card-accent": productForm.cardAccentColor || "#e31937",
+  };
 
   return (
     <>
@@ -2309,7 +3282,7 @@ export default function ManagerClient() {
                   uiMessages={uiMessages}
                   formatDateTime={formatDateTime}
                   labelMethod={labelMethod}
-                  actionLabels={{ delivered: t("common.delivered"), geidea: "تسجيل جيديا", exit: "خروج", archive: "أرشفة", closed: t("common.closed") }}
+                  actionLabels={{ delivered: t("common.delivered"), geidea: t("manager.registerSystem"), exit: "خروج", archive: "أرشفة", closed: t("common.closed") }}
                   showArchive={Boolean(order.archivedAt && (!order.isHistory || !order.closedAt))}
                   showClosed={Boolean(viewMode === "HISTORY" && order.isHistory && order.closedAt)}
                 />
@@ -2408,6 +3381,14 @@ export default function ManagerClient() {
         </section>
 
         <section className="report-dashboard-grid report-dashboard-grid-wide">
+          <DashboardBars
+            title={t("manager.sourceBreakdown")}
+            rows={periodReports.sourceBreakdown.map((row) => ({ ...row, name: labelOrderSource(row.source) }))}
+            labelKey="name"
+            valueKey="total"
+            valueFormatter={currency}
+            emptyLabel={t("common.noData")}
+          />
           <DashboardBars title={t("manager.topProducts")} rows={periodReports.topProducts} labelKey="name" valueKey="total" valueFormatter={currency} emptyLabel={t("common.noData")} />
           <DashboardBars title={t("manager.productQuantity")} rows={periodReports.topProductQty} labelKey="name" valueKey="qty" valueFormatter={formatNumber} emptyLabel={t("common.noData")} />
           <DashboardBars title={t("manager.employees")} rows={periodReports.dataEmployeePerformance} labelKey="name" valueKey="total" valueFormatter={currency} emptyLabel={t("common.noData")} />
@@ -2447,9 +3428,9 @@ export default function ManagerClient() {
             value={employeeForm.department}
             onChange={(event) => setEmployeeForm((current) => ({ ...current, department: event.target.value }))}
           >
-            <option value="OPERATION">{labelDepartment("OPERATION")}</option>
-            <option value="CASHIER">{labelDepartment("CASHIER")}</option>
-            <option value="KITCHEN">{labelDepartment("KITCHEN")}</option>
+            {employeeDepartmentOptions.map((department) => (
+              <option key={department.id} value={department.id}>{labelEmployeeDepartment(department.id)}</option>
+            ))}
           </select>
           <label className="toggle-row">
             <input
@@ -2460,6 +3441,77 @@ export default function ManagerClient() {
             <span>{employeeForm.active ? t("common.active") : t("common.inactive")}</span>
           </label>
           <button className="btn-confirm" onClick={saveEmployee}>{employeeForm.id ? t("manager.updateEmployee") : t("manager.addEmployee")}</button>
+        </div>
+        <div className="department-manager-panel">
+          <div className="row">
+            <div>
+              <h3>{t("manager.departmentManagement")}</h3>
+              <div className="muted">{t("manager.departmentManagementHint")}</div>
+            </div>
+            {employeeDepartmentForm.id && <button className="danger" onClick={resetEmployeeDepartmentForm}>{t("common.cancel")}</button>}
+          </div>
+          <div className="form-grid department-form-grid">
+            <input
+              value={employeeDepartmentForm.id}
+              onChange={(event) => setEmployeeDepartmentForm((current) => ({ ...current, id: normalizeDepartmentId(event.target.value) }))}
+              placeholder={t("manager.departmentCode")}
+              disabled={employeeDepartmentForm.locked}
+            />
+            <input
+              value={employeeDepartmentForm.name}
+              onChange={(event) => setEmployeeDepartmentForm((current) => ({ ...current, name: event.target.value }))}
+              placeholder={t("manager.departmentNameAr")}
+            />
+            <input
+              value={employeeDepartmentForm.nameEn}
+              onChange={(event) => setEmployeeDepartmentForm((current) => ({ ...current, nameEn: event.target.value }))}
+              placeholder={t("manager.departmentNameEn")}
+            />
+            <select
+              aria-label={t("manager.departmentKind")}
+              value={employeeDepartmentForm.kind}
+              onChange={(event) => setEmployeeDepartmentForm((current) => ({ ...current, kind: event.target.value }))}
+              disabled={employeeDepartmentForm.locked}
+            >
+              <option value="DATA">{t("manager.departmentKindData")}</option>
+              <option value="KITCHEN">{t("manager.departmentKindKitchen")}</option>
+            </select>
+            <label className="toggle-row">
+              <input
+                type="checkbox"
+                checked={employeeDepartmentForm.active}
+                onChange={(event) => setEmployeeDepartmentForm((current) => ({ ...current, active: event.target.checked }))}
+                disabled={employeeDepartmentForm.locked}
+              />
+              <span>{employeeDepartmentForm.active ? t("common.active") : t("common.inactive")}</span>
+            </label>
+            <button className="btn-confirm" onClick={saveEmployeeDepartment}>{editingEmployeeDepartment ? t("manager.updateDepartment") : t("manager.addDepartment")}</button>
+          </div>
+          <div className="employee-table department-table">
+            <div className="employee-row department-row employee-head">
+              <b>{t("manager.departmentCode")}</b>
+              <b>{t("common.name")}</b>
+              <b>{t("manager.departmentKind")}</b>
+              <b>{t("common.status")}</b>
+              <b>{t("common.actions")}</b>
+            </div>
+            {employeeDepartments.map((department) => (
+              <div className="employee-row department-row" key={department.id}>
+                <span><b>{department.id}</b>{department.locked && <small className="muted block">{t("manager.departmentLocked")}</small>}</span>
+                <span>{labelEmployeeDepartment(department.id)}<small className="muted block">{department.nameEn}</small></span>
+                <span>{department.kind === "KITCHEN" ? t("manager.departmentKindKitchen") : t("manager.departmentKindData")}</span>
+                <span className={`badge ${department.active ? "paid" : "unpaid"}`}>
+                  {department.active ? t("common.active") : t("common.inactive")}
+                </span>
+                <span className="actions">
+                  <button className="btn-edit" onClick={() => editEmployeeDepartment(department)}>{t("common.edit")}</button>
+                  <button className={department.active ? "danger" : "btn-unarchive"} disabled={department.locked} onClick={() => toggleEmployeeDepartment(department)}>
+                    {department.active ? t("common.deactivate") : t("common.activate")}
+                  </button>
+                </span>
+              </div>
+            ))}
+          </div>
         </div>
         <div className="employee-style-panel">
           <div className="row">
@@ -2541,9 +3593,9 @@ export default function ManagerClient() {
             onChange={(event) => setEmployeeFilter((current) => ({ ...current, department: event.target.value }))}
           >
             <option value="ALL">{t("common.all")}</option>
-            <option value="OPERATION">{labelDepartment("OPERATION")}</option>
-            <option value="CASHIER">{labelDepartment("CASHIER")}</option>
-            <option value="KITCHEN">{labelDepartment("KITCHEN")}</option>
+            {employeeFilterDepartmentOptions.map((department) => (
+              <option key={department.id} value={department.id}>{labelEmployeeDepartment(department.id)}</option>
+            ))}
           </select>
           <select
             aria-label={t("common.status")}
@@ -2566,7 +3618,7 @@ export default function ManagerClient() {
           {visibleEmployees.map((employee) => (
             <div className="employee-row" key={employee.id}>
               <span className={employeeGenderClass(employee.name)}>{employee.name}</span>
-              <span>{labelDepartment(employee.department)}</span>
+              <span>{labelEmployeeDepartment(employee.department)}</span>
               <span className={`badge ${employee.active ? "paid" : "unpaid"}`}>
                 {employee.active ? t("common.active") : t("common.inactive")}
               </span>
@@ -2581,6 +3633,98 @@ export default function ManagerClient() {
         </div>
       </section>}
 
+      {settingsTab === "customers" && <section className="employee-manager">
+        <div className="row">
+          <div>
+            <h3>{t("manager.customerManagement")}</h3>
+            <div className="muted">{t("manager.customerManagementHint")}</div>
+          </div>
+          <button className="btn-print" onClick={exportCustomersCsv}>{t("manager.exportExcel")}</button>
+        </div>
+        <div className="form-grid settings-filter-grid">
+          <input
+            value={customerFilter}
+            onChange={(event) => setCustomerFilter(event.target.value)}
+            placeholder={t("manager.customerSearch")}
+          />
+          <button className="btn-confirm" onClick={() => loadCustomers(customerFilter)}>{t("common.refresh")}</button>
+          <button className="secondary" onClick={() => {
+            setCustomerFilter("");
+            loadCustomers("");
+          }}>{t("common.clearFilters")}</button>
+        </div>
+        {selectedCustomer && (
+          <div className="customer-profile-card">
+            <div className="row">
+              <div>
+                <h3>{selectedCustomer.name || "-"}</h3>
+                <div className="muted">{selectedCustomer.phone || "-"}</div>
+              </div>
+              <button className="danger" onClick={() => setSelectedCustomer(null)}>{t("common.close")}</button>
+            </div>
+            <div className="grid three customer-profile-metrics">
+              <Metric label={t("manager.visits")} value={formatNumber(selectedCustomer.visits || 0)} />
+              <Metric label={t("common.children")} value={formatNumber(selectedCustomer.children?.length || 0)} />
+              <Metric label={t("manager.recordLastActivity")} value={selectedCustomer.lastOrderAt ? formatDateTime(selectedCustomer.lastOrderAt) : "-"} />
+            </div>
+            {selectedCustomer.comments && <div className="customer-profile-note">{selectedCustomer.comments}</div>}
+            <div className="grid two">
+              <div className="customer-profile-section">
+                <b>{t("common.children")}</b>
+                {(selectedCustomer.children || []).map((child) => (
+                  <div className="customer-profile-row" key={child.id || child.name}>
+                    <span>{child.name}</span>
+                    <span>{child.birthDate ? child.birthDate.slice(0, 10) : "-"}</span>
+                    <span>{child.age !== "" && child.age !== undefined ? `${child.age} ${t("common.age")}` : "-"}</span>
+                  </div>
+                ))}
+                {!selectedCustomer.children?.length && <div className="muted">{t("common.noData")}</div>}
+              </div>
+              <div className="customer-profile-section">
+                <b>{t("manager.recentOrders")}</b>
+                {(selectedCustomer.recentOrders || []).map((order) => (
+                  <div className="customer-profile-row" key={order.id}>
+                    <span>{order.invoiceSerial || order.braceletNo}</span>
+                    <span>{order.createdAt ? formatDateTime(order.createdAt) : "-"}</span>
+                    <span>{currency(order.total || 0)} - {labelMethod(order.paymentMethod)}</span>
+                  </div>
+                ))}
+                {!selectedCustomer.recentOrders?.length && <div className="muted">{t("common.noData")}</div>}
+              </div>
+            </div>
+          </div>
+        )}
+        <div className="employee-table customer-table">
+          <div className="employee-row customer-row employee-head">
+            <b>{t("front.customerName")}</b>
+            <b>{t("common.phone")}</b>
+            <b>{t("common.children")}</b>
+            <b>{t("manager.visits")}</b>
+            <b>{t("manager.recordLastActivity")}</b>
+            <b>{t("common.actions")}</b>
+          </div>
+          {visibleCustomers.map((customer) => (
+            <div className="employee-row customer-row" key={customer.id}>
+              <span>{customer.name || "-"}</span>
+              <span>{customer.phone || "-"}</span>
+              <span className="customer-child-list">
+                {(customer.children || []).slice(0, 6).map((child) => (
+                  <span className="badge" key={child.id || `${customer.id}-${child.name}`}>
+                    {child.name}{child.age !== "" && child.age !== undefined ? ` - ${child.age}` : ""}
+                  </span>
+                ))}
+              </span>
+              <span>{formatNumber(customer.visits || 0)}</span>
+              <span>{customer.lastOrderAt ? formatDateTime(customer.lastOrderAt) : "-"}</span>
+              <span className="actions">
+                <button className="btn-details" onClick={() => setSelectedCustomer(customer)}>{t("manager.details")}</button>
+              </span>
+            </div>
+          ))}
+          {!visibleCustomers.length && <div className="muted settings-empty-row">{t("common.noData")}</div>}
+        </div>
+      </section>}
+
       {settingsTab === "products" && <section className="employee-manager">
         <div className="row">
           <div>
@@ -2589,11 +3733,217 @@ export default function ManagerClient() {
           </div>
           {productForm.id && <button className="danger" onClick={resetProductForm}>{t("common.cancel")}</button>}
         </div>
+        <div className="product-preview-panel">
+          <div>
+            <h4>{t("manager.productPreview")}</h4>
+            <div className="muted">{t("manager.productPreviewHint")}</div>
+          </div>
+          <div className="card product product-custom-accent product-preview-card" style={productPreviewStyle}>
+            {productForm.imageUrl ? (
+              <img className="front-product-image" src={productForm.imageUrl} alt={productForm.name || t("manager.productName")} loading="lazy" decoding="async" />
+            ) : (
+              <div className="front-product-letter product-custom-visual">{productPreviewText(productForm)}</div>
+            )}
+            <div className="product-name">{productForm.name || t("manager.productName")}</div>
+            <div className="product-body">
+              <span className="product-price">{currency(Number(productForm.price) || 0)}</span>
+            </div>
+          </div>
+        </div>
+        <div className="category-manager-panel">
+          <div className="row compact-row">
+            <div>
+              <h4>{t("manager.categoryManagement")}</h4>
+              <div className="muted">{t("manager.categoryManagementHint")}</div>
+            </div>
+            {categoryForm.id && <button className="danger" onClick={resetCategoryForm}>{t("common.cancel")}</button>}
+          </div>
+          <div className="form-grid category-form-grid">
+            <input value={categoryForm.name} onChange={(event) => setCategoryForm((current) => ({ ...current, name: event.target.value }))} placeholder={t("manager.categoryName")} />
+            <select
+              aria-label={t("manager.productDepartment")}
+              value={categoryForm.department}
+              onChange={(event) => setCategoryForm((current) => ({
+                ...current,
+                department: event.target.value,
+                showInDataOrder: event.target.value === "KITCHEN" ? current.showInDataOrder : false,
+                showInQuickOrder: event.target.value !== "ENTRANCE" ? current.showInQuickOrder : false,
+              }))}
+            >
+              {productDepartments.map((department) => <option key={department} value={department}>{labelDepartment(department)}</option>)}
+            </select>
+            <input type="number" min="1" value={categoryForm.sortOrder} onChange={(event) => setCategoryForm((current) => ({ ...current, sortOrder: event.target.value }))} placeholder={t("manager.sortOrder")} />
+            <label>
+              <span>{t("manager.categoryColor")}</span>
+              <input type="color" value={categoryForm.color || "#3d1859"} onChange={(event) => setCategoryForm((current) => ({ ...current, color: event.target.value }))} />
+            </label>
+            <label className="toggle-row">
+              <input type="checkbox" checked={categoryForm.active} onChange={(event) => setCategoryForm((current) => ({ ...current, active: event.target.checked }))} />
+              <span>{categoryForm.active ? t("common.active") : t("common.inactive")}</span>
+            </label>
+            <label className="toggle-row">
+              <input type="checkbox" disabled={categoryForm.department !== "KITCHEN"} checked={categoryForm.department === "KITCHEN" && categoryForm.showInDataOrder} onChange={(event) => setCategoryForm((current) => ({ ...current, showInDataOrder: event.target.checked }))} />
+              <span>{t("manager.showInDataOrder")}</span>
+            </label>
+            <label className="toggle-row">
+              <input type="checkbox" disabled={categoryForm.department === "ENTRANCE"} checked={categoryForm.department !== "ENTRANCE" && categoryForm.showInQuickOrder} onChange={(event) => setCategoryForm((current) => ({ ...current, showInQuickOrder: event.target.checked }))} />
+              <span>{t("manager.showInQuickOrder")}</span>
+            </label>
+            <button className="btn-confirm" onClick={saveCategory}>{categoryForm.id ? t("manager.updateCategory") : t("manager.addCategory")}</button>
+          </div>
+          <div className="form-grid settings-filter-grid category-filter-grid">
+            <input value={categoryFilter.query} onChange={(event) => setCategoryFilter((current) => ({ ...current, query: event.target.value }))} placeholder={t("manager.categorySearch")} />
+            <select
+              aria-label={t("manager.productDepartment")}
+              value={categoryFilter.department}
+              onChange={(event) => setCategoryFilter((current) => ({ ...current, department: event.target.value }))}
+            >
+              {productDepartmentOptions.map((department) => <option key={department} value={department}>{department === "ALL" ? t("manager.allDepartments") : labelDepartment(department)}</option>)}
+            </select>
+            <select
+              aria-label={t("common.status")}
+              value={categoryFilter.status}
+              onChange={(event) => setCategoryFilter((current) => ({ ...current, status: event.target.value }))}
+            >
+              <option value="ALL">{t("common.all")}</option>
+              <option value="ACTIVE">{t("common.active")}</option>
+              <option value="INACTIVE">{t("common.inactive")}</option>
+            </select>
+            <button className="secondary" onClick={() => setCategoryFilter({ query: "", department: "ALL", status: "ALL" })}>{t("common.clearFilters")}</button>
+          </div>
+          <div className="employee-table category-table">
+            <div className="employee-row category-row employee-head">
+              <b>{t("manager.categoryName")}</b>
+              <b>{t("manager.productDepartment")}</b>
+              <b>{t("manager.productsCount")}</b>
+              <b>{t("manager.sortOrder")}</b>
+              <b>{t("manager.productScope")}</b>
+              <b>{t("common.status")}</b>
+              <b>{t("common.actions")}</b>
+            </div>
+            {visibleCategories.map((category) => {
+              const categoryProductCount = products.filter((product) => product.categoryName === category.name || product.categoryId === category.id).length;
+              return (
+                <div className="employee-row category-row" key={category.id}>
+                  <span className="category-title-cell">
+                    <i className="category-color-dot" style={{ background: category.color || "#3d1859" }} />
+                    <b>{category.name}</b>
+                    <small>{category.id}</small>
+                  </span>
+                  <span>{labelDepartment(category.department)}</span>
+                  <span>{formatNumber(categoryProductCount)}</span>
+                  <span>{formatNumber(category.sortOrder || 100)}</span>
+                  <span className="product-scope-tags">
+                    {category.showInDataOrder && <span className="scope-tag data">{t("manager.onlyData")}</span>}
+                    {category.showInQuickOrder && <span className="scope-tag quick">{t("manager.onlyQuick")}</span>}
+                  </span>
+                  <span className={`badge ${category.active ? "paid" : "unpaid"}`}>{category.active ? t("common.active") : t("common.inactive")}</span>
+                  <span className="actions">
+                    <button className="btn-edit" onClick={() => editCategory(category)}>{t("common.edit")}</button>
+                    <button className={category.active ? "danger" : "btn-unarchive"} onClick={() => toggleCategory(category)}>
+                      {category.active ? t("common.deactivate") : t("common.activate")}
+                    </button>
+                  </span>
+                </div>
+              );
+            })}
+            {!visibleCategories.length && <div className="muted settings-empty-row">{t("common.noData")}</div>}
+          </div>
+        </div>
         <div className="form-grid product-form-grid">
           <input value={productForm.name} onChange={(event) => setProductForm((current) => ({ ...current, name: event.target.value }))} placeholder={t("manager.productName")} />
           <input type="number" min="0" value={productForm.price} onChange={(event) => setProductForm((current) => ({ ...current, price: event.target.value }))} placeholder={t("manager.productPrice")} />
-          <input value={productForm.categoryName} onChange={(event) => setProductForm((current) => ({ ...current, categoryName: event.target.value, categoryId: event.target.value }))} placeholder={t("manager.categoryName")} />
+          <input type="number" min="1" value={productForm.sortOrder} onChange={(event) => setProductForm((current) => ({ ...current, sortOrder: event.target.value }))} placeholder={t("manager.sortOrder")} />
+          <select
+            aria-label={t("manager.productDepartment")}
+            value={productForm.department}
+            onChange={(event) => setProductForm((current) => ({
+              ...current,
+              department: event.target.value,
+              printOnKitchen: event.target.value !== "ENTRANCE" ? current.printOnKitchen : false,
+              showInDataOrder: event.target.value === "KITCHEN" ? current.showInDataOrder : false,
+              showInQuickOrder: event.target.value !== "ENTRANCE" ? current.showInQuickOrder : false,
+            }))}
+          >
+            {productDepartments.map((department) => <option key={department} value={department}>{labelDepartment(department)}</option>)}
+          </select>
+          <input
+            list="product-category-options"
+            value={productForm.categoryName}
+            onChange={(event) => {
+              const nextName = event.target.value;
+              const matchedCategory = productFormCategoryOptions.find((category) => category.name === nextName || category.id === nextName);
+              setProductForm((current) => ({ ...current, categoryName: nextName, categoryId: matchedCategory?.id || nextName }));
+            }}
+            placeholder={t("manager.categoryName")}
+          />
+          <datalist id="product-category-options">
+            {productFormCategoryOptions.map((category) => <option key={category.id} value={category.name} />)}
+          </datalist>
           <input value={productForm.imageUrl} onChange={(event) => setProductForm((current) => ({ ...current, imageUrl: event.target.value }))} placeholder={t("manager.productImage")} />
+          <input value={productForm.iconText} onChange={(event) => setProductForm((current) => ({ ...current, iconText: event.target.value }))} placeholder={t("manager.productIconText")} />
+          <div className="product-tax-editor">
+            <b>{t("manager.productTaxEta")}</b>
+            <div className="form-grid product-tax-grid">
+              <input type="number" min="0" step="0.01" value={productForm.originalPrice} onChange={(event) => setProductForm((current) => ({ ...current, originalPrice: event.target.value }))} placeholder={t("manager.originalPrice")} />
+              <input type="number" min="0" step="0.01" value={productForm.netSales} onChange={(event) => setProductForm((current) => ({ ...current, netSales: event.target.value }))} placeholder={t("manager.netSales")} />
+              <input type="number" min="0" step="0.01" value={productForm.taxAmount} onChange={(event) => setProductForm((current) => ({ ...current, taxAmount: event.target.value }))} placeholder={t("manager.taxAmount")} />
+              <input type="number" min="0" step="0.01" value={productForm.taxRate} onChange={(event) => setProductForm((current) => ({ ...current, taxRate: event.target.value }))} placeholder={t("manager.taxRate")} />
+              <input value={productForm.etaItemCode} onChange={(event) => setProductForm((current) => ({ ...current, etaItemCode: event.target.value }))} placeholder={t("manager.etaItemCode")} />
+              <input value={productForm.etaCodeType} onChange={(event) => setProductForm((current) => ({ ...current, etaCodeType: event.target.value }))} placeholder={t("manager.etaCodeType")} />
+              <input value={productForm.etaUnitType} onChange={(event) => setProductForm((current) => ({ ...current, etaUnitType: event.target.value }))} placeholder={t("manager.etaUnitType")} />
+              <input value={productForm.etaTaxType} onChange={(event) => setProductForm((current) => ({ ...current, etaTaxType: event.target.value }))} placeholder={t("manager.etaTaxType")} />
+              <input value={productForm.etaTaxSubType} onChange={(event) => setProductForm((current) => ({ ...current, etaTaxSubType: event.target.value }))} placeholder={t("manager.etaTaxSubType")} />
+            </div>
+            <small className="muted">{t("manager.productTaxEtaHint")}</small>
+          </div>
+          <label>
+            <span>{t("manager.cardStartColor")}</span>
+            <input type="color" value={productForm.cardColorStart} onChange={(event) => setProductForm((current) => ({ ...current, cardColorStart: event.target.value }))} />
+          </label>
+          <label>
+            <span>{t("manager.cardEndColor")}</span>
+            <input type="color" value={productForm.cardColorEnd} onChange={(event) => setProductForm((current) => ({ ...current, cardColorEnd: event.target.value }))} />
+          </label>
+          <label>
+            <span>{t("manager.cardTextColor")}</span>
+            <input type="color" value={productForm.cardTextColor} onChange={(event) => setProductForm((current) => ({ ...current, cardTextColor: event.target.value }))} />
+          </label>
+          <label>
+            <span>{t("manager.cardAccentColor")}</span>
+            <input type="color" value={productForm.cardAccentColor} onChange={(event) => setProductForm((current) => ({ ...current, cardAccentColor: event.target.value }))} />
+          </label>
+          <div className="product-schedule-editor">
+            <b>{t("manager.productAvailability")}</b>
+            <div className="product-day-grid">
+              {productAvailabilityDays.map((day) => (
+                <label className="toggle-row" key={day}>
+                  <input
+                    type="checkbox"
+                    checked={productForm.availabilityDays.includes(day)}
+                    onChange={(event) => setProductForm((current) => ({
+                      ...current,
+                      availabilityDays: event.target.checked
+                        ? [...new Set([...current.availabilityDays, day])]
+                        : current.availabilityDays.filter((item) => item !== day),
+                    }))}
+                  />
+                  <span>{t(`day.${day}`)}</span>
+                </label>
+              ))}
+            </div>
+            <div className="form-grid product-time-grid">
+              <label>
+                <span>{t("manager.availabilityStart")}</span>
+                <input type="time" value={productForm.availabilityStartTime} onChange={(event) => setProductForm((current) => ({ ...current, availabilityStartTime: event.target.value }))} />
+              </label>
+              <label>
+                <span>{t("manager.availabilityEnd")}</span>
+                <input type="time" value={productForm.availabilityEndTime} onChange={(event) => setProductForm((current) => ({ ...current, availabilityEndTime: event.target.value }))} />
+              </label>
+            </div>
+            <small className="muted">{t("manager.productAvailabilityHint")}</small>
+          </div>
           <label className="toggle-row">
             <input type="checkbox" checked={productForm.popular} onChange={(event) => setProductForm((current) => ({ ...current, popular: event.target.checked }))} />
             <span>{t("manager.popularProduct")}</span>
@@ -2602,16 +3952,63 @@ export default function ManagerClient() {
             <input type="checkbox" checked={productForm.active} onChange={(event) => setProductForm((current) => ({ ...current, active: event.target.checked }))} />
             <span>{productForm.active ? t("common.active") : t("common.inactive")}</span>
           </label>
+          <label className="toggle-row">
+            <input type="checkbox" disabled={productForm.department === "ENTRANCE"} checked={productForm.printOnKitchen && productForm.department !== "ENTRANCE"} onChange={(event) => setProductForm((current) => ({ ...current, printOnKitchen: event.target.checked }))} />
+            <span>{t("manager.printOnKitchen")}</span>
+          </label>
+          <label className="toggle-row">
+            <input type="checkbox" disabled={productForm.department !== "KITCHEN"} checked={productForm.department === "KITCHEN" && productForm.showInDataOrder} onChange={(event) => setProductForm((current) => ({ ...current, showInDataOrder: event.target.checked }))} />
+            <span>{t("manager.showInDataOrder")}</span>
+          </label>
+          <label className="toggle-row">
+            <input type="checkbox" disabled={productForm.department === "ENTRANCE"} checked={productForm.department !== "ENTRANCE" && productForm.showInQuickOrder} onChange={(event) => setProductForm((current) => ({ ...current, showInQuickOrder: event.target.checked }))} />
+            <span>{t("manager.showInQuickOrder")}</span>
+          </label>
           <button className="btn-confirm" onClick={saveProduct}>{productForm.id ? t("manager.updateProduct") : t("manager.addProduct")}</button>
+        </div>
+        <div className="product-overview-panel">
+          <div className="row compact-row">
+            <div>
+              <h4>{t("manager.productOverview")}</h4>
+              <div className="muted">{t("manager.productManagementHint")}</div>
+            </div>
+          </div>
+          <div className="product-overview-grid">
+            {productSummaryCards.map((card) => {
+              const activeCount = card.products.filter((product) => product.active).length;
+              const popularCount = card.products.filter((product) => product.popular).length;
+              const selected = productFilter.department === card.key;
+              return (
+                <button
+                  type="button"
+                  className={`product-overview-card tone-${card.tone} ${selected ? "active" : ""}`}
+                  aria-pressed={selected}
+                  key={card.key}
+                  onClick={() => setProductFilter((current) => ({ ...current, department: card.key }))}
+                >
+                  <span>{card.label}</span>
+                  <b>{formatNumber(card.products.length)}</b>
+                  <small>{t("manager.activeProducts")}: {formatNumber(activeCount)} · {t("manager.popularProduct")}: {formatNumber(popularCount)}</small>
+                </button>
+              );
+            })}
+          </div>
         </div>
         <div className="form-grid settings-filter-grid product-settings-filter">
           <input value={productFilter.query} onChange={(event) => setProductFilter((current) => ({ ...current, query: event.target.value }))} placeholder={t("manager.productSearch")} />
           <select
-            aria-label={t("common.department")}
+            aria-label={t("manager.productDepartment")}
+            value={productFilter.department}
+            onChange={(event) => setProductFilter((current) => ({ ...current, department: event.target.value }))}
+          >
+            {productDepartmentOptions.map((department) => <option key={department} value={department}>{department === "ALL" ? t("manager.allDepartments") : labelDepartment(department)}</option>)}
+          </select>
+          <select
+            aria-label={t("manager.categoryName")}
             value={productFilter.category}
             onChange={(event) => setProductFilter((current) => ({ ...current, category: event.target.value }))}
           >
-            {productCategories.map((category) => <option key={category} value={category}>{category === "ALL" ? t("common.all") : category}</option>)}
+            {productCategories.map((category) => <option key={category} value={category}>{category === "ALL" ? t("manager.allCategories") : category}</option>)}
           </select>
           <select
             aria-label={t("common.status")}
@@ -2631,28 +4028,92 @@ export default function ManagerClient() {
             <option value="POPULAR">{t("manager.popularProduct")}</option>
             <option value="REGULAR">{t("manager.regularProduct")}</option>
           </select>
-          <button className="secondary" onClick={() => setProductFilter({ query: "", category: "ALL", status: "ALL", popular: "ALL" })}>{t("common.clearFilters")}</button>
+          <button className="secondary" onClick={() => setProductFilter({ query: "", department: "ALL", category: "ALL", status: "ALL", popular: "ALL" })}>{t("common.clearFilters")}</button>
         </div>
-        <div className="employee-table">
-          <div className="employee-row product-row employee-head">
-            <b>{t("common.name")}</b>
-            <b>{t("common.department")}</b>
-            <b>{t("manager.productPrice")}</b>
-            <b>{t("common.status")}</b>
-            <b>{t("common.actions")}</b>
+        <div className="product-bulk-bar">
+          <div>
+            <b>{t("manager.selectedProducts", { count: formatNumber(selectedProductIds.length) })}</b>
+            <small>{t("manager.productManagementHint")}</small>
           </div>
-          {visibleProductsSettings.map((product) => (
-            <div className="employee-row product-row" key={product.id}>
-              <span>{product.name}</span>
-              <span>{product.categoryName}</span>
-              <span>{currency(product.price)}</span>
-              <span className={`badge ${product.active ? "paid" : "unpaid"}`}>{product.active ? t("common.active") : t("common.inactive")}</span>
-              <span className="actions">
-                <button className="btn-edit" onClick={() => editProduct(product)}>{t("common.edit")}</button>
-                <button className={product.active ? "danger" : "btn-unarchive"} onClick={() => toggleProduct(product)}>
-                  {product.active ? t("common.deactivate") : t("common.activate")}
+          <div className="actions">
+            <button className="secondary" onClick={selectVisibleProducts}>{t("manager.selectVisibleProducts")}</button>
+            <button className="secondary" onClick={clearProductSelection}>{t("manager.clearProductSelection")}</button>
+            <button className="btn-edit" title={t("manager.rankVisibleBySales")} onClick={rankProductsBySales}>{t("manager.rankBySales")}</button>
+            <button className="btn-confirm" onClick={() => bulkUpdateProducts({ active: true })}>{t("manager.bulkActivate")}</button>
+            <button className="danger" onClick={() => bulkUpdateProducts({ active: false })}>{t("manager.bulkDeactivate")}</button>
+            <button className="btn-edit" onClick={() => bulkUpdateProducts({ popular: true })}>{t("manager.bulkPopular")}</button>
+            <button className="secondary" onClick={() => bulkUpdateProducts({ popular: false })}>{t("manager.bulkRegular")}</button>
+            <button className="btn-confirm" onClick={() => bulkUpdateProducts({ showInDataOrder: true })}>{t("manager.bulkDataOn")}</button>
+            <button className="secondary" onClick={() => bulkUpdateProducts({ showInDataOrder: false })}>{t("manager.bulkDataOff")}</button>
+            <button className="btn-print" onClick={() => bulkUpdateProducts({ showInQuickOrder: true })}>{t("manager.bulkQuickOn")}</button>
+            <button className="secondary" onClick={() => bulkUpdateProducts({ showInQuickOrder: false })}>{t("manager.bulkQuickOff")}</button>
+            <button className="btn-unarchive" onClick={() => bulkUpdateProducts({ printOnKitchen: true })}>{t("manager.bulkPrintOn")}</button>
+            <button className="secondary" onClick={() => bulkUpdateProducts({ printOnKitchen: false })}>{t("manager.bulkPrintOff")}</button>
+          </div>
+        </div>
+        <div className="product-group-list">
+          {productGroups.length === 0 && <div className="product-empty-state">{t("manager.productGroupEmpty")}</div>}
+          {productGroups.map((group) => (
+            <div className={`product-group tone-${group.department.toLowerCase().replace("_", "-")}`} key={group.department}>
+              <div className="product-group-head">
+                <div>
+                  <h4>{labelDepartment(group.department)}</h4>
+                  <span>{formatNumber(group.products.length)} · {t("manager.activeProducts")}: {formatNumber(group.products.filter((product) => product.active).length)}</span>
+                </div>
+                <button className="secondary" onClick={() => setProductFilter((current) => ({ ...current, department: group.department }))}>
+                  {t("common.filter")}
                 </button>
-              </span>
+              </div>
+              <div className="employee-table product-table">
+                <div className="employee-row product-row employee-head">
+                  <b></b>
+                  <b>{t("common.name")}</b>
+                  <b>{t("manager.categoryName")}</b>
+                  <b>{t("manager.productPrice")}</b>
+                  <b>{t("manager.popularProduct")}</b>
+                  <b>{t("manager.sortOrder")}</b>
+                  <b>{t("manager.productScope")}</b>
+                  <b>{t("common.status")}</b>
+                  <b>{t("common.actions")}</b>
+                </div>
+                {group.products.map((product) => (
+                  <div className="employee-row product-row" key={product.id}>
+                    <span className="product-select-cell">
+                      <input
+                        type="checkbox"
+                        aria-label={product.name}
+                        checked={selectedProductIdSet.has(product.id)}
+                        onChange={() => toggleProductSelection(product.id)}
+                      />
+                    </span>
+                    <span className="product-title-cell">
+                      <b>{product.name}</b>
+                      <small>{product.id}</small>
+                    </span>
+                    <span>{product.categoryName}</span>
+                    <span>{currency(product.price)}</span>
+                    <span className={`badge ${product.popular ? "paid" : ""}`}>{product.popular ? t("manager.popularProduct") : t("manager.regularProduct")}</span>
+                    <span>{product.sortOrder || 100}</span>
+                    <span className="product-scope-tags">
+                      {product.showInDataOrder && <span className="scope-tag data">{t("manager.onlyData")}</span>}
+                      {product.showInQuickOrder && <span className="scope-tag quick">{t("manager.onlyQuick")}</span>}
+                      <span className={`scope-tag ${product.printOnKitchen ? "print" : "muted"}`}>
+                        {product.printOnKitchen ? t("manager.onlyKitchenPrint") : t("manager.notPrinted")}
+                      </span>
+                      <span className={`scope-tag ${productHasSchedule(product) ? "scheduled" : "muted"}`}>
+                        {productHasSchedule(product) ? t("manager.scheduledProduct") : t("manager.unscheduledProduct")}
+                      </span>
+                    </span>
+                    <span className={`badge ${product.active ? "paid" : "unpaid"}`}>{product.active ? t("common.active") : t("common.inactive")}</span>
+                    <span className="actions">
+                      <button className="btn-edit" onClick={() => editProduct(product)}>{t("common.edit")}</button>
+                      <button className={product.active ? "danger" : "btn-unarchive"} onClick={() => toggleProduct(product)}>
+                        {product.active ? t("common.deactivate") : t("common.activate")}
+                      </button>
+                    </span>
+                  </div>
+                ))}
+              </div>
             </div>
           ))}
         </div>
@@ -2689,14 +4150,14 @@ export default function ManagerClient() {
                   ...current,
                   employeeId: event.target.value,
                   name: employee?.name || current.name,
-                  role: employee?.department === "KITCHEN" ? "KITCHEN" : employee?.department === "CASHIER" ? "CASHIER" : "DATA",
+                  role: roleForEmployeeDepartment(employee?.department),
                 }));
               }}
             >
               <option value="">{t("manager.selectEmployee")}</option>
               {activeEmployees.map((employee) => (
                 <option key={employee.id} value={employee.id}>
-                  {employee.name} - {labelDepartment(employee.department)}
+                  {employee.name} - {labelEmployeeDepartment(employee.department)}
                 </option>
               ))}
             </select>
@@ -2785,7 +4246,11 @@ export default function ManagerClient() {
               <h3>{t("manager.roleMatrix")}</h3>
               <div className="muted">{t("manager.roleMatrixHint")}</div>
             </div>
-            <button className="btn-confirm" onClick={saveRolePermissions}>{t("common.save")}</button>
+            <div className="actions">
+              <button className="secondary" onClick={() => setAllRolePermissions(true)}>{t("manager.selectAllRoles")}</button>
+              <button className="danger" onClick={() => setAllRolePermissions(false)}>{t("manager.unselectAllRoles")}</button>
+              <button className="btn-confirm" onClick={saveRolePermissions}>{t("common.save")}</button>
+            </div>
           </div>
           <div className="role-matrix-table">
             <div className="role-matrix-row role-matrix-head">
@@ -2810,8 +4275,189 @@ export default function ManagerClient() {
         </div>
       </section>}
 
+      {settingsTab === "devices" && <section className="employee-manager">
+        <div className="row">
+          <div>
+            <h3>{t("manager.deviceManagement")}</h3>
+            <div className="muted">{t("manager.deviceManagementHint")}</div>
+          </div>
+          {deviceForm.id && <button className="danger" onClick={resetDeviceForm}>{t("common.cancel")}</button>}
+        </div>
+        <div className="form-grid device-form-grid">
+          <input value={deviceForm.id} readOnly placeholder={t("manager.deviceId")} />
+          <input type="number" min="1" max="10" value={deviceForm.deviceNo} onChange={(event) => setDeviceForm((current) => ({ ...current, deviceNo: event.target.value }))} placeholder={t("manager.deviceNo")} />
+          <input value={deviceForm.name} onChange={(event) => setDeviceForm((current) => ({ ...current, name: event.target.value }))} placeholder={t("manager.deviceName")} />
+          <select
+            aria-label={t("manager.deviceType")}
+            value={deviceForm.type}
+            onChange={(event) => setDeviceForm((current) => ({ ...current, type: event.target.value }))}
+          >
+            {deviceTypes.map((type) => <option key={type} value={type}>{labelDeviceType(type)}</option>)}
+          </select>
+          <input value={deviceForm.invoicePrinterName} onChange={(event) => setDeviceForm((current) => ({ ...current, invoicePrinterName: event.target.value }))} placeholder={t("manager.invoicePrinterName")} />
+          <input value={deviceForm.kitchenPrinterName} onChange={(event) => setDeviceForm((current) => ({ ...current, kitchenPrinterName: event.target.value }))} placeholder={t("manager.kitchenPrinterName")} />
+          <input value={deviceForm.posSerial} onChange={(event) => setDeviceForm((current) => ({ ...current, posSerial: event.target.value }))} placeholder={t("manager.posSerial")} />
+          <input value={deviceForm.branchCode} onChange={(event) => setDeviceForm((current) => ({ ...current, branchCode: event.target.value }))} placeholder={t("manager.branchCode")} />
+          <label className="toggle-row">
+            <input type="checkbox" checked={deviceForm.active} onChange={(event) => setDeviceForm((current) => ({ ...current, active: event.target.checked }))} />
+            <span>{deviceForm.active ? t("common.active") : t("common.inactive")}</span>
+          </label>
+          <button className="btn-confirm" onClick={saveDevice}>{deviceForm.id ? t("manager.updateDevice") : t("manager.addDevice")}</button>
+        </div>
+        <div className="form-grid settings-filter-grid">
+          <input value={deviceFilter.query} onChange={(event) => setDeviceFilter((current) => ({ ...current, query: event.target.value }))} placeholder={t("manager.deviceSearch")} />
+          <select
+            aria-label={t("manager.deviceType")}
+            value={deviceFilter.type}
+            onChange={(event) => setDeviceFilter((current) => ({ ...current, type: event.target.value }))}
+          >
+            <option value="ALL">{t("common.all")}</option>
+            {deviceTypes.map((type) => <option key={type} value={type}>{labelDeviceType(type)}</option>)}
+          </select>
+          <select
+            aria-label={t("common.status")}
+            value={deviceFilter.status}
+            onChange={(event) => setDeviceFilter((current) => ({ ...current, status: event.target.value }))}
+          >
+            <option value="ALL">{t("common.all")}</option>
+            <option value="ACTIVE">{t("common.active")}</option>
+            <option value="INACTIVE">{t("common.inactive")}</option>
+          </select>
+          <button className="secondary" onClick={() => setDeviceFilter({ query: "", type: "ALL", status: "ALL" })}>{t("common.clearFilters")}</button>
+        </div>
+        <div className="employee-table">
+          <div className="employee-row device-row employee-head">
+            <b>{t("manager.deviceNo")}</b>
+            <b>{t("common.name")}</b>
+            <b>{t("manager.deviceType")}</b>
+            <b>{t("manager.printers")}</b>
+            <b>{t("common.status")}</b>
+            <b>{t("common.actions")}</b>
+          </div>
+          {visibleDevices.map((device) => (
+            <div className="employee-row device-row" key={device.id}>
+              <span><b>{device.deviceNo}</b><small className="muted block">{device.id}</small></span>
+              <span>{device.name}</span>
+              <span>{labelDeviceType(device.type)}</span>
+              <span>
+                <small className="block">{t("settings.invoicePrinter")}: {device.invoicePrinterName || "-"}</small>
+                <small className="block">{t("settings.kitchenPrinter")}: {device.kitchenPrinterName || "-"}</small>
+              </span>
+              <span className={`badge ${device.active ? "paid" : "unpaid"}`}>{device.active ? t("common.active") : t("common.inactive")}</span>
+              <span className="actions">
+                <button className="btn-edit" onClick={() => editDevice(device)}>{t("common.edit")}</button>
+                <button className={device.active ? "danger" : "btn-unarchive"} onClick={() => toggleDevice(device)}>
+                  {device.active ? t("common.deactivate") : t("common.activate")}
+                </button>
+              </span>
+            </div>
+          ))}
+        </div>
+      </section>}
+
+      {settingsTab === "paymentProviders" && <section className="employee-manager">
+        <div className="row">
+          <div>
+            <h3>{t("manager.paymentProviderManagement")}</h3>
+            <div className="muted">{t("manager.paymentProviderManagementHint")}</div>
+          </div>
+          {paymentProviderForm.id && <button className="danger" onClick={resetPaymentProviderForm}>{t("common.cancel")}</button>}
+        </div>
+        <div className="form-grid payment-provider-form-grid">
+          <input value={paymentProviderForm.id} readOnly placeholder={t("manager.paymentProviderId")} />
+          <input value={paymentProviderForm.name} onChange={(event) => setPaymentProviderForm((current) => ({ ...current, name: event.target.value }))} placeholder={t("manager.paymentProviderName")} />
+          <select
+            aria-label={t("manager.paymentProviderMethod")}
+            value={paymentProviderForm.method}
+            onChange={(event) => {
+              const method = event.target.value;
+              setPaymentProviderForm((current) => ({
+                ...current,
+                method,
+                type: method === "CASH" ? "CASH" : method === "VISA" ? "VISA" : "CUSTOM",
+                reportBucket: current.reportBucket || (method === "CASH" ? "CASH" : method === "VISA" ? "VISA" : "CUSTOM"),
+              }));
+            }}
+          >
+            {paymentProviderMethods.map((method) => <option key={method} value={method}>{labelMethod(method)}</option>)}
+          </select>
+          <select
+            aria-label={t("manager.paymentProviderType")}
+            value={paymentProviderForm.type}
+            onChange={(event) => setPaymentProviderForm((current) => ({ ...current, type: event.target.value }))}
+          >
+            {paymentProviderTypes.map((type) => <option key={type} value={type}>{labelPaymentProviderType(type)}</option>)}
+          </select>
+          <input value={paymentProviderForm.reportBucket} onChange={(event) => setPaymentProviderForm((current) => ({ ...current, reportBucket: event.target.value }))} placeholder={t("manager.reportBucket")} />
+          <input type="number" min="1" value={paymentProviderForm.sortOrder} onChange={(event) => setPaymentProviderForm((current) => ({ ...current, sortOrder: event.target.value }))} placeholder={t("manager.sortOrder")} />
+          <label className="toggle-row">
+            <input type="checkbox" checked={paymentProviderForm.active} onChange={(event) => setPaymentProviderForm((current) => ({ ...current, active: event.target.checked }))} />
+            <span>{paymentProviderForm.active ? t("common.active") : t("common.inactive")}</span>
+          </label>
+          <label className="toggle-row">
+            <input type="checkbox" checked={paymentProviderForm.editable} onChange={(event) => setPaymentProviderForm((current) => ({ ...current, editable: event.target.checked }))} />
+            <span>{t("manager.editableProvider")}</span>
+          </label>
+          <label className="toggle-row">
+            <input type="checkbox" checked={paymentProviderForm.showInDataOrder} onChange={(event) => setPaymentProviderForm((current) => ({ ...current, showInDataOrder: event.target.checked }))} />
+            <span>{t("manager.showInDataOrder")}</span>
+          </label>
+          <label className="toggle-row">
+            <input type="checkbox" checked={paymentProviderForm.showInQuickOrder} onChange={(event) => setPaymentProviderForm((current) => ({ ...current, showInQuickOrder: event.target.checked }))} />
+            <span>{t("manager.showInQuickOrder")}</span>
+          </label>
+          <button className="btn-confirm" onClick={savePaymentProvider}>{paymentProviderForm.id ? t("manager.updatePaymentProvider") : t("manager.addPaymentProvider")}</button>
+        </div>
+        <div className="form-grid settings-filter-grid">
+          <input value={paymentProviderFilter.query} onChange={(event) => setPaymentProviderFilter((current) => ({ ...current, query: event.target.value }))} placeholder={t("manager.paymentProviderSearch")} />
+          <select
+            aria-label={t("manager.paymentProviderType")}
+            value={paymentProviderFilter.type}
+            onChange={(event) => setPaymentProviderFilter((current) => ({ ...current, type: event.target.value }))}
+          >
+            <option value="ALL">{t("common.all")}</option>
+            {paymentProviderTypes.map((type) => <option key={type} value={type}>{labelPaymentProviderType(type)}</option>)}
+          </select>
+          <select
+            aria-label={t("common.status")}
+            value={paymentProviderFilter.status}
+            onChange={(event) => setPaymentProviderFilter((current) => ({ ...current, status: event.target.value }))}
+          >
+            <option value="ALL">{t("common.all")}</option>
+            <option value="ACTIVE">{t("common.active")}</option>
+            <option value="INACTIVE">{t("common.inactive")}</option>
+          </select>
+          <button className="secondary" onClick={() => setPaymentProviderFilter({ query: "", type: "ALL", status: "ALL" })}>{t("common.clearFilters")}</button>
+        </div>
+        <div className="employee-table">
+          <div className="employee-row payment-provider-row employee-head">
+            <b>{t("common.name")}</b>
+            <b>{t("common.method")}</b>
+            <b>{t("manager.paymentProviderType")}</b>
+            <b>{t("manager.reportBucket")}</b>
+            <b>{t("common.status")}</b>
+            <b>{t("common.actions")}</b>
+          </div>
+          {visiblePaymentProviders.map((provider) => (
+            <div className="employee-row payment-provider-row" key={provider.id}>
+              <span><b>{provider.name}</b><small className="muted block">{provider.id}</small></span>
+              <span>{labelMethod(provider.method)}</span>
+              <span>{labelPaymentProviderType(provider.type)}</span>
+              <span>{provider.reportBucket || "-"}</span>
+              <span className={`badge ${provider.active ? "paid" : "unpaid"}`}>{provider.active ? t("common.active") : t("common.inactive")}</span>
+              <span className="actions">
+                <button className="btn-edit" onClick={() => editPaymentProvider(provider)}>{t("common.edit")}</button>
+                <button className={provider.active ? "danger" : "btn-unarchive"} onClick={() => togglePaymentProvider(provider)}>
+                  {provider.active ? t("common.deactivate") : t("common.activate")}
+                </button>
+              </span>
+            </div>
+          ))}
+        </div>
+      </section>}
+
       {settingsSection("branch", t("settings.branchSettings"), t("settings.branchSettingsHint"), settingsGroups.branch)}
-      {settingsSection("invoice", t("settings.invoiceSettings"), t("settings.invoiceSettingsHint"), settingsGroups.invoice)}
+      {renderInvoiceSettings()}
       {settingsSection("printing", t("settings.printSettings"), t("settings.printSettingsHint"), settingsGroups.printing)}
       {settingsSection("business", t("settings.businessSettings"), t("settings.businessSettingsHint"), settingsGroups.business)}
       {settingsSection("workflow", t("settings.workflowSettings"), t("settings.workflowSettingsHint"), settingsGroups.workflow)}
@@ -3071,7 +4717,7 @@ export default function ManagerClient() {
                 uiMessages={uiMessages}
                 exitEmployeeName={(order) => order.exitEmployee}
                 labelMethod={labelMethod}
-                actionLabels={{ delivered: t("common.delivered"), geidea: "تسجيل جيديا", exit: "خروج", archive: "أرشفة", closed: t("common.closed") }}
+                actionLabels={{ delivered: t("common.delivered"), geidea: t("manager.registerSystem"), exit: "خروج", archive: "أرشفة", closed: t("common.closed") }}
                 showArchive
                 showClosed
               />

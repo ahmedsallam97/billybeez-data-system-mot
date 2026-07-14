@@ -8,11 +8,15 @@ import OrderItemsSummary from "../OrderItemsSummary";
 import { applyEmployeeNameStyles, employeeGenderClass } from "../employeeDisplay";
 import { formatUiMessage, normalizeUiMessages, uiMessageStyle } from "../uiMessages";
 import { filterKitchenTicketItems } from "../../lib/kitchen-ticket-rules";
+import QuickRestaurantOrder from "./QuickRestaurantOrder";
 
 export default function KitchenClient({ user }) {
   const toast = useToast();
   const { t, formatNumber, currency, labelMethod, labelOrderStage, labelStatus, formatDateTime } = useI18n();
   const [orders, setOrders] = useState([]);
+  const [quickOrderOpen, setQuickOrderOpen] = useState(false);
+  const [orderSourceFilter, setOrderSourceFilter] = useState("ALL");
+  const [paymentProviders, setPaymentProviders] = useState([]);
   const [showArchive, setShowArchive] = useState(false);
   const [ordersQuery, setOrdersQuery] = useState("");
   const [orderRenderLimit, setOrderRenderLimit] = useState(30);
@@ -53,7 +57,13 @@ export default function KitchenClient({ user }) {
   }
 
   function paidPaymentLabel(order) {
-    return order.paymentMethod === "VISA" ? t("common.visa") : t("common.cash");
+    return labelMethod(order.paymentMethod);
+  }
+
+  function paymentProviderButtonClass(method) {
+    if (method === "VISA") return "btn-pay-visa";
+    if (method === "WAFFARHA") return "btn-pay-waffarha";
+    return "btn-pay-cash";
   }
 
   function hasKitchenTicketItems(order) {
@@ -62,14 +72,46 @@ export default function KitchenClient({ user }) {
 
   function orderStageClass(order) {
     if (order.geideaRegisteredAt) return "meta-system";
-    if (order.paymentStatus === "PAID") return order.paymentMethod === "VISA" ? "meta-visa" : "meta-cash";
+    if (order.paymentStatus === "PAID") {
+      if (order.paymentMethod === "VISA") return "meta-visa";
+      if (order.paymentMethod === "WAFFARHA") return "meta-waffarha";
+      return "meta-cash";
+    }
     if (order.kitchenStatus === "DELIVERED") return "meta-delivered";
     return order.kitchenPrintJob ? "meta-preparing" : "meta-pending";
   }
 
+  function isQuickRestaurantOrder(order) {
+    return order.deviceType === "KITCHEN_CASHIER";
+  }
+
+  function hasRestaurantItems(order) {
+    return (order.items || []).some((item) => ["KITCHEN", "KITCHEN_CASHIER"].includes(item.department));
+  }
+
   const kitchenOrders = useMemo(() => {
-    if (showArchive) return orders;
-    return orders.filter((order) => !order.geideaRegisteredAt);
+    const restaurantOrders = orders.filter((order) => isQuickRestaurantOrder(order) || hasRestaurantItems(order));
+    const activeOrders = showArchive
+      ? restaurantOrders
+      : restaurantOrders.filter((order) => isQuickRestaurantOrder(order) || !order.geideaRegisteredAt);
+
+    return activeOrders.filter((order) => {
+      if (orderSourceFilter === "DATA") return !isQuickRestaurantOrder(order);
+      if (orderSourceFilter === "QUICK") return isQuickRestaurantOrder(order);
+      return true;
+    });
+  }, [orders, showArchive, orderSourceFilter]);
+
+  const kitchenSourceCounts = useMemo(() => {
+    const restaurantOrders = orders
+      .filter((order) => isQuickRestaurantOrder(order) || hasRestaurantItems(order))
+      .filter((order) => showArchive || isQuickRestaurantOrder(order) || !order.geideaRegisteredAt);
+
+    return {
+      all: restaurantOrders.length,
+      data: restaurantOrders.filter((order) => !isQuickRestaurantOrder(order)).length,
+      quick: restaurantOrders.filter((order) => isQuickRestaurantOrder(order)).length,
+    };
   }, [orders, showArchive]);
 
   const visibleOrders = useMemo(() => {
@@ -91,10 +133,24 @@ export default function KitchenClient({ user }) {
 
   const unpaidCount = kitchenOrders.filter((order) => order.paymentStatus !== "PAID").length;
   const unregisteredCount = kitchenOrders.filter((order) => !order.geideaRegisteredAt).length;
+  const restaurantPaymentProviders = useMemo(() => {
+    const configuredProviders = paymentProviders.filter((provider) => provider.active !== false);
+
+    return configuredProviders.length ? configuredProviders : [
+      { id: "CASH", method: "CASH", name: labelMethod("CASH"), active: true },
+      { id: "VISA", method: "VISA", name: labelMethod("VISA"), active: true },
+      { id: "WAFFARHA", method: "WAFFARHA", name: labelMethod("WAFFARHA"), active: true },
+    ];
+  }, [paymentProviders, labelMethod]);
 
   useEffect(() => {
     const savedArchive = localStorage.getItem("kitchenShowArchive");
     if (savedArchive === "true" || savedArchive === "false") setShowArchive(savedArchive === "true");
+    const requestedView = new URLSearchParams(window.location.search).get("view");
+    const savedQuickOpen = localStorage.getItem("kitchenQuickOrderOpen");
+    const savedSourceFilter = localStorage.getItem("kitchenOrderSourceFilter");
+    setQuickOrderOpen(requestedView === "quick" || savedQuickOpen === "true");
+    if (["ALL", "DATA", "QUICK"].includes(savedSourceFilter)) setOrderSourceFilter(savedSourceFilter);
     setUiPrefsReady(true);
   }, []);
 
@@ -104,22 +160,38 @@ export default function KitchenClient({ user }) {
   }, [showArchive, uiPrefsReady]);
 
   useEffect(() => {
+    if (!uiPrefsReady) return;
+    localStorage.setItem("kitchenOrderSourceFilter", orderSourceFilter);
+  }, [orderSourceFilter, uiPrefsReady]);
+
+  useEffect(() => {
+    if (!uiPrefsReady) return;
+    localStorage.setItem("kitchenQuickOrderOpen", String(quickOrderOpen));
+    const url = new URL(window.location.href);
+    if (quickOrderOpen) url.searchParams.set("view", "quick");
+    else url.searchParams.delete("view");
+    window.history.replaceState(null, "", `${url.pathname}${url.search}${url.hash}`);
+  }, [quickOrderOpen, uiPrefsReady]);
+
+  useEffect(() => {
     setOrderRenderLimit(30);
   }, [showArchive, ordersQuery]);
 
   useEffect(() => {
+    if (!uiPrefsReady) return undefined;
     load();
     const timer = setInterval(load, 15000);
     return () => clearInterval(timer);
-  }, [showArchive]);
+  }, [showArchive, uiPrefsReady]);
 
   useEffect(() => {
     loadRestaurantEmployees();
+    loadPaymentProviders();
     loadUiMessages();
   }, []);
 
   async function loadUiMessages() {
-    const res = await fetch("/api/settings").catch(() => null);
+    const res = await fetch("/api/settings?keys=UI_MESSAGE_CONFIG,EMPLOYEE_NAME_STYLE_CONFIG,KITCHEN_TICKET_CATEGORIES").catch(() => null);
     if (!res?.ok) return;
     const data = await res.json();
     const setting = data.settings?.find((item) => item.key === "UI_MESSAGE_CONFIG");
@@ -167,7 +239,9 @@ export default function KitchenClient({ user }) {
     if (!updatedOrder) return false;
 
     setOrders((current) => {
-      const shouldKeep = showArchive ? Boolean(updatedOrder.archivedAt) : !updatedOrder.archivedAt && !updatedOrder.geideaRegisteredAt;
+      const shouldKeep = showArchive
+        ? Boolean(updatedOrder.archivedAt)
+        : !updatedOrder.archivedAt && (isQuickRestaurantOrder(updatedOrder) || !updatedOrder.geideaRegisteredAt);
       const exists = current.some((order) => order.id === updatedOrder.id);
 
       if (!shouldKeep) return current.filter((order) => order.id !== updatedOrder.id);
@@ -218,6 +292,13 @@ export default function KitchenClient({ user }) {
     } else {
       setDefaultPaymentEmployeeId(employees[0]?.id || "");
     }
+  }
+
+  async function loadPaymentProviders() {
+    const res = await fetch("/api/payment-providers?context=data").catch(() => null);
+    if (!res?.ok) return;
+    const data = await res.json();
+    setPaymentProviders(data.providers || []);
   }
 
   function selectedPaymentEmployeeId(orderId) {
@@ -429,16 +510,40 @@ export default function KitchenClient({ user }) {
 
   return (
     <>
-    <section className="panel">
-      <div className="tabs order-tabs orders-top-tabs">
-        <button className={!showArchive ? "active" : ""} onClick={() => setShowArchive(false)}>{t("common.active")}</button>
-        <button className={showArchive ? "active" : ""} onClick={() => setShowArchive(true)}>{t("common.archive")}</button>
+    <section className="panel kitchen-unified-command">
+      <div>
+        <h2>{t("title.kitchen")}</h2>
+        <div className="muted">{t("kitchen.unifiedHint")}</div>
       </div>
-      <div className="row">
+      <div className="actions">
+        <button className={quickOrderOpen ? "danger" : "btn-confirm"} onClick={() => setQuickOrderOpen((current) => !current)}>
+          {quickOrderOpen ? t("kitchen.hideQuickOrder") : t("kitchen.newQuickOrder")}
+        </button>
+        <button className="secondary" onClick={load}>{t("common.refresh")}</button>
+      </div>
+    </section>
+    {quickOrderOpen && <QuickRestaurantOrder embedded onOrderCreated={load} />}
+    <section className="panel kitchen-orders-panel">
+      <div className="row kitchen-orders-title-row">
         <h2>{showArchive ? t("common.archive") : t("kitchen.orders")}</h2>
+        <div className="tabs order-tabs orders-top-tabs">
+          <button className={!showArchive ? "active" : ""} onClick={() => setShowArchive(false)}>{t("common.active")}</button>
+          <button className={showArchive ? "active" : ""} onClick={() => setShowArchive(true)}>{t("common.archive")}</button>
+        </div>
       </div>
       <div className="orders-layout">
-        <aside className="orders-sidebar">
+        <aside className="orders-sidebar kitchen-orders-toolbar">
+          <div className="tabs order-source-tabs">
+            <button className={orderSourceFilter === "ALL" ? "active" : ""} onClick={() => setOrderSourceFilter("ALL")}>
+              {t("common.all")} <b>{formatNumber(kitchenSourceCounts.all)}</b>
+            </button>
+            <button className={orderSourceFilter === "DATA" ? "active" : ""} onClick={() => setOrderSourceFilter("DATA")}>
+              {t("kitchen.dataOrders")} <b>{formatNumber(kitchenSourceCounts.data)}</b>
+            </button>
+            <button className={orderSourceFilter === "QUICK" ? "active" : ""} onClick={() => setOrderSourceFilter("QUICK")}>
+              {t("kitchen.quickOrders")} <b>{formatNumber(kitchenSourceCounts.quick)}</b>
+            </button>
+          </div>
           <div className="orders-sidebar-metrics">
             <Metric label={t("common.visibleOrders")} value={formatNumber(visibleOrders.length)} />
             <Metric label={t("common.unpaid")} value={formatNumber(unpaidCount)} />
@@ -447,7 +552,7 @@ export default function KitchenClient({ user }) {
           </div>
           <div className="form-grid cashier-order-search">
             <input value={ordersQuery} onChange={(event) => setOrdersQuery(event.target.value)} placeholder={t("cashier.searchOrdersPlaceholder")} />
-            <button className="secondary" onClick={() => setOrdersQuery("")}>{t("common.clearFilters")}</button>
+            <button className="secondary" onClick={() => { setOrdersQuery(""); setOrderSourceFilter("ALL"); }}>{t("common.clearFilters")}</button>
           </div>
         </aside>
         <div className="orders-content">
@@ -485,7 +590,7 @@ export default function KitchenClient({ user }) {
                 uiMessages={uiMessages}
                 formatDateTime={formatDateTime}
                 labelMethod={labelMethod}
-                actionLabels={{ delivered: t("common.delivered"), geidea: "تسجيل جيديا", exit: "خروج", archive: "أرشفة", closed: t("common.closed") }}
+                actionLabels={{ delivered: t("common.delivered"), geidea: t("kitchen.registerSystem"), exit: "خروج", archive: "أرشفة", closed: t("common.closed") }}
                 showArchive={showArchive}
               />
               {order.kitchenPrintJob && order.kitchenStatus !== "DELIVERED" && (
@@ -522,39 +627,23 @@ export default function KitchenClient({ user }) {
                 <button className="btn-deliver" disabled={order.kitchenStatus === "DELIVERED"} onClick={() => openEmployeeAction(order, "deliver")}>{t("kitchen.markDelivered")}</button>
                 {order.paymentStatus === "PAID" ? (
                   <button
-                    className={paymentButtonClass(order, order.paymentMethod, order.paymentMethod === "VISA" ? "btn-pay-visa" : "btn-pay-cash")}
+                    className={paymentButtonClass(order, order.paymentMethod, paymentProviderButtonClass(order.paymentMethod))}
                     onClick={() => openEmployeeAction(order, "payment", order.paymentMethod)}
                   >
                     {paidPaymentLabel(order)}
                   </button>
                 ) : (
-                  <>
+                  restaurantPaymentProviders.map((provider) => (
                     <button
-                      className={paymentButtonClass(order, "CASH", "btn-pay-cash")}
+                      key={provider.id}
+                      className={paymentButtonClass(order, provider.method, paymentProviderButtonClass(provider.method))}
                       disabled={order.kitchenStatus !== "DELIVERED"}
                       title={order.kitchenStatus !== "DELIVERED" ? t("kitchen.deliverBeforePayment") : ""}
-                      onClick={() => openEmployeeAction(order, "payment", "CASH")}
+                      onClick={() => openEmployeeAction(order, "payment", provider.method)}
                     >
-                      {t("common.cash")}
+                      {provider.name || labelMethod(provider.method)}
                     </button>
-                    <button
-                      className={paymentButtonClass(order, "VISA", "btn-pay-visa")}
-                      disabled={order.kitchenStatus !== "DELIVERED"}
-                      title={order.kitchenStatus !== "DELIVERED" ? t("kitchen.deliverBeforePayment") : ""}
-                      onClick={() => openEmployeeAction(order, "payment", "VISA")}
-                    >
-                      {t("common.visa")}
-                    </button>
-                  </>
-                )}
-                {!order.geideaRegisteredAt && (
-                  <button
-                    className="btn-system"
-                    disabled={order.kitchenStatus !== "DELIVERED" || order.paymentStatus !== "PAID"}
-                    onClick={() => openEmployeeAction(order, "geidea")}
-                  >
-                    {t("kitchen.registerSystem")}
-                  </button>
+                  ))
                 )}
                 {order.geideaRegisteredAt && order.customerLeft && !order.archivedAt && (
                   <button className="btn-print" onClick={() => archiveOrder(order.id)}>{t("kitchen.archiveOrder")}</button>

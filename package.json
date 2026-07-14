@@ -16,6 +16,8 @@
     "db:studio": "prisma studio --port 5555",
     "db:migrate-workflow": "node scripts/migrate-workflow-state.js",
     "products:images": "node scripts/sync-product-images.js",
+    "products:cleanup-quick-duplicates": "node scripts/cleanup-quick-product-duplicates.js",
+    "items:import": "node scripts/import-items-categories.js",
     "db:import:apps-script": "node scripts/import-apps-script.js",
     "clasp:push": "clasp push --force"
   },
@@ -25,8 +27,10 @@
     "bcryptjs": "^3.0.3",
     "next": "^16.2.9",
     "prisma": "^6.19.1",
+    "qrcode": "^1.5.4",
     "react": "^19.2.7",
-    "react-dom": "^19.2.7"
+    "react-dom": "^19.2.7",
+    "read-excel-file": "^9.3.1"
   },
   "devDependencies": {
     "@google/clasp": "^3.3.0"

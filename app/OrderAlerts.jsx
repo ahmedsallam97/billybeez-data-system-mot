@@ -19,6 +19,7 @@ export default function OrderAlerts({ order, uiMessages, exitEmployeeName, label
   const deliveryName = order.deliveryEmployee || "";
   const geideaName = order.geideaEmployee || "";
   const methodLabel = labelMethod ? labelMethod(order.paymentMethod) : order.paymentMethod;
+  const paymentTone = order.paymentMethod === "VISA" ? "visa" : order.paymentMethod === "WAFFARHA" ? "waffarha" : "cash";
   const leftUnpaid = order.customerLeft && order.paymentStatus !== "PAID";
   const leftNeedsGeidea = order.customerLeft && order.paymentStatus === "PAID" && !order.geideaRegisteredAt;
   const suppressActionAlert = !showArchive && (leftUnpaid || leftNeedsGeidea);
@@ -36,10 +37,10 @@ export default function OrderAlerts({ order, uiMessages, exitEmployeeName, label
         </div>
       )}
       {!suppressActionAlert && order.geideaRegisteredAt && (
-        <ActionAlert tone="geidea" title={actionLabels.geidea || "تسجيل جيديا"} name={geideaName} value={order.geideaRegisteredAt} />
+        <ActionAlert tone="geidea" title={actionLabels.geidea || "السيستم"} name={geideaName} value={order.geideaRegisteredAt} />
       )}
       {!suppressActionAlert && !order.geideaRegisteredAt && order.paymentStatus === "PAID" && (
-        <ActionAlert tone={order.paymentMethod === "VISA" ? "visa" : "cash"} title={methodLabel} name={paymentName} value={order.paidAt || order.updatedAt} />
+        <ActionAlert tone={paymentTone} title={methodLabel} name={paymentName} value={order.paidAt || order.updatedAt} />
       )}
       {!suppressActionAlert && !order.geideaRegisteredAt && order.paymentStatus !== "PAID" && order.kitchenStatus === "DELIVERED" && (
         <ActionAlert tone="delivered" title={actionLabels.delivered || "تم التسليم"} name={deliveryName} value={order.deliveredAt || order.updatedAt} />

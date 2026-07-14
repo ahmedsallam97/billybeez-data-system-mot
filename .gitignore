@@ -7,5 +7,6 @@ prisma/dev.pre-*.db
 dev-server*.log
 build.log
 prisma-studio*.log
+next-production*.log
 tmp/
 backups/

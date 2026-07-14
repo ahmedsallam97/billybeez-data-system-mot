@@ -191,7 +191,7 @@ export default function FrontClient({ user }) {
       fetch("/api/products?department=ENTRANCE"),
       fetch("/api/devices"),
       fetch("/api/employees?department=ALL"),
-      fetch("/api/payment-providers"),
+      fetch("/api/payment-providers?context=front"),
       fetch("/api/orders?archived=false&deviceType=FRONT"),
       fetch("/api/child-names"),
     ]);
@@ -555,11 +555,7 @@ export default function FrontClient({ user }) {
                   key={product.id}
                 >
                   <button className="product-main" onClick={() => changeQty(product, 1)} disabled={!availability.available}>
-                    {product.imageUrl ? (
-                      <img className="front-product-image" src={product.imageUrl} alt={product.name} loading="lazy" decoding="async" />
-                    ) : (
-                      <div className={`front-product-letter ${visual.className}`}>{visual.text}</div>
-                    )}
+                    <div className={`front-product-letter ${visual.className}`}>{visual.text}</div>
                     <div className="product-name">{product.name}</div>
                   </button>
                   <div className="product-body">

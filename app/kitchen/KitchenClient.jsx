@@ -478,7 +478,7 @@ export default function KitchenClient({ user }) {
       return;
     }
 
-    const res = await fetch(`/api/orders/${orderUrlId(orderId)}/geidea`, {
+    const res = await fetch(`/api/orders/${orderUrlId(orderId)}/system`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ geideaEmployeeId }),
@@ -522,7 +522,7 @@ export default function KitchenClient({ user }) {
         <button className="secondary" onClick={load}>{t("common.refresh")}</button>
       </div>
     </section>
-    {quickOrderOpen && <QuickRestaurantOrder embedded onOrderCreated={load} />}
+    {quickOrderOpen && <QuickRestaurantOrder embedded onOrderCreated={(order) => refreshOrderFallback({ success: true, order })} />}
     <section className="panel kitchen-orders-panel">
       <div className="row kitchen-orders-title-row">
         <h2>{showArchive ? t("common.archive") : t("kitchen.orders")}</h2>

@@ -78,13 +78,13 @@ const devices = Array.from({ length: 10 }, (_, index) => {
 });
 
 const paymentProviders = [
-  { id: "CASH", name: "Cash", type: "CASH", method: "CASH", editable: false, showInDataOrder: true, showInQuickOrder: true, sortOrder: 1, reportBucket: "CASH" },
-  { id: "VISA", name: "Visa", type: "VISA", method: "VISA", editable: false, showInDataOrder: true, showInQuickOrder: true, sortOrder: 2, reportBucket: "VISA" },
-  { id: "KIDZAPP", name: "Kidzapp", type: "CUSTOM", method: "KIDZAPP", editable: true, showInDataOrder: false, showInQuickOrder: false, sortOrder: 10, reportBucket: "PARTNER" },
-  { id: "WAFFARHA", name: "Waffarha", type: "CUSTOM", method: "WAFFARHA", editable: true, showInDataOrder: true, showInQuickOrder: true, sortOrder: 11, reportBucket: "PARTNER" },
-  { id: "E_INVOICE", name: "E-Invoice", type: "CUSTOM", method: "E_INVOICE", editable: true, showInDataOrder: false, showInQuickOrder: false, sortOrder: 12, reportBucket: "PARTNER" },
-  { id: "CUSTOM_1", name: "Custom 1", type: "CUSTOM", method: "CUSTOM_1", editable: true, showInDataOrder: false, showInQuickOrder: false, sortOrder: 13, reportBucket: "CUSTOM" },
-  { id: "CUSTOM_2", name: "Custom 2", type: "CUSTOM", method: "CUSTOM_2", editable: true, showInDataOrder: false, showInQuickOrder: false, sortOrder: 14, reportBucket: "CUSTOM" },
+  { id: "CASH", name: "Cash", type: "CASH", method: "CASH", editable: false, showInFrontOrder: true, showInDataOrder: true, showInQuickOrder: true, sortOrder: 1, reportBucket: "CASH" },
+  { id: "VISA", name: "Visa", type: "VISA", method: "VISA", editable: false, showInFrontOrder: true, showInDataOrder: true, showInQuickOrder: true, sortOrder: 2, reportBucket: "VISA" },
+  { id: "KIDZAPP", name: "Kidzapp", type: "CUSTOM", method: "KIDZAPP", editable: true, showInFrontOrder: true, showInDataOrder: false, showInQuickOrder: false, sortOrder: 10, reportBucket: "PARTNER" },
+  { id: "WAFFARHA", name: "Waffarha", type: "CUSTOM", method: "WAFFARHA", editable: true, showInFrontOrder: true, showInDataOrder: true, showInQuickOrder: true, sortOrder: 11, reportBucket: "PARTNER" },
+  { id: "E_INVOICE", name: "E-Invoice", type: "CUSTOM", method: "E_INVOICE", editable: true, showInFrontOrder: true, showInDataOrder: false, showInQuickOrder: false, sortOrder: 12, reportBucket: "PARTNER" },
+  { id: "CUSTOM_1", name: "Custom 1", type: "CUSTOM", method: "CUSTOM_1", editable: true, showInFrontOrder: true, showInDataOrder: false, showInQuickOrder: false, sortOrder: 13, reportBucket: "CUSTOM" },
+  { id: "CUSTOM_2", name: "Custom 2", type: "CUSTOM", method: "CUSTOM_2", editable: true, showInFrontOrder: true, showInDataOrder: false, showInQuickOrder: false, sortOrder: 14, reportBucket: "CUSTOM" },
 ];
 
 function normalizeProductName(value) {

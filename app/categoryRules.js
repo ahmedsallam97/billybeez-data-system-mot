@@ -123,7 +123,9 @@ export function categoryAvailability(categoryName, weekday = cairoWeekday()) {
 }
 
 export function productAvailability(product, date = new Date()) {
-  const rules = parseAvailabilityRules(product?.availabilityRules);
+  const rules = parseAvailabilityRules(product?.availabilityRules)
+    || parseAvailabilityRules(product?.categoryAvailabilityRules)
+    || parseAvailabilityRules(product?.category?.availabilityRules);
   if (!rules) return categoryAvailability(product?.categoryName);
 
   const { weekday, minutes } = cairoNowParts(date);

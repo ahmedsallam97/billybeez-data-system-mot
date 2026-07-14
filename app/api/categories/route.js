@@ -18,6 +18,25 @@ function optionalColor(value) {
   return /^#[0-9a-fA-F]{6}$/.test(text) ? text.toLowerCase() : null;
 }
 
+function normalizeAvailabilityRules(value) {
+  if (!value) return null;
+  const rules = typeof value === "string" ? value.trim() : JSON.stringify(value);
+  if (!rules) return null;
+
+  try {
+    const parsed = JSON.parse(rules);
+    const days = Array.isArray(parsed.days)
+      ? parsed.days.map((day) => String(day).toLowerCase()).filter((day) => ["sun", "mon", "tue", "wed", "thu", "fri", "sat"].includes(day))
+      : [];
+    const startTime = /^\d{2}:\d{2}$/.test(String(parsed.startTime || "")) ? parsed.startTime : "";
+    const endTime = /^\d{2}:\d{2}$/.test(String(parsed.endTime || "")) ? parsed.endTime : "";
+    if (!days.length && !startTime && !endTime) return null;
+    return JSON.stringify({ days, startTime, endTime });
+  } catch {
+    return null;
+  }
+}
+
 function categoryPayload(body) {
   const department = productDepartments.includes(String(body.department || "").toUpperCase())
     ? String(body.department).toUpperCase()
@@ -31,6 +50,7 @@ function categoryPayload(body) {
     name,
     department,
     color: optionalColor(body.color),
+    availabilityRules: normalizeAvailabilityRules(body.availabilityRules),
     active: body.active !== false,
     showInDataOrder: department === "KITCHEN" && body.showInDataOrder !== false,
     showInQuickOrder: department !== "ENTRANCE" && body.showInQuickOrder !== false,
@@ -44,6 +64,7 @@ function serializeCategory(category) {
     name: category.name,
     department: category.department,
     color: category.color || "",
+    availabilityRules: category.availabilityRules || "",
     active: category.active,
     showInDataOrder: category.showInDataOrder !== false,
     showInQuickOrder: category.showInQuickOrder !== false,
@@ -119,6 +140,7 @@ export async function PATCH(request) {
       name: data.name,
       department: data.department,
       color: data.color,
+      availabilityRules: data.availabilityRules,
       active: data.active,
       showInDataOrder: data.showInDataOrder,
       showInQuickOrder: data.showInQuickOrder,

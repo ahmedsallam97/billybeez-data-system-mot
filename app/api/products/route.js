@@ -144,6 +144,7 @@ function serializeProduct(product, options = {}) {
     cardTextColor: product.cardTextColor || "",
     cardAccentColor: product.cardAccentColor || "",
     availabilityRules: product.availabilityRules || "",
+    categoryAvailabilityRules: product.category.availabilityRules || "",
     categoryId: product.categoryId,
     categoryName: product.category.name,
     popular: product.popular,

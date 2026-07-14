@@ -14,6 +14,7 @@ function serializeProvider(provider) {
     method: provider.method,
     active: provider.active,
     editable: provider.editable,
+    showInFrontOrder: provider.showInFrontOrder !== false,
     showInDataOrder: provider.showInDataOrder !== false,
     showInQuickOrder: provider.showInQuickOrder !== false,
     sortOrder: provider.sortOrder,
@@ -37,6 +38,7 @@ function providerPayload(body) {
     method: safeMethod,
     active: body.active !== false,
     editable: body.editable !== false,
+    showInFrontOrder: body.showInFrontOrder !== false,
     showInDataOrder: body.showInDataOrder !== false,
     showInQuickOrder: body.showInQuickOrder !== false,
     sortOrder: Number(body.sortOrder) || 100,
@@ -52,6 +54,7 @@ export async function GET(request) {
   const context = String(searchParams.get("context") || "").toLowerCase();
   const providers = await prisma.paymentProvider.findMany({
     where: {
+      ...(context === "front" ? { showInFrontOrder: true } : {}),
       ...(context === "data" ? { showInDataOrder: true } : {}),
       ...(context === "quick" || context === "quickrestaurant" ? { showInQuickOrder: true } : {}),
     },
@@ -97,6 +100,7 @@ export async function PATCH(request) {
       method: data.method,
       active: data.active,
       editable: data.editable,
+      showInFrontOrder: data.showInFrontOrder,
       showInDataOrder: data.showInDataOrder,
       showInQuickOrder: data.showInQuickOrder,
       sortOrder: data.sortOrder,

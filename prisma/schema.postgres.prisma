@@ -122,16 +122,17 @@ model Employee {
 }
 
 model Category {
-  id               String            @id
-  name             String
-  department       ProductDepartment @default(KITCHEN)
-  color            String?
-  active           Boolean           @default(true)
-  showInDataOrder  Boolean           @default(true)
-  showInQuickOrder Boolean           @default(true)
-  sortOrder        Int               @default(100)
-  createdAt        DateTime          @default(now())
-  updatedAt        DateTime          @updatedAt
+  id                String            @id
+  name              String
+  department        ProductDepartment @default(KITCHEN)
+  color             String?
+  availabilityRules String?
+  active            Boolean           @default(true)
+  showInDataOrder   Boolean           @default(true)
+  showInQuickOrder  Boolean           @default(true)
+  sortOrder         Int               @default(100)
+  createdAt         DateTime          @default(now())
+  updatedAt         DateTime          @updatedAt
 
   products Product[]
 
@@ -330,6 +331,7 @@ model PaymentProvider {
   method           PaymentMethod
   active           Boolean             @default(true)
   editable         Boolean             @default(true)
+  showInFrontOrder Boolean             @default(true)
   showInDataOrder  Boolean             @default(true)
   showInQuickOrder Boolean             @default(true)
   sortOrder        Int                 @default(100)

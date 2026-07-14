@@ -165,6 +165,9 @@ const emptyCategoryForm = {
   name: "",
   department: "KITCHEN",
   color: "#3d1859",
+  availabilityDays: [],
+  availabilityStartTime: "",
+  availabilityEndTime: "",
   active: true,
   showInDataOrder: true,
   showInQuickOrder: true,
@@ -201,6 +204,7 @@ const emptyPaymentProviderForm = {
   method: "CUSTOM_1",
   active: true,
   editable: true,
+  showInFrontOrder: true,
   showInDataOrder: true,
   showInQuickOrder: true,
   sortOrder: 100,
@@ -1711,7 +1715,8 @@ export default function ManagerClient() {
   async function runOrderAction(orderId, action, body = null, closeModal = false) {
     if (["archive", "unarchive"].includes(action) && !confirmDanger()) return;
 
-    const res = await fetch(`/api/orders/${orderUrlId(orderId)}/${action}`, {
+    const actionPath = action === "geidea" ? "system" : action;
+    const res = await fetch(`/api/orders/${orderUrlId(orderId)}/${actionPath}`, {
       method: "POST",
       headers: body ? { "Content-Type": "application/json" } : undefined,
       body: body ? JSON.stringify(body) : undefined,
@@ -1885,11 +1890,15 @@ export default function ManagerClient() {
   }
 
   function editCategory(category) {
+    const availabilityRules = parseProductAvailabilityRules(category.availabilityRules);
     setCategoryForm({
       id: category.id,
       name: category.name,
       department: category.department || "KITCHEN",
       color: category.color || "#3d1859",
+      availabilityDays: availabilityRules.days,
+      availabilityStartTime: availabilityRules.startTime,
+      availabilityEndTime: availabilityRules.endTime,
       active: category.active,
       showInDataOrder: category.department === "KITCHEN" && category.showInDataOrder !== false,
       showInQuickOrder: category.department !== "ENTRANCE" && category.showInQuickOrder !== false,
@@ -1919,6 +1928,7 @@ export default function ManagerClient() {
       method: provider.method || "CUSTOM_1",
       active: provider.active !== false,
       editable: provider.editable !== false,
+      showInFrontOrder: provider.showInFrontOrder !== false,
       showInDataOrder: provider.showInDataOrder !== false,
       showInQuickOrder: provider.showInQuickOrder !== false,
       sortOrder: provider.sortOrder || 100,
@@ -2064,7 +2074,11 @@ export default function ManagerClient() {
       ...categoryForm,
       showInDataOrder: categoryForm.department === "KITCHEN" && categoryForm.showInDataOrder !== false,
       showInQuickOrder: categoryForm.department !== "ENTRANCE" && categoryForm.showInQuickOrder !== false,
+      availabilityRules: buildProductAvailabilityRules(categoryForm),
     };
+    delete payload.availabilityDays;
+    delete payload.availabilityStartTime;
+    delete payload.availabilityEndTime;
     const res = await fetch("/api/categories", {
       method,
       headers: { "Content-Type": "application/json" },
@@ -2921,6 +2935,10 @@ export default function ManagerClient() {
     const rules = parseProductAvailabilityRules(product.availabilityRules);
     return Boolean(rules.days.length || rules.startTime || rules.endTime);
   };
+  const categoryHasSchedule = (category) => {
+    const rules = parseProductAvailabilityRules(category.availabilityRules);
+    return Boolean(rules.days.length || rules.startTime || rules.endTime);
+  };
   const visibleCustomers = customers.filter((customer) => {
     const search = customerFilter.trim().toLowerCase();
     if (!search) return true;
@@ -3036,33 +3054,47 @@ export default function ManagerClient() {
     ],
   };
 
-  const settingsTabOptions = [
-    ["employees", t("manager.employeeManagement")],
-    ["customers", t("manager.customerManagement")],
-    ["products", t("manager.productManagement")],
-    ["users", t("manager.userManagement")],
-    ["devices", t("manager.deviceManagement")],
-    ["paymentProviders", t("manager.paymentProviderManagement")],
-    ["branch", t("settings.branchSettings")],
-    ["invoice", t("settings.invoiceSettings")],
-    ["printing", t("settings.printSettings")],
-    ["business", t("settings.businessSettings")],
-    ["workflow", t("settings.workflowSettings")],
-    ["reports", t("settings.reportSettings")],
-    ["recordsStyle", t("settings.recordTableSettings")],
-    ["auditBackup", t("settings.auditBackupSettings")],
-    ["backupRestore", t("manager.backupRestore")],
-    ["messages", t("manager.uiMessages")],
+  const settingsTabMeta = {
+    employees: { label: t("manager.employeeManagement"), hint: t("manager.employeeManagementHint") },
+    customers: { label: t("manager.customerManagement"), hint: t("manager.customerManagementHint") },
+    users: { label: t("manager.userManagement"), hint: t("manager.userManagementHint") },
+    products: { label: t("manager.productManagement"), hint: t("manager.productManagementHint") },
+    paymentProviders: { label: t("manager.paymentProviderManagement"), hint: t("manager.paymentProviderManagementHint") },
+    devices: { label: t("manager.deviceManagement"), hint: t("manager.deviceManagementHint") },
+    business: { label: t("settings.businessSettings"), hint: t("settings.businessSettingsHint") },
+    workflow: { label: t("settings.workflowSettings"), hint: t("settings.workflowSettingsHint") },
+    branch: { label: t("settings.branchSettings"), hint: t("settings.branchSettingsHint") },
+    invoice: { label: t("settings.invoiceSettings"), hint: t("settings.invoiceDesignerHint") },
+    printing: { label: t("settings.printSettings"), hint: t("settings.printSettingsHint") },
+    reports: { label: t("settings.reportSettings"), hint: t("settings.reportSettingsHint") },
+    recordsStyle: { label: t("settings.recordTableSettings"), hint: t("settings.recordTableSettingsHint") },
+    messages: { label: t("manager.uiMessages"), hint: t("manager.uiMessagesHint") },
+    auditBackup: { label: t("settings.auditBackupSettings"), hint: t("settings.auditBackupSettingsHint") },
+    backupRestore: { label: t("manager.backupRestore"), hint: t("manager.backupRestoreHint") },
+  };
+  const settingsNavigationGroups = [
+    { key: "people", title: t("settings.groupPeople"), hint: t("settings.groupPeopleHint"), tabs: ["employees", "customers", "users"] },
+    { key: "catalog", title: t("settings.groupCatalog"), hint: t("settings.groupCatalogHint"), tabs: ["products", "paymentProviders"] },
+    { key: "operations", title: t("settings.groupOperations"), hint: t("settings.groupOperationsHint"), tabs: ["devices", "business", "workflow"] },
+    { key: "receipts", title: t("settings.groupReceipts"), hint: t("settings.groupReceiptsHint"), tabs: ["branch", "invoice", "printing"] },
+    { key: "insights", title: t("settings.groupInsights"), hint: t("settings.groupInsightsHint"), tabs: ["reports", "recordsStyle", "messages"] },
+    { key: "maintenance", title: t("settings.groupMaintenance"), hint: t("settings.groupMaintenanceHint"), tabs: ["auditBackup", "backupRestore"] },
   ];
-  const visibleSettingsTabOptions = settingsTabOptions.filter(([tab, label]) => {
+  const settingsTabMatchesSearch = (tab) => {
     const search = settingsSearch.trim().toLowerCase();
     if (!search) return true;
+    const meta = settingsTabMeta[tab] || {};
     const fieldMatches = (settingsGroups[tab] || []).some((field) => [
       field.key,
       field.label,
     ].some((value) => String(value || "").toLowerCase().includes(search)));
-    return String(label || "").toLowerCase().includes(search) || fieldMatches;
-  });
+    return [meta.label, meta.hint, tab].some((value) => String(value || "").toLowerCase().includes(search)) || fieldMatches;
+  };
+  const visibleSettingsGroups = settingsNavigationGroups
+    .map((group) => ({ ...group, tabs: group.tabs.filter(settingsTabMatchesSearch) }))
+    .filter((group) => group.tabs.length > 0 || [group.title, group.hint].some((value) => String(value || "").toLowerCase().includes(settingsSearch.trim().toLowerCase())));
+  const currentSettingsGroup = settingsNavigationGroups.find((group) => group.tabs.includes(settingsTab));
+  const currentSettingsTabMeta = settingsTabMeta[settingsTab] || { label: settingsTab, hint: "" };
   const reportCardStyle = (prefix, fallbackStart, fallbackEnd) => ({
     iconUrl: settingsMap[`REPORT_${prefix}_CARD_ICON_URL`] || "",
     startColor: settingsMap[`REPORT_${prefix}_CARD_COLOR_START`] || fallbackStart,
@@ -3404,11 +3436,39 @@ export default function ManagerClient() {
             onChange={(event) => setSettingsSearch(event.target.value)}
             placeholder={t("settings.searchPlaceholder")}
           />
-          {visibleSettingsTabOptions.map(([tab, label]) => (
-            <button key={tab} className={settingsTab === tab ? "active" : ""} onClick={() => setSettingsTab(tab)}>{label}</button>
+          {visibleSettingsGroups.map((group) => (
+            <div className={`settings-sidebar-group ${currentSettingsGroup?.key === group.key ? "active-group" : ""}`} key={group.key}>
+              <div className="settings-sidebar-group-head">
+                <b>{group.title}</b>
+                <small>{group.hint}</small>
+              </div>
+              <div className="settings-sidebar-buttons">
+                {group.tabs.map((tab) => (
+                  <button key={tab} className={settingsTab === tab ? "active" : ""} onClick={() => setSettingsTab(tab)}>
+                    <span>{settingsTabMeta[tab]?.label || tab}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
           ))}
         </aside>
         <div className="settings-content">
+          <div className="settings-content-head">
+            <div>
+              <span>{currentSettingsGroup?.title || t("manager.settings")}</span>
+              <h2>{currentSettingsTabMeta.label}</h2>
+              {currentSettingsTabMeta.hint && <p>{currentSettingsTabMeta.hint}</p>}
+            </div>
+            {currentSettingsGroup && (
+              <div className="settings-related-tabs">
+                {currentSettingsGroup.tabs.map((tab) => (
+                  <button key={tab} className={settingsTab === tab ? "active" : ""} onClick={() => setSettingsTab(tab)}>
+                    {settingsTabMeta[tab]?.label || tab}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
       {settingsTab === "employees" && <section className="employee-manager">
         <div className="row">
           <div>
@@ -3789,6 +3849,37 @@ export default function ManagerClient() {
               <input type="checkbox" disabled={categoryForm.department === "ENTRANCE"} checked={categoryForm.department !== "ENTRANCE" && categoryForm.showInQuickOrder} onChange={(event) => setCategoryForm((current) => ({ ...current, showInQuickOrder: event.target.checked }))} />
               <span>{t("manager.showInQuickOrder")}</span>
             </label>
+            <div className="product-schedule-editor">
+              <b>{t("manager.categoryAvailability")}</b>
+              <div className="product-day-grid">
+                {productAvailabilityDays.map((day) => (
+                  <label className="toggle-row" key={day}>
+                    <input
+                      type="checkbox"
+                      checked={categoryForm.availabilityDays.includes(day)}
+                      onChange={(event) => setCategoryForm((current) => ({
+                        ...current,
+                        availabilityDays: event.target.checked
+                          ? [...new Set([...current.availabilityDays, day])]
+                          : current.availabilityDays.filter((item) => item !== day),
+                      }))}
+                    />
+                    <span>{t(`day.${day}`)}</span>
+                  </label>
+                ))}
+              </div>
+              <div className="form-grid product-time-grid">
+                <label>
+                  <span>{t("manager.availabilityStart")}</span>
+                  <input type="time" value={categoryForm.availabilityStartTime} onChange={(event) => setCategoryForm((current) => ({ ...current, availabilityStartTime: event.target.value }))} />
+                </label>
+                <label>
+                  <span>{t("manager.availabilityEnd")}</span>
+                  <input type="time" value={categoryForm.availabilityEndTime} onChange={(event) => setCategoryForm((current) => ({ ...current, availabilityEndTime: event.target.value }))} />
+                </label>
+              </div>
+              <small className="muted">{t("manager.categoryAvailabilityHint")}</small>
+            </div>
             <button className="btn-confirm" onClick={saveCategory}>{categoryForm.id ? t("manager.updateCategory") : t("manager.addCategory")}</button>
           </div>
           <div className="form-grid settings-filter-grid category-filter-grid">
@@ -3836,6 +3927,9 @@ export default function ManagerClient() {
                   <span className="product-scope-tags">
                     {category.showInDataOrder && <span className="scope-tag data">{t("manager.onlyData")}</span>}
                     {category.showInQuickOrder && <span className="scope-tag quick">{t("manager.onlyQuick")}</span>}
+                    <span className={`scope-tag ${categoryHasSchedule(category) ? "scheduled" : "muted"}`}>
+                      {categoryHasSchedule(category) ? t("manager.scheduledProduct") : t("manager.unscheduledProduct")}
+                    </span>
                   </span>
                   <span className={`badge ${category.active ? "paid" : "unpaid"}`}>{category.active ? t("common.active") : t("common.inactive")}</span>
                   <span className="actions">
@@ -4399,6 +4493,10 @@ export default function ManagerClient() {
             <span>{t("manager.editableProvider")}</span>
           </label>
           <label className="toggle-row">
+            <input type="checkbox" checked={paymentProviderForm.showInFrontOrder} onChange={(event) => setPaymentProviderForm((current) => ({ ...current, showInFrontOrder: event.target.checked }))} />
+            <span>{t("manager.showInFrontOrder")}</span>
+          </label>
+          <label className="toggle-row">
             <input type="checkbox" checked={paymentProviderForm.showInDataOrder} onChange={(event) => setPaymentProviderForm((current) => ({ ...current, showInDataOrder: event.target.checked }))} />
             <span>{t("manager.showInDataOrder")}</span>
           </label>
@@ -4435,6 +4533,7 @@ export default function ManagerClient() {
             <b>{t("common.method")}</b>
             <b>{t("manager.paymentProviderType")}</b>
             <b>{t("manager.reportBucket")}</b>
+            <b>{t("manager.productScope")}</b>
             <b>{t("common.status")}</b>
             <b>{t("common.actions")}</b>
           </div>
@@ -4444,6 +4543,11 @@ export default function ManagerClient() {
               <span>{labelMethod(provider.method)}</span>
               <span>{labelPaymentProviderType(provider.type)}</span>
               <span>{provider.reportBucket || "-"}</span>
+              <span className="product-scope-tags">
+                {provider.showInFrontOrder && <span className="scope-tag front">{t("manager.onlyFront")}</span>}
+                {provider.showInDataOrder && <span className="scope-tag data">{t("manager.onlyData")}</span>}
+                {provider.showInQuickOrder && <span className="scope-tag quick">{t("manager.onlyQuick")}</span>}
+              </span>
               <span className={`badge ${provider.active ? "paid" : "unpaid"}`}>{provider.active ? t("common.active") : t("common.inactive")}</span>
               <span className="actions">
                 <button className="btn-edit" onClick={() => editPaymentProvider(provider)}>{t("common.edit")}</button>

@@ -2139,6 +2139,92 @@ export default function ManagerClient() {
     await loadCategories();
   }
 
+  function normalizedProductPatch(product, updates) {
+    const next = { ...product, ...updates };
+    const department = productDepartments.includes(String(next.department || "").toUpperCase())
+      ? String(next.department).toUpperCase()
+      : "KITCHEN";
+
+    return {
+      ...next,
+      department,
+      price: Number(next.price) || 0,
+      sortOrder: Number(next.sortOrder) || 100,
+      categoryId: next.categoryId || next.categoryName || "OTHER",
+      categoryName: next.categoryName || next.categoryId || "Other",
+      showInDataOrder: department === "KITCHEN" && next.showInDataOrder !== false,
+      showInQuickOrder: department !== "ENTRANCE" && next.showInQuickOrder !== false,
+      printOnKitchen: department !== "ENTRANCE" && next.printOnKitchen !== false,
+    };
+  }
+
+  function normalizedCategoryPatch(category, updates) {
+    const next = { ...category, ...updates };
+    const department = productDepartments.includes(String(next.department || "").toUpperCase())
+      ? String(next.department).toUpperCase()
+      : "KITCHEN";
+
+    return {
+      ...next,
+      department,
+      sortOrder: Number(next.sortOrder) || 100,
+      showInDataOrder: department === "KITCHEN" && next.showInDataOrder !== false,
+      showInQuickOrder: department !== "ENTRANCE" && next.showInQuickOrder !== false,
+    };
+  }
+
+  async function quickSaveProduct(product, updates) {
+    const payload = normalizedProductPatch(product, updates);
+    const res = await fetch("/api/products", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    const result = await res.json();
+
+    if (!result.success) {
+      toast(result.error || t("manager.productSaveFailed"), "error");
+      return;
+    }
+
+    showUiToast("productSaved");
+    await loadProducts();
+    if (Object.prototype.hasOwnProperty.call(updates, "categoryName") || Object.prototype.hasOwnProperty.call(updates, "department")) {
+      await loadCategories();
+    }
+  }
+
+  async function quickSaveCategory(category, updates) {
+    const payload = normalizedCategoryPatch(category, updates);
+    const res = await fetch("/api/categories", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    const result = await res.json();
+
+    if (!result.success) {
+      toast(result.error || t("manager.categorySaveFailed"), "error");
+      return;
+    }
+
+    toast(t("manager.categorySaved"), "success");
+    await loadCategories();
+    if (Object.prototype.hasOwnProperty.call(updates, "department")) await loadProducts();
+  }
+
+  function saveProductField(product, field, value) {
+    const nextValue = ["price", "sortOrder"].includes(field) ? Number(value) : value;
+    if (String(product[field] ?? "") === String(nextValue ?? "")) return;
+    quickSaveProduct(product, { [field]: nextValue });
+  }
+
+  function saveCategoryField(category, field, value) {
+    const nextValue = field === "sortOrder" ? Number(value) : value;
+    if (String(category[field] ?? "") === String(nextValue ?? "")) return;
+    quickSaveCategory(category, { [field]: nextValue });
+  }
+
   function toggleProductSelection(productId) {
     setSelectedProductIds((current) => (
       current.includes(productId)
@@ -2147,16 +2233,28 @@ export default function ManagerClient() {
     ));
   }
 
-  function selectVisibleProducts() {
-    setSelectedProductIds([...new Set(visibleProductsSettings.map((product) => product.id))]);
+  function selectVisibleProducts(productsToSelect = visibleProductsSettings) {
+    setSelectedProductIds((current) => [
+      ...new Set([
+        ...current,
+        ...productsToSelect.map((product) => product.id),
+      ]),
+    ]);
   }
 
-  function clearProductSelection() {
-    setSelectedProductIds([]);
+  function clearProductSelection(productIds = null) {
+    if (!productIds) {
+      setSelectedProductIds([]);
+      return;
+    }
+
+    const ids = new Set(productIds);
+    setSelectedProductIds((current) => current.filter((id) => !ids.has(id)));
   }
 
-  async function bulkUpdateProducts(updates) {
-    if (!selectedProductIds.length) {
+  async function bulkUpdateProducts(updates, productIds = selectedProductIds) {
+    const ids = [...new Set(productIds)];
+    if (!ids.length) {
       toast(t("manager.noProductsSelected"), "error");
       return;
     }
@@ -2164,7 +2262,7 @@ export default function ManagerClient() {
     const res = await fetch("/api/products", {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ ids: selectedProductIds, updates }),
+      body: JSON.stringify({ ids, updates }),
     });
     const result = await res.json();
 
@@ -2174,12 +2272,16 @@ export default function ManagerClient() {
     }
 
     toast(t("manager.bulkProductsSaved"), "success");
-    clearProductSelection();
+    clearProductSelection(ids);
     await loadProducts();
   }
 
-  async function rankProductsBySales() {
-    const ids = selectedProductIds.length ? selectedProductIds : visibleProductsSettings.map((product) => product.id);
+  async function rankProductsBySales(productIds = null) {
+    const ids = productIds?.length
+      ? productIds
+      : selectedProductIds.length
+        ? selectedProductIds
+        : visibleProductsSettings.map((product) => product.id);
 
     if (!ids.length) {
       toast(t("manager.noProductsSelected"), "error");
@@ -2199,7 +2301,7 @@ export default function ManagerClient() {
     }
 
     toast(t("manager.productsRankedBySales"), "success");
-    clearProductSelection();
+    clearProductSelection(ids);
     await loadProducts();
   }
 
@@ -3933,25 +4035,70 @@ export default function ManagerClient() {
                 <div className="employee-row category-row" key={category.id}>
                   <span className="category-title-cell">
                     <i className="category-color-dot" style={{ background: category.color || "#3d1859" }} />
-                    <b>{category.name}</b>
+                    <input
+                      className="inline-table-input"
+                      defaultValue={category.name}
+                      onBlur={(event) => saveCategoryField(category, "name", event.target.value)}
+                      aria-label={t("manager.categoryName")}
+                    />
                     <small>{category.id}</small>
                   </span>
-                  <span>{labelDepartment(category.department)}</span>
+                  <span>
+                    <select
+                      className="inline-table-select"
+                      value={category.department}
+                      onChange={(event) => quickSaveCategory(category, { department: event.target.value })}
+                      aria-label={t("manager.productDepartment")}
+                    >
+                      {productDepartments.map((department) => <option key={department} value={department}>{labelDepartment(department)}</option>)}
+                    </select>
+                  </span>
                   <span>{formatNumber(categoryProductCount)}</span>
-                  <span>{formatNumber(category.sortOrder || 100)}</span>
+                  <span>
+                    <input
+                      className="inline-table-input number"
+                      type="number"
+                      min="1"
+                      defaultValue={category.sortOrder || 100}
+                      onBlur={(event) => saveCategoryField(category, "sortOrder", event.target.value)}
+                      aria-label={t("manager.sortOrder")}
+                    />
+                  </span>
                   <span className="product-scope-tags">
-                    {category.showInDataOrder && <span className="scope-tag data">{t("manager.onlyData")}</span>}
-                    {category.showInQuickOrder && <span className="scope-tag quick">{t("manager.onlyQuick")}</span>}
+                    <label className="scope-toggle data">
+                      <input
+                        type="checkbox"
+                        disabled={category.department !== "KITCHEN"}
+                        checked={category.department === "KITCHEN" && category.showInDataOrder}
+                        onChange={(event) => quickSaveCategory(category, { showInDataOrder: event.target.checked })}
+                      />
+                      <span>{t("manager.onlyData")}</span>
+                    </label>
+                    <label className="scope-toggle quick">
+                      <input
+                        type="checkbox"
+                        disabled={category.department === "ENTRANCE"}
+                        checked={category.department !== "ENTRANCE" && category.showInQuickOrder}
+                        onChange={(event) => quickSaveCategory(category, { showInQuickOrder: event.target.checked })}
+                      />
+                      <span>{t("manager.onlyQuick")}</span>
+                    </label>
                     <span className={`scope-tag ${categoryHasSchedule(category) ? "scheduled" : "muted"}`}>
                       {categoryHasSchedule(category) ? t("manager.scheduledProduct") : t("manager.unscheduledProduct")}
                     </span>
                   </span>
-                  <span className={`badge ${category.active ? "paid" : "unpaid"}`}>{category.active ? t("common.active") : t("common.inactive")}</span>
+                  <span>
+                    <label className={`status-switch ${category.active ? "active" : "inactive"}`}>
+                      <input
+                        type="checkbox"
+                        checked={category.active}
+                        onChange={(event) => quickSaveCategory(category, { active: event.target.checked })}
+                      />
+                      <span>{category.active ? t("common.active") : t("common.inactive")}</span>
+                    </label>
+                  </span>
                   <span className="actions">
                     <button className="btn-edit" onClick={() => editCategory(category)}>{t("common.edit")}</button>
-                    <button className={category.active ? "danger" : "btn-unarchive"} onClick={() => toggleCategory(category)}>
-                      {category.active ? t("common.deactivate") : t("common.activate")}
-                    </button>
                   </span>
                 </div>
               );
@@ -4139,30 +4286,17 @@ export default function ManagerClient() {
           </select>
           <button className="secondary" onClick={() => setProductFilter({ query: "", department: "ALL", category: "ALL", status: "ALL", popular: "ALL" })}>{t("common.clearFilters")}</button>
         </div>
-        <div className="product-bulk-bar">
-          <div>
-            <b>{t("manager.selectedProducts", { count: formatNumber(selectedProductIds.length) })}</b>
-            <small>{t("manager.productManagementHint")}</small>
-          </div>
-          <div className="actions">
-            <button className="secondary" onClick={selectVisibleProducts}>{t("manager.selectVisibleProducts")}</button>
-            <button className="secondary" onClick={clearProductSelection}>{t("manager.clearProductSelection")}</button>
-            <button className="btn-edit" title={t("manager.rankVisibleBySales")} onClick={rankProductsBySales}>{t("manager.rankBySales")}</button>
-            <button className="btn-confirm" onClick={() => bulkUpdateProducts({ active: true })}>{t("manager.bulkActivate")}</button>
-            <button className="danger" onClick={() => bulkUpdateProducts({ active: false })}>{t("manager.bulkDeactivate")}</button>
-            <button className="btn-edit" onClick={() => bulkUpdateProducts({ popular: true })}>{t("manager.bulkPopular")}</button>
-            <button className="secondary" onClick={() => bulkUpdateProducts({ popular: false })}>{t("manager.bulkRegular")}</button>
-            <button className="btn-confirm" onClick={() => bulkUpdateProducts({ showInDataOrder: true })}>{t("manager.bulkDataOn")}</button>
-            <button className="secondary" onClick={() => bulkUpdateProducts({ showInDataOrder: false })}>{t("manager.bulkDataOff")}</button>
-            <button className="btn-print" onClick={() => bulkUpdateProducts({ showInQuickOrder: true })}>{t("manager.bulkQuickOn")}</button>
-            <button className="secondary" onClick={() => bulkUpdateProducts({ showInQuickOrder: false })}>{t("manager.bulkQuickOff")}</button>
-            <button className="btn-unarchive" onClick={() => bulkUpdateProducts({ printOnKitchen: true })}>{t("manager.bulkPrintOn")}</button>
-            <button className="secondary" onClick={() => bulkUpdateProducts({ printOnKitchen: false })}>{t("manager.bulkPrintOff")}</button>
-          </div>
-        </div>
         <div className="product-group-list">
           {productGroups.length === 0 && <div className="product-empty-state">{t("manager.productGroupEmpty")}</div>}
-          {productGroups.map((group) => (
+          {productGroups.map((group) => {
+            const groupProductIds = group.products.map((product) => product.id);
+            const groupSelectedIds = groupProductIds.filter((id) => selectedProductIdSet.has(id));
+            const hasGroupSelection = groupSelectedIds.length > 0;
+            const canShowInData = group.department === "KITCHEN";
+            const canShowInQuick = group.department !== "ENTRANCE";
+            const canPrintKitchen = group.department !== "ENTRANCE";
+
+            return (
             <div className={`product-group tone-${group.department.toLowerCase().replace("_", "-")}`} key={group.department}>
               <div className="product-group-head">
                 <div>
@@ -4172,6 +4306,27 @@ export default function ManagerClient() {
                 <button className="secondary" onClick={() => setProductFilter((current) => ({ ...current, department: group.department }))}>
                   {t("common.filter")}
                 </button>
+              </div>
+              <div className="product-bulk-bar product-group-bulk-bar">
+                <div>
+                  <b>{t("manager.selectedProducts", { count: formatNumber(groupSelectedIds.length) })}</b>
+                  <small>{labelDepartment(group.department)}</small>
+                </div>
+                <div className="actions">
+                  <button className="secondary" onClick={() => selectVisibleProducts(group.products)}>{t("manager.selectVisibleProducts")}</button>
+                  <button className="secondary" onClick={() => clearProductSelection(groupProductIds)}>{t("manager.clearProductSelection")}</button>
+                  <button className="btn-edit" title={t("manager.rankVisibleBySales")} onClick={() => rankProductsBySales(groupProductIds)}>{t("manager.rankBySales")}</button>
+                  <button className="btn-confirm" disabled={!hasGroupSelection} onClick={() => bulkUpdateProducts({ active: true }, groupSelectedIds)}>{t("manager.bulkActivate")}</button>
+                  <button className="danger" disabled={!hasGroupSelection} onClick={() => bulkUpdateProducts({ active: false }, groupSelectedIds)}>{t("manager.bulkDeactivate")}</button>
+                  <button className="btn-edit" disabled={!hasGroupSelection} onClick={() => bulkUpdateProducts({ popular: true }, groupSelectedIds)}>{t("manager.bulkPopular")}</button>
+                  <button className="secondary" disabled={!hasGroupSelection} onClick={() => bulkUpdateProducts({ popular: false }, groupSelectedIds)}>{t("manager.bulkRegular")}</button>
+                  {canShowInData && <button className="btn-confirm" disabled={!hasGroupSelection} onClick={() => bulkUpdateProducts({ showInDataOrder: true }, groupSelectedIds)}>{t("manager.bulkDataOn")}</button>}
+                  {canShowInData && <button className="secondary" disabled={!hasGroupSelection} onClick={() => bulkUpdateProducts({ showInDataOrder: false }, groupSelectedIds)}>{t("manager.bulkDataOff")}</button>}
+                  {canShowInQuick && <button className="btn-print" disabled={!hasGroupSelection} onClick={() => bulkUpdateProducts({ showInQuickOrder: true }, groupSelectedIds)}>{t("manager.bulkQuickOn")}</button>}
+                  {canShowInQuick && <button className="secondary" disabled={!hasGroupSelection} onClick={() => bulkUpdateProducts({ showInQuickOrder: false }, groupSelectedIds)}>{t("manager.bulkQuickOff")}</button>}
+                  {canPrintKitchen && <button className="btn-unarchive" disabled={!hasGroupSelection} onClick={() => bulkUpdateProducts({ printOnKitchen: true }, groupSelectedIds)}>{t("manager.bulkPrintOn")}</button>}
+                  {canPrintKitchen && <button className="secondary" disabled={!hasGroupSelection} onClick={() => bulkUpdateProducts({ printOnKitchen: false }, groupSelectedIds)}>{t("manager.bulkPrintOff")}</button>}
+                </div>
               </div>
               <div className="employee-table product-table">
                 <div className="employee-row product-row employee-head">
@@ -4185,7 +4340,15 @@ export default function ManagerClient() {
                   <b>{t("common.status")}</b>
                   <b>{t("common.actions")}</b>
                 </div>
-                {group.products.map((product) => (
+                {group.products.map((product) => {
+                  const rowCategoryOptions = categories
+                    .filter((category) => category.department === product.department)
+                    .sort((a, b) => (Number(a.sortOrder) || 100) - (Number(b.sortOrder) || 100) || String(a.name).localeCompare(String(b.name)));
+                  const matchedRowCategory = rowCategoryOptions.find((category) => category.id === product.categoryId || category.name === product.categoryName);
+                  const currentCategoryValue = matchedRowCategory?.id || product.categoryId || product.categoryName || "";
+                  const hasCurrentCategory = Boolean(matchedRowCategory);
+
+                  return (
                   <div className="employee-row product-row" key={product.id}>
                     <span className="product-select-cell">
                       <input
@@ -4196,35 +4359,113 @@ export default function ManagerClient() {
                       />
                     </span>
                     <span className="product-title-cell">
-                      <b>{product.name}</b>
+                      <input
+                        className="inline-table-input"
+                        defaultValue={product.name}
+                        onBlur={(event) => saveProductField(product, "name", event.target.value)}
+                        aria-label={t("manager.productName")}
+                      />
                       <small>{product.id}</small>
                     </span>
-                    <span>{product.categoryName}</span>
-                    <span>{currency(product.price)}</span>
-                    <span className={`badge ${product.popular ? "paid" : ""}`}>{product.popular ? t("manager.popularProduct") : t("manager.regularProduct")}</span>
-                    <span>{product.sortOrder || 100}</span>
+                    <span>
+                      <select
+                        className="inline-table-select"
+                        value={currentCategoryValue}
+                        onChange={(event) => {
+                          const category = categories.find((item) => item.id === event.target.value || item.name === event.target.value);
+                          quickSaveProduct(product, {
+                            categoryId: category?.id || event.target.value,
+                            categoryName: category?.name || event.target.value,
+                          });
+                        }}
+                        aria-label={t("manager.categoryName")}
+                      >
+                        {!hasCurrentCategory && <option value={currentCategoryValue}>{product.categoryName || currentCategoryValue}</option>}
+                        {rowCategoryOptions.map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}
+                      </select>
+                    </span>
+                    <span>
+                      <input
+                        className="inline-table-input number"
+                        type="number"
+                        min="0"
+                        defaultValue={product.price}
+                        onBlur={(event) => saveProductField(product, "price", event.target.value)}
+                        aria-label={t("manager.productPrice")}
+                      />
+                    </span>
+                    <span>
+                      <label className={`status-switch ${product.popular ? "popular" : "regular"}`}>
+                        <input
+                          type="checkbox"
+                          checked={product.popular}
+                          onChange={(event) => quickSaveProduct(product, { popular: event.target.checked })}
+                        />
+                        <span>{product.popular ? t("manager.popularProduct") : t("manager.regularProduct")}</span>
+                      </label>
+                    </span>
+                    <span>
+                      <input
+                        className="inline-table-input number"
+                        type="number"
+                        min="1"
+                        defaultValue={product.sortOrder || 100}
+                        onBlur={(event) => saveProductField(product, "sortOrder", event.target.value)}
+                        aria-label={t("manager.sortOrder")}
+                      />
+                    </span>
                     <span className="product-scope-tags">
-                      {product.showInDataOrder && <span className="scope-tag data">{t("manager.onlyData")}</span>}
-                      {product.showInQuickOrder && <span className="scope-tag quick">{t("manager.onlyQuick")}</span>}
-                      <span className={`scope-tag ${product.printOnKitchen ? "print" : "muted"}`}>
-                        {product.printOnKitchen ? t("manager.onlyKitchenPrint") : t("manager.notPrinted")}
-                      </span>
+                      <label className="scope-toggle data">
+                        <input
+                          type="checkbox"
+                          disabled={product.department !== "KITCHEN"}
+                          checked={product.department === "KITCHEN" && product.showInDataOrder}
+                          onChange={(event) => quickSaveProduct(product, { showInDataOrder: event.target.checked })}
+                        />
+                        <span>{t("manager.onlyData")}</span>
+                      </label>
+                      <label className="scope-toggle quick">
+                        <input
+                          type="checkbox"
+                          disabled={product.department === "ENTRANCE"}
+                          checked={product.department !== "ENTRANCE" && product.showInQuickOrder}
+                          onChange={(event) => quickSaveProduct(product, { showInQuickOrder: event.target.checked })}
+                        />
+                        <span>{t("manager.onlyQuick")}</span>
+                      </label>
+                      <label className="scope-toggle print">
+                        <input
+                          type="checkbox"
+                          disabled={product.department === "ENTRANCE"}
+                          checked={product.department !== "ENTRANCE" && product.printOnKitchen}
+                          onChange={(event) => quickSaveProduct(product, { printOnKitchen: event.target.checked })}
+                        />
+                        <span>{t("manager.onlyKitchenPrint")}</span>
+                      </label>
                       <span className={`scope-tag ${productHasSchedule(product) ? "scheduled" : "muted"}`}>
                         {productHasSchedule(product) ? t("manager.scheduledProduct") : t("manager.unscheduledProduct")}
                       </span>
                     </span>
-                    <span className={`badge ${product.active ? "paid" : "unpaid"}`}>{product.active ? t("common.active") : t("common.inactive")}</span>
+                    <span>
+                      <label className={`status-switch ${product.active ? "active" : "inactive"}`}>
+                        <input
+                          type="checkbox"
+                          checked={product.active}
+                          onChange={(event) => quickSaveProduct(product, { active: event.target.checked })}
+                        />
+                        <span>{product.active ? t("common.active") : t("common.inactive")}</span>
+                      </label>
+                    </span>
                     <span className="actions">
                       <button className="btn-edit" onClick={() => editProduct(product)}>{t("common.edit")}</button>
-                      <button className={product.active ? "danger" : "btn-unarchive"} onClick={() => toggleProduct(product)}>
-                        {product.active ? t("common.deactivate") : t("common.activate")}
-                      </button>
                     </span>
                   </div>
-                ))}
+                  );
+                })}
               </div>
             </div>
-          ))}
+            );
+          })}
         </div>
       </section>}
 

@@ -8,6 +8,8 @@ import { actorFields, upsertOrderRecord } from "@/lib/order-records";
 import { findSerializedOrder, routeOrderId } from "@/lib/orders";
 import { orderAuditSnapshot } from "@/lib/order-workflow";
 import { loadWorkflowRules, validatePaymentAllowed } from "@/lib/workflow-rules";
+import { LoyaltyError, earnOrderPoints, findLoyaltyAccount, redeemOrderWithPoints } from "@/lib/loyalty";
+import { getSetting } from "@/lib/settings";
 
 const supportedPaymentMethods = new Set(["CASH", "VISA", "KIDZAPP", "WAFFARHA", "E_INVOICE", "CUSTOM_1", "CUSTOM_2"]);
 
@@ -26,6 +28,7 @@ export async function POST(request, { params }) {
     where: { id },
     include: {
       payments: true,
+      items: { include: { product: true } },
     },
   });
 
@@ -68,8 +71,15 @@ export async function POST(request, { params }) {
 
   const paidSoFar = current.payments.reduce((sum, payment) => sum + Number(payment.amount || 0), 0);
   const amountToPay = Math.max(0, Number(current.total || 0) - paidSoFar);
+  const loyaltyOptions = {
+    pointsPerEgp: Number(await getSetting("LOYALTY_POINTS_PER_EGP", "1")) || 1,
+    entrancePointsPerVisit: Number(await getSetting("LOYALTY_ENTRANCE_POINTS_PER_VISIT", "10")) || 10,
+    restaurantPointsPerEgp: Number(await getSetting("LOYALTY_RESTAURANT_POINTS_PER_EGP", "1")) || 1,
+  };
 
-  const order = await prisma.$transaction(async (tx) => {
+  let order;
+  try {
+    order = await prisma.$transaction(async (tx) => {
     const paidAt = new Date();
     const shouldRegisterSystem = !isEmployeeOnlyUpdate && !current.geideaRegisteredAt;
     const systemRegisteredAt = shouldRegisterSystem ? paidAt : current.geideaRegisteredAt;
@@ -103,12 +113,36 @@ export async function POST(request, { params }) {
       });
     }
 
+    if (!isEmployeeOnlyUpdate) {
+      if (paymentMethod === "CUSTOM_1") {
+        const account = await findLoyaltyAccount(tx, current.customerId || body.loyaltyLookup || body.loyaltyCardSerial);
+        if (!account) throw new LoyaltyError("Loyalty card or customer account was not found", 404, "ACCOUNT_NOT_FOUND");
+        await redeemOrderWithPoints(tx, {
+          order: { ...current, paymentMethod },
+          account,
+          actor: user,
+          pointsPerEgp: loyaltyOptions.pointsPerEgp,
+        });
+      } else {
+        await earnOrderPoints(tx, { ...current, paymentMethod }, user, {
+          entrancePointsPerVisit: loyaltyOptions.entrancePointsPerVisit,
+          restaurantPointsPerEgp: loyaltyOptions.restaurantPointsPerEgp,
+        });
+      }
+    }
+
     if (shouldArchive) {
       await releaseActiveBracelet(tx, id);
     }
 
-    return updated;
-  });
+      return updated;
+    });
+  } catch (paymentError) {
+    if (paymentError instanceof LoyaltyError) {
+      return NextResponse.json({ success: false, error: paymentError.message, code: paymentError.code }, { status: paymentError.status });
+    }
+    throw paymentError;
+  }
 
   const paidAt = new Date();
   const recordFields = {

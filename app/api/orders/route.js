@@ -11,6 +11,7 @@ import { isDataDepartment } from "@/lib/employee-departments";
 import { enumValue, jsonValidationResponse, optionalString, requireArray } from "@/lib/validation";
 import { nextDeviceInvoiceSerial } from "@/lib/numbering";
 import { findUnavailableProducts } from "@/lib/product-availability";
+import { LoyaltyError, earnOrderPoints, findLoyaltyAccount, redeemOrderWithPoints } from "@/lib/loyalty";
 
 const supportedPaymentMethods = ["CASH", "VISA", "KIDZAPP", "WAFFARHA", "E_INVOICE", "CUSTOM_1", "CUSTOM_2"];
 const supportedDeviceTypes = ["FRONT", "KITCHEN", "KITCHEN_CASHIER"];
@@ -115,6 +116,7 @@ export async function POST(request) {
   let customerPhone;
   let childNames;
   let items;
+  let linkedFrontOrder = null;
 
   try {
     braceletNo = optionalString(body.braceletNo);
@@ -123,6 +125,26 @@ export async function POST(request) {
     items = requireArray(body.items, "items");
   } catch (error) {
     return jsonValidationResponse(NextResponse, error);
+  }
+
+  const linkedFrontOrderId = optionalString(body.linkedFrontOrderId);
+  if (linkedFrontOrderId) {
+    linkedFrontOrder = await prisma.order.findFirst({
+      where: { id: linkedFrontOrderId },
+      include: { device: true },
+    });
+    if (!linkedFrontOrder || linkedFrontOrder.device?.type !== "FRONT") {
+      return NextResponse.json({ success: false, error: "Linked front order was not found" }, { status: 404 });
+    }
+    if (linkedFrontOrder.archivedAt || linkedFrontOrder.customerLeft) {
+      return NextResponse.json({ success: false, error: "Linked front order is no longer active" }, { status: 400 });
+    }
+    braceletNo = linkedFrontOrder.braceletNo;
+    customerPhone = linkedFrontOrder.customerPhone || "";
+    childNames = String(linkedFrontOrder.childNames || "")
+      .split(/[,،]/)
+      .map((name) => name.trim())
+      .filter(Boolean);
   }
 
   if (!businessState.isOpen) {
@@ -226,7 +248,7 @@ export async function POST(request) {
     return NextResponse.json({ success: false, error: "Bracelet must be 5 digits starting with 0, 6 digits starting with 0, 1, 2, or 3, or a 10 digit invoice serial" }, { status: 400 });
   }
 
-  const duplicateBraceletOrder = isKitchenCashierOrder ? null : await assertActiveBraceletAvailable(prisma, braceletNo);
+  const duplicateBraceletOrder = (isKitchenCashierOrder || linkedFrontOrder) ? null : await assertActiveBraceletAvailable(prisma, braceletNo);
 
   if (duplicateBraceletOrder) {
     return NextResponse.json({
@@ -235,12 +257,17 @@ export async function POST(request) {
     }, { status: duplicateBraceletOrder.status });
   }
 
-  const customerName = optionalString(body.customerName);
+  const customerName = linkedFrontOrder?.customerName || optionalString(body.customerName);
   const childBirthDates = Array.isArray(body.childBirthDates) ? body.childBirthDates : [];
   const childComments = Array.isArray(body.childComments) ? body.childComments : [];
   const childOpenCharges = Array.isArray(body.childOpenCharges) ? body.childOpenCharges : [];
   const allowOpenCharges = Boolean(body.allowOpenCharges);
   const quickRestaurantRegisteredAt = isKitchenCashierOrder ? new Date() : null;
+  const loyaltyOptions = {
+    entrancePointsPerVisit: Number(await getSetting("LOYALTY_ENTRANCE_POINTS_PER_VISIT", "10")) || 10,
+    restaurantPointsPerEgp: Number(await getSetting("LOYALTY_RESTAURANT_POINTS_PER_EGP", "1")) || 1,
+    pointsPerEgp: Number(await getSetting("LOYALTY_POINTS_PER_EGP", "1")) || 1,
+  };
   let order;
   try {
     order = await prisma.$transaction(async (tx) => {
@@ -257,6 +284,12 @@ export async function POST(request) {
         customer = existingCustomer
           ? await tx.customer.update({ where: { id: existingCustomer.id }, data: customerData })
           : await tx.customer.create({ data: customerData });
+      }
+      let loyaltyAccount = null;
+      if (paymentMethod === "CUSTOM_1") {
+        loyaltyAccount = await findLoyaltyAccount(tx, customer?.id || body.loyaltyLookup || body.loyaltyCardSerial);
+        if (!loyaltyAccount) throw new LoyaltyError("Loyalty card or customer account was not found", 404, "ACCOUNT_NOT_FOUND");
+        if (!customer) customer = loyaltyAccount.customer;
       }
       const createdOrder = await tx.order.create({
         data: {
@@ -302,8 +335,15 @@ export async function POST(request) {
         },
         include: includeOrderDetails(),
       });
-      if (!isKitchenCashierOrder) {
+      if (!isKitchenCashierOrder && !linkedFrontOrder) {
         await claimActiveBracelet(tx, braceletNo, createdOrder.id);
+      }
+      if (isInstantPaidDevice) {
+        if (paymentMethod === "CUSTOM_1") {
+          await redeemOrderWithPoints(tx, { order: createdOrder, account: loyaltyAccount, actor: user, pointsPerEgp: loyaltyOptions.pointsPerEgp });
+        } else {
+          await earnOrderPoints(tx, createdOrder, user, loyaltyOptions);
+        }
       }
       await upsertOrderRecord(tx, createdOrder, {
         orderCreatedAt: createdOrder.createdAt,
@@ -321,6 +361,9 @@ export async function POST(request) {
       return createdOrder;
     });
   } catch (error) {
+    if (error instanceof LoyaltyError) {
+      return NextResponse.json({ success: false, error: error.message, code: error.code }, { status: error.status });
+    }
     if (isBraceletLockConflict(error)) {
       return NextResponse.json({
         success: false,
@@ -335,7 +378,7 @@ export async function POST(request) {
     orderId: order.id,
     user,
     summary: `Created order ${order.id}`,
-    metadata: { total, items: orderItems.length, paymentMethod: order.paymentMethod },
+    metadata: { total, items: orderItems.length, paymentMethod: order.paymentMethod, linkedFrontOrderId: linkedFrontOrder?.id || null },
     after: {
       id: order.id,
       workflowState: order.workflowState,

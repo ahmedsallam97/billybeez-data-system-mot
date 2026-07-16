@@ -15,7 +15,7 @@ export default function KitchenClient({ user }) {
   const { t, formatNumber, currency, labelMethod, labelOrderStage, labelStatus, formatDateTime } = useI18n();
   const [orders, setOrders] = useState([]);
   const [quickOrderOpen, setQuickOrderOpen] = useState(false);
-  const [orderSourceFilter, setOrderSourceFilter] = useState("ALL");
+  const [orderSourceFilter, setOrderSourceFilter] = useState("DATA");
   const [paymentProviders, setPaymentProviders] = useState([]);
   const [showArchive, setShowArchive] = useState(false);
   const [ordersQuery, setOrdersQuery] = useState("");
@@ -150,7 +150,10 @@ export default function KitchenClient({ user }) {
     const savedQuickOpen = localStorage.getItem("kitchenQuickOrderOpen");
     const savedSourceFilter = localStorage.getItem("kitchenOrderSourceFilter");
     setQuickOrderOpen(requestedView === "quick" || savedQuickOpen === "true");
-    if (["ALL", "DATA", "QUICK"].includes(savedSourceFilter)) setOrderSourceFilter(savedSourceFilter);
+    if (["DATA", "QUICK"].includes(savedSourceFilter)) {
+      setOrderSourceFilter(savedSourceFilter);
+      setQuickOrderOpen(savedSourceFilter === "QUICK");
+    }
     setUiPrefsReady(true);
   }, []);
 
@@ -172,6 +175,14 @@ export default function KitchenClient({ user }) {
     else url.searchParams.delete("view");
     window.history.replaceState(null, "", `${url.pathname}${url.search}${url.hash}`);
   }, [quickOrderOpen, uiPrefsReady]);
+
+  function selectWorkspace(source) {
+    const nextSource = source === "QUICK" ? "QUICK" : "DATA";
+    setOrderSourceFilter(nextSource);
+    setQuickOrderOpen(nextSource === "QUICK");
+    setOrdersQuery("");
+    setShowArchive(false);
+  }
 
   useEffect(() => {
     setOrderRenderLimit(30);
@@ -510,17 +521,30 @@ export default function KitchenClient({ user }) {
 
   return (
     <>
-    <section className="panel kitchen-unified-command">
+    <section className="panel kitchen-unified-command kitchen-workspace-header">
       <div>
         <h2>{t("title.kitchen")}</h2>
         <div className="muted">{t("kitchen.unifiedHint")}</div>
       </div>
-      <div className="actions">
-        <button className={quickOrderOpen ? "danger" : "btn-confirm"} onClick={() => setQuickOrderOpen((current) => !current)}>
-          {quickOrderOpen ? t("kitchen.hideQuickOrder") : t("kitchen.newQuickOrder")}
+      <div className="tabs kitchen-workspace-tabs" role="tablist" aria-label={t("title.kitchen")}>
+        <button
+          role="tab"
+          aria-selected={orderSourceFilter === "QUICK"}
+          className={orderSourceFilter === "QUICK" ? "active quick-tab" : "quick-tab"}
+          onClick={() => selectWorkspace("QUICK")}
+        >
+          {t("kitchen.quickOrders")} <b>{formatNumber(kitchenSourceCounts.quick)}</b>
         </button>
-        <button className="secondary" onClick={load}>{t("common.refresh")}</button>
+        <button
+          role="tab"
+          aria-selected={orderSourceFilter === "DATA"}
+          className={orderSourceFilter === "DATA" ? "active data-tab" : "data-tab"}
+          onClick={() => selectWorkspace("DATA")}
+        >
+          {t("kitchen.dataOrders")} <b>{formatNumber(kitchenSourceCounts.data)}</b>
+        </button>
       </div>
+      <button className="secondary kitchen-refresh-button" onClick={load}>{t("common.refresh")}</button>
     </section>
     {quickOrderOpen && <QuickRestaurantOrder embedded onOrderCreated={(order) => refreshOrderFallback({ success: true, order })} />}
     <section className="panel kitchen-orders-panel">
@@ -533,16 +557,9 @@ export default function KitchenClient({ user }) {
       </div>
       <div className="orders-layout">
         <aside className="orders-sidebar kitchen-orders-toolbar">
-          <div className="tabs order-source-tabs">
-            <button className={orderSourceFilter === "ALL" ? "active" : ""} onClick={() => setOrderSourceFilter("ALL")}>
-              {t("common.all")} <b>{formatNumber(kitchenSourceCounts.all)}</b>
-            </button>
-            <button className={orderSourceFilter === "DATA" ? "active" : ""} onClick={() => setOrderSourceFilter("DATA")}>
-              {t("kitchen.dataOrders")} <b>{formatNumber(kitchenSourceCounts.data)}</b>
-            </button>
-            <button className={orderSourceFilter === "QUICK" ? "active" : ""} onClick={() => setOrderSourceFilter("QUICK")}>
-              {t("kitchen.quickOrders")} <b>{formatNumber(kitchenSourceCounts.quick)}</b>
-            </button>
+          <div className={`kitchen-source-heading ${orderSourceFilter === "QUICK" ? "quick" : "data"}`}>
+            <span>{orderSourceFilter === "QUICK" ? t("kitchen.quickOrders") : t("kitchen.dataOrders")}</span>
+            <b>{formatNumber(orderSourceFilter === "QUICK" ? kitchenSourceCounts.quick : kitchenSourceCounts.data)}</b>
           </div>
           <div className="orders-sidebar-metrics">
             <Metric label={t("common.visibleOrders")} value={formatNumber(visibleOrders.length)} />
@@ -552,12 +569,23 @@ export default function KitchenClient({ user }) {
           </div>
           <div className="form-grid cashier-order-search">
             <input value={ordersQuery} onChange={(event) => setOrdersQuery(event.target.value)} placeholder={t("cashier.searchOrdersPlaceholder")} />
-            <button className="secondary" onClick={() => { setOrdersQuery(""); setOrderSourceFilter("ALL"); }}>{t("common.clearFilters")}</button>
+            <button className="secondary" onClick={() => setOrdersQuery("")}>{t("common.clearFilters")}</button>
           </div>
         </aside>
         <div className="orders-content">
           <div className="grid three honey-grid">
             {renderedOrders.map((order) => {
+              const restaurantItems = (order.items || []).filter((item) => item.department !== "ENTRANCE");
+              const restaurantTotal = restaurantItems.reduce((sum, item) => sum + Number(item.total || 0), 0);
+              const entranceTotal = Math.max(0, Number(order.total || 0) - restaurantTotal);
+              const restaurantPaidAmount = Math.max(0, Number(order.paidAmount || 0) - entranceTotal);
+              const restaurantDisplayOrder = {
+                ...order,
+                items: restaurantItems,
+                total: restaurantTotal,
+                paidAmount: Math.min(restaurantTotal, restaurantPaidAmount),
+                balanceDue: Math.max(0, restaurantTotal - restaurantPaidAmount),
+              };
               const canPrintKitchenTicket = hasKitchenTicketItems(order);
               const preparationDisabled = !canPrintKitchenTicket || Boolean(order.kitchenPrintJob) || order.kitchenStatus === "DELIVERED";
               const preparationTitle = !canPrintKitchenTicket
@@ -583,7 +611,7 @@ export default function KitchenClient({ user }) {
               {order.paymentStatus !== "PAID" && <div className="meta-line"><span>{t("common.paymentMethod")}</span><b className={`meta-value ${order.paymentMethod === "VISA" ? "meta-visa" : "meta-cash"}`}>{labelMethod(order.paymentMethod)}</b></div>}
               {order.paymentEmployee && <div className="meta-line"><span>{t("common.paymentEmployee")}</span><b className={`meta-value meta-payment-employee ${employeeGenderClass(order.paymentEmployee)}`}>{order.paymentEmployee}</b></div>}
             </div>
-            <OrderItemsSummary order={order} t={t} currency={currency} />
+            <OrderItemsSummary order={restaurantDisplayOrder} t={t} currency={currency} />
             <div className="order-alerts">
               <OrderAlerts
                 order={order}

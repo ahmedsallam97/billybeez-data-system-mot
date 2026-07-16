@@ -211,6 +211,20 @@ const emptyPaymentProviderForm = {
   reportBucket: "CUSTOM",
 };
 
+const emptyLoyaltyRewardForm = {
+  id: "",
+  name: "",
+  nameEn: "",
+  walletType: "ENTRANCE",
+  rewardType: "PERCENT_DISCOUNT",
+  pointsCost: 100,
+  discountPercent: 25,
+  discountAmount: "",
+  productId: "",
+  active: true,
+  sortOrder: 100,
+};
+
 const productDepartments = ["ENTRANCE", "KITCHEN", "KITCHEN_CASHIER"];
 const deviceTypes = ["FRONT", "KITCHEN", "KITCHEN_CASHIER"];
 const paymentProviderTypes = ["CASH", "VISA", "CUSTOM"];
@@ -336,13 +350,22 @@ export default function ManagerClient() {
   const [users, setUsers] = useState([]);
   const [devices, setDevices] = useState([]);
   const [paymentProviders, setPaymentProviders] = useState([]);
+  const [loyaltyRewards, setLoyaltyRewards] = useState([]);
   const [employeeForm, setEmployeeForm] = useState(emptyEmployeeForm);
   const [employeeDepartmentForm, setEmployeeDepartmentForm] = useState(emptyEmployeeDepartmentForm);
   const [productForm, setProductForm] = useState(emptyProductForm);
+  const [productEditorOpen, setProductEditorOpen] = useState(false);
+  const [productEditorTab, setProductEditorTab] = useState("product");
+  const [productManagementTab, setProductManagementTab] = useState("items");
+  const [categoryEditorOpen, setCategoryEditorOpen] = useState(false);
+  const [categoryEditorTab, setCategoryEditorTab] = useState("category");
   const [categoryForm, setCategoryForm] = useState(emptyCategoryForm);
   const [userForm, setUserForm] = useState(emptyUserForm);
   const [deviceForm, setDeviceForm] = useState(emptyDeviceForm);
   const [paymentProviderForm, setPaymentProviderForm] = useState(emptyPaymentProviderForm);
+  const [paymentManagementTab, setPaymentManagementTab] = useState("list");
+  const [loyaltyRewardForm, setLoyaltyRewardForm] = useState(emptyLoyaltyRewardForm);
+  const [loyaltyAdjustment, setLoyaltyAdjustment] = useState({ walletType: "ENTRANCE", points: "", reason: "" });
   const [viewMode, setViewMode] = useState("TODAY");
   const [dateFilterMode, setDateFilterMode] = useState("RANGE");
   const [dateFilter, setDateFilter] = useState(() => monthToDateFilter());
@@ -390,6 +413,7 @@ export default function ManagerClient() {
     users: "idle",
     devices: "idle",
     paymentProviders: "idle",
+    loyaltyRewards: "idle",
     backups: "idle",
   });
   const [loadError, setLoadError] = useState("");
@@ -430,7 +454,7 @@ export default function ManagerClient() {
     const shouldUseSavedDateFilter = savedDateDefaultVersion === "month-to-date-v1";
 
     if (["orders", "review", "reports", "settings", "records", "activity"].includes(savedManagerTab)) setManagerTab(savedManagerTab);
-    if (["employees", "customers", "products", "users", "devices", "paymentProviders", "branch", "invoice", "printing", "business", "workflow", "reports", "recordsStyle", "auditBackup", "backupRestore", "messages"].includes(savedSettingsTab)) setSettingsTab(savedSettingsTab);
+    if (["employees", "customers", "loyalty", "products", "users", "devices", "paymentProviders", "branch", "invoice", "printing", "business", "workflow", "frontDashboard", "reports", "recordsStyle", "auditBackup", "backupRestore", "messages"].includes(savedSettingsTab)) setSettingsTab(savedSettingsTab);
     if (["TODAY", "HISTORY"].includes(savedViewMode)) setViewMode(savedViewMode);
     if (["ALL", "CASH", "VISA", "UNPAID"].includes(savedFilter)) setFilter(savedFilter);
     if (["ALL", "ACTIVE", "ARCHIVED", "UNREGISTERED"].includes(savedArchiveFilter)) setArchiveFilter(savedArchiveFilter);
@@ -509,11 +533,12 @@ export default function ManagerClient() {
     if (managerTab !== "settings") return;
     if (settingsLoadMode !== "full") loadSettingsOnly();
     if (["employees", "users"].includes(settingsTab)) ensureEmployeesLoaded();
-    if (["products", "printing"].includes(settingsTab)) {
+    if (["products", "printing", "loyalty"].includes(settingsTab)) {
       ensureProductsLoaded();
       ensureCategoriesLoaded();
     }
-    if (settingsTab === "customers") ensureCustomersLoaded();
+    if (["customers", "loyalty"].includes(settingsTab)) ensureCustomersLoaded();
+    if (settingsTab === "loyalty") ensureLoyaltyRewardsLoaded();
     if (settingsTab === "users") ensureUsersLoaded();
     if (settingsTab === "devices") ensureDevicesLoaded();
     if (settingsTab === "paymentProviders") ensurePaymentProvidersLoaded();
@@ -684,6 +709,18 @@ export default function ManagerClient() {
     setResourceStatus((current) => ({ ...current, paymentProviders: "loaded" }));
   }
 
+  async function loadLoyaltyRewards() {
+    setResourceStatus((current) => ({ ...current, loyaltyRewards: "loading" }));
+    const res = await fetch("/api/loyalty/rewards", { cache: "no-store", credentials: "include" });
+    if (!res.ok) {
+      setResourceStatus((current) => ({ ...current, loyaltyRewards: "error" }));
+      return;
+    }
+    const result = await res.json();
+    setLoyaltyRewards(Array.isArray(result.rewards) ? result.rewards : []);
+    setResourceStatus((current) => ({ ...current, loyaltyRewards: "loaded" }));
+  }
+
   async function loadBackups() {
     setResourceStatus((current) => ({ ...current, backups: "loading" }));
     const res = await fetch("/api/backups", { cache: "no-store", credentials: "include" });
@@ -722,6 +759,10 @@ export default function ManagerClient() {
 
   function ensurePaymentProvidersLoaded() {
     if (resourceStatus.paymentProviders === "idle" || resourceStatus.paymentProviders === "error") loadPaymentProviders();
+  }
+
+  function ensureLoyaltyRewardsLoaded() {
+    if (resourceStatus.loyaltyRewards === "idle" || resourceStatus.loyaltyRewards === "error") loadLoyaltyRewards();
   }
 
   function ensureBackupsLoaded() {
@@ -1015,7 +1056,7 @@ export default function ManagerClient() {
               </label>
               <label>
                 <span>{t("settings.paperSize")}</span>
-                <select value={layout.paperSize || "80mm"} onChange={(event) => updateInvoiceLayoutValue("paperSize", event.target.value)}>
+                <select aria-label={t("settings.paperSize")} value={layout.paperSize || "80mm"} onChange={(event) => updateInvoiceLayoutValue("paperSize", event.target.value)}>
                   <option value="80mm">80mm</option>
                   <option value="58mm">58mm</option>
                   <option value="A4">A4</option>
@@ -1802,10 +1843,24 @@ export default function ManagerClient() {
 
   function resetProductForm() {
     setProductForm(emptyProductForm);
+    setProductEditorOpen(false);
+  }
+
+  function createProduct() {
+    setProductForm(emptyProductForm);
+    setProductEditorTab("product");
+    setProductEditorOpen(true);
+  }
+
+  function createCategory() {
+    setCategoryForm(emptyCategoryForm);
+    setCategoryEditorTab("category");
+    setCategoryEditorOpen(true);
   }
 
   function resetCategoryForm() {
     setCategoryForm(emptyCategoryForm);
+    setCategoryEditorOpen(false);
   }
 
   function resetUserForm() {
@@ -1818,6 +1873,7 @@ export default function ManagerClient() {
 
   function resetPaymentProviderForm() {
     setPaymentProviderForm(emptyPaymentProviderForm);
+    setPaymentManagementTab("list");
   }
 
   function editEmployee(employee) {
@@ -1874,6 +1930,8 @@ export default function ManagerClient() {
       active: product.active,
       sortOrder: product.sortOrder || 100,
     });
+    setProductEditorTab("product");
+    setProductEditorOpen(true);
   }
 
   function editUser(user) {
@@ -1904,6 +1962,8 @@ export default function ManagerClient() {
       showInQuickOrder: category.department !== "ENTRANCE" && category.showInQuickOrder !== false,
       sortOrder: category.sortOrder || 100,
     });
+    setCategoryEditorTab("category");
+    setCategoryEditorOpen(true);
   }
 
   function editDevice(device) {
@@ -1934,6 +1994,7 @@ export default function ManagerClient() {
       sortOrder: provider.sortOrder || 100,
       reportBucket: provider.reportBucket || provider.type || "CUSTOM",
     });
+    setPaymentManagementTab("editor");
   }
 
   async function saveEmployee() {
@@ -2099,6 +2160,64 @@ export default function ManagerClient() {
   function exportCustomersCsv() {
     const queryPart = customerFilter.trim() ? `&q=${encodeURIComponent(customerFilter.trim())}` : "";
     window.open(`/api/customers?export=csv${queryPart}`, "_blank", "noopener,noreferrer");
+  }
+
+  async function issueLoyaltyCard(customer) {
+    const res = await fetch("/api/loyalty", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "ISSUE", customerId: customer.id }),
+    });
+    const result = await res.json();
+    if (!res.ok || !result.success) return toast(result.error || "تعذر إصدار كارت الولاء", "error");
+    toast("تم إصدار كارت الولاء", "success");
+    await loadCustomers(customerFilter);
+  }
+
+  async function adjustCustomerLoyalty(customer) {
+    const points = Math.trunc(Number(loyaltyAdjustment.points || 0));
+    if (!customer.loyalty?.id || !points) return toast("اختر حساباً وأدخل عدد نقاط صحيح", "error");
+    const res = await fetch("/api/loyalty", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        action: "ADJUST",
+        accountId: customer.loyalty.id,
+        walletType: loyaltyAdjustment.walletType,
+        points,
+        reason: loyaltyAdjustment.reason || "Manager adjustment",
+      }),
+    });
+    const result = await res.json();
+    if (!res.ok || !result.success) return toast(result.error || "تعذر تعديل النقاط", "error");
+    setLoyaltyAdjustment({ walletType: "ENTRANCE", points: "", reason: "" });
+    toast("تم تحديث رصيد النقاط", "success");
+    await loadCustomers(customerFilter);
+  }
+
+  function editLoyaltyReward(reward) {
+    setLoyaltyRewardForm({
+      ...emptyLoyaltyRewardForm,
+      ...reward,
+      discountPercent: reward.discountPercent ?? "",
+      discountAmount: reward.discountAmount ?? "",
+      productId: reward.productId || "",
+    });
+  }
+
+  async function saveLoyaltyReward() {
+    if (!loyaltyRewardForm.name.trim()) return toast("اسم المكافأة مطلوب", "error");
+    const method = loyaltyRewardForm.id ? "PATCH" : "POST";
+    const res = await fetch("/api/loyalty/rewards", {
+      method,
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(loyaltyRewardForm),
+    });
+    const result = await res.json();
+    if (!res.ok || !result.success) return toast(result.error || "تعذر حفظ المكافأة", "error");
+    setLoyaltyRewardForm(emptyLoyaltyRewardForm);
+    toast("تم حفظ مكافأة الولاء", "success");
+    await loadLoyaltyRewards();
   }
 
   async function toggleProduct(product) {
@@ -3076,6 +3195,13 @@ export default function ManagerClient() {
   });
   const activeEmployees = employees.filter((employee) => employee.active);
   const settingsGroups = {
+    loyalty: [
+      { key: "LOYALTY_ENTRANCE_POINTS_PER_VISIT", label: language === "ar" ? "نقاط كل زيارة دخول مدفوعة" : "Entrance points per paid visit", type: "number", min: 0 },
+      { key: "LOYALTY_RESTAURANT_POINTS_PER_EGP", label: language === "ar" ? "نقاط المطعم لكل جنيه" : "Restaurant points per EGP", type: "number", min: 0 },
+      { key: "LOYALTY_POINTS_PER_EGP", label: language === "ar" ? "عدد النقاط المطلوبة لكل جنيه عند الدفع" : "Points required per EGP", type: "number", min: 1 },
+      { key: "LOYALTY_POINTS_EXPIRY_DAYS", label: language === "ar" ? "صلاحية النقاط بالأيام" : "Points expiry in days", type: "number", min: 1 },
+      { key: "LOYALTY_AUTO_ISSUE_CARD", label: language === "ar" ? "إصدار حساب ولاء تلقائياً بعد أول دفع" : "Auto issue after first payment", type: "checkbox" },
+    ],
     branch: [
       { key: "COMPANY_NAME", label: t("settings.companyName") },
       { key: "BRANCH_NAME", label: t("settings.branchName") },
@@ -3148,6 +3274,14 @@ export default function ManagerClient() {
       { key: "REPORT_PAID_CARD_COLOR_END", label: t("settings.reportPaidCardEnd"), type: "color", defaultValue: "#ff671f" },
       { key: "REPORT_PAID_CARD_TEXT_COLOR", label: t("settings.reportPaidCardText"), type: "color", defaultValue: "#ffffff" },
     ],
+    frontDashboard: [
+      { key: "FRONT_DASHBOARD_DAILY_TARGET", label: language === "ar" ? "قيمة التارجت اليومي" : "Daily target value", type: "number", min: 0 },
+      { key: "FRONT_DASHBOARD_SHOW_CHILDREN", label: language === "ar" ? "إظهار كارت عدد الأطفال" : "Show children count card", type: "checkbox" },
+      { key: "FRONT_DASHBOARD_SHOW_CUSTOMERS", label: language === "ar" ? "إظهار كارت عدد العملاء" : "Show customer count card", type: "checkbox" },
+      { key: "FRONT_DASHBOARD_SHOW_TRIPS", label: language === "ar" ? "إظهار كارت الرحلات" : "Show trips card", type: "checkbox" },
+      { key: "FRONT_DASHBOARD_SHOW_BIRTHDAYS", label: language === "ar" ? "إظهار كارت أعياد الميلاد" : "Show birthdays card", type: "checkbox" },
+      { key: "FRONT_DASHBOARD_SHOW_TARGET", label: language === "ar" ? "إظهار كارت نسبة التارجت" : "Show target progress card", type: "checkbox" },
+    ],
     auditBackup: [
       { key: "AUDIT_RETENTION_DAYS", label: t("settings.auditRetention"), type: "number", min: 1 },
       { key: "AUDIT_EXPORT_ENABLED", label: t("settings.auditExport"), type: "checkbox" },
@@ -3159,6 +3293,7 @@ export default function ManagerClient() {
   const settingsTabMeta = {
     employees: { label: t("manager.employeeManagement"), hint: t("manager.employeeManagementHint") },
     customers: { label: t("manager.customerManagement"), hint: t("manager.customerManagementHint") },
+    loyalty: { label: language === "ar" ? "نظام الولاء" : "Loyalty System", hint: language === "ar" ? "الأرصدة والكروت وقواعد الكسب والمكافآت" : "Balances, cards, earning rules and rewards" },
     users: { label: t("manager.userManagement"), hint: t("manager.userManagementHint") },
     products: { label: t("manager.productManagement"), hint: t("manager.productManagementHint") },
     paymentProviders: { label: t("manager.paymentProviderManagement"), hint: t("manager.paymentProviderManagementHint") },
@@ -3169,17 +3304,18 @@ export default function ManagerClient() {
     invoice: { label: t("settings.invoiceSettings"), hint: t("settings.invoiceDesignerHint") },
     printing: { label: t("settings.printSettings"), hint: t("settings.printSettingsHint") },
     reports: { label: t("settings.reportSettings"), hint: t("settings.reportSettingsHint") },
+    frontDashboard: { label: language === "ar" ? "مؤشرات واجهة الفرونت" : "Front dashboard cards", hint: language === "ar" ? "التحكم في التارجت والكروت الظاهرة لموظف الفرونت" : "Control the target and cards visible on the front desk" },
     recordsStyle: { label: t("settings.recordTableSettings"), hint: t("settings.recordTableSettingsHint") },
     messages: { label: t("manager.uiMessages"), hint: t("manager.uiMessagesHint") },
     auditBackup: { label: t("settings.auditBackupSettings"), hint: t("settings.auditBackupSettingsHint") },
     backupRestore: { label: t("manager.backupRestore"), hint: t("manager.backupRestoreHint") },
   };
   const settingsNavigationGroups = [
-    { key: "people", title: t("settings.groupPeople"), hint: t("settings.groupPeopleHint"), tabs: ["employees", "customers", "users"], code: "01" },
+    { key: "people", title: t("settings.groupPeople"), hint: t("settings.groupPeopleHint"), tabs: ["employees", "customers", "loyalty", "users"], code: "01" },
     { key: "catalog", title: t("settings.groupCatalog"), hint: t("settings.groupCatalogHint"), tabs: ["products", "paymentProviders"], code: "02" },
     { key: "operations", title: t("settings.groupOperations"), hint: t("settings.groupOperationsHint"), tabs: ["devices", "business", "workflow"], code: "03" },
     { key: "receipts", title: t("settings.groupReceipts"), hint: t("settings.groupReceiptsHint"), tabs: ["branch", "invoice", "printing"], code: "04" },
-    { key: "insights", title: t("settings.groupInsights"), hint: t("settings.groupInsightsHint"), tabs: ["reports", "recordsStyle", "messages"], code: "05" },
+    { key: "insights", title: t("settings.groupInsights"), hint: t("settings.groupInsightsHint"), tabs: ["frontDashboard", "reports", "recordsStyle", "messages"], code: "05" },
     { key: "maintenance", title: t("settings.groupMaintenance"), hint: t("settings.groupMaintenanceHint"), tabs: ["auditBackup", "backupRestore"], code: "06" },
   ];
   const settingsTabMatchesSearch = (tab) => {
@@ -3214,6 +3350,12 @@ export default function ManagerClient() {
     "--product-card-text": productForm.cardTextColor || "#ffffff",
     "--product-card-accent": productForm.cardAccentColor || "#e31937",
   };
+  const productPreviewImage = (() => {
+    const value = String(productForm.imageUrl || "").trim().replace(/\\/g, "/");
+    if (!value) return "";
+    if (/^(https?:|data:|blob:)/i.test(value)) return value;
+    return value.startsWith("/") ? value : `/${value}`;
+  })();
 
   return (
     <>
@@ -3271,24 +3413,75 @@ export default function ManagerClient() {
         </div>
       </section>
 
-      {managerTab === "review" && <section className="panel">
-        <div className="row">
-          <div>
-            <h2>{t("manager.dayReview")}</h2>
-            <div className="muted">{t("manager.dayReviewHint")}</div>
-          </div>
-          <div className="actions">
-            <button className="btn-print" onClick={exportDailyCsv}>{t("manager.exportExcel")}</button>
-            <button className="btn-details" onClick={printDailyReport}>{t("manager.exportPdf")}</button>
-          </div>
-        </div>
-        <div className="grid four review-grid">
-          <Metric label={t("manager.cashTotal")} value={currency(dailyReviewRows().cash)} />
-          <Metric label={t("manager.visaTotal")} value={currency(dailyReviewRows().visa)} />
-          <Metric label={t("manager.notRegisteredGeidea")} value={formatNumber(dailyReviewRows().unregistered.length)} />
-          <Metric label={t("manager.leftUnpaid")} value={formatNumber(dailyReviewRows().leftUnpaid.length)} />
-        </div>
-      </section>}
+      {managerTab === "review" && (() => {
+        const review = dailyReviewRows();
+        const paidTotal = review.cash + review.visa;
+        const reviewPaymentRows = [
+          { method: "CASH", total: review.cash, count: review.orders.filter((order) => order.paymentStatus === "PAID" && order.paymentMethod === "CASH").length },
+          { method: "VISA", total: review.visa, count: review.orders.filter((order) => order.paymentStatus === "PAID" && order.paymentMethod === "VISA").length },
+        ];
+        const blockers = review.unregistered.length + review.leftUnpaid.length;
+
+        return <div className="reports-dashboard-shell day-review-dashboard">
+          <section className="reports-control-bar day-review-control-bar">
+            <div>
+              <h2>{t("manager.dayReview")}</h2>
+              <div className="muted">{t("manager.dayReviewHint")}</div>
+            </div>
+            <div className={`day-review-readiness ${blockers ? "blocked" : "ready"}`}>
+              <span>{blockers ? t("manager.reviewNeedsAttention") : t("manager.reviewReadyToClose")}</span>
+              <b>{formatNumber(blockers)}</b>
+            </div>
+            <div className="actions reports-toolbar-actions">
+              <button className="btn-print" onClick={exportDailyCsv}>{t("manager.exportExcel")}</button>
+              <button className="btn-details" onClick={printDailyReport}>{t("manager.exportPdf")}</button>
+            </div>
+          </section>
+
+          <section className="reports-hero-grid">
+            <div className="reports-hero-card day-review-hero-card">
+              <div className="reports-hero-summary">
+                <span>{t("manager.dayReview")}</span>
+                <small>{data.reportBusinessDate || selectedPeriodLabel()}</small>
+                <b>{currency(paidTotal)}</b>
+                <em>{t("manager.totalPaidSales")}</em>
+                <button className="report-summary-button" onClick={printDailyReport}>{t("manager.exportPdf")}</button>
+              </div>
+              <div className="day-review-checklist">
+                <div className="report-chart-head">
+                  <h3>{t("manager.closingChecklist")}</h3>
+                  <b>{blockers ? t("manager.reviewNeedsAttention") : t("manager.reviewReadyToClose")}</b>
+                </div>
+                <ReviewChecklistRow label={t("manager.notRegisteredGeidea")} value={review.unregistered.length} tone="orange" formatNumber={formatNumber} />
+                <ReviewChecklistRow label={t("manager.leftUnpaid")} value={review.leftUnpaid.length} tone="red" formatNumber={formatNumber} />
+                <ReviewChecklistRow label={t("manager.orders")} value={review.orders.length} tone="blue" formatNumber={formatNumber} />
+              </div>
+            </div>
+            <DonutChart
+              title={t("manager.paymentBreakdown")}
+              rows={reviewPaymentRows}
+              labelKey="method"
+              valueKey="total"
+              countKey="count"
+              labelFormatter={labelMethod}
+              valueFormatter={currency}
+              emptyLabel={t("common.noData")}
+            />
+          </section>
+
+          <section className="report-gradient-grid">
+            <GradientSummaryCard tone="purple" title={t("manager.cashTotal")} value={currency(review.cash)} caption={labelMethod("CASH")} styleConfig={reportCardStyle("AVERAGE", "#6d4cd7", "#301848")} />
+            <GradientSummaryCard tone="green" title={t("manager.visaTotal")} value={currency(review.visa)} caption={labelMethod("VISA")} styleConfig={{ startColor: "#50bf65", endColor: "#11863b", textColor: "#ffffff" }} />
+            <GradientSummaryCard tone="orange" title={t("manager.notRegisteredGeidea")} value={formatNumber(review.unregistered.length)} caption={t("manager.reviewBlockingOrders")} styleConfig={reportCardStyle("PAID", "#ffb12b", "#ff671f")} />
+            <GradientSummaryCard tone="pink" title={t("manager.leftUnpaid")} value={formatNumber(review.leftUnpaid.length)} caption={t("manager.reviewBlockingOrders")} styleConfig={reportCardStyle("ORDERS", "#e94b96", "#c8102e")} />
+          </section>
+
+          <section className="day-review-tables">
+            <ReviewOrdersTable title={t("manager.notRegisteredGeidea")} rows={review.unregistered} t={t} currency={currency} formatNumber={formatNumber} onOpen={setSelectedOrder} />
+            <ReviewOrdersTable title={t("manager.leftUnpaid")} rows={review.leftUnpaid} t={t} currency={currency} formatNumber={formatNumber} onOpen={setSelectedOrder} />
+          </section>
+        </div>;
+      })()}
 
       {managerTab === "orders" && <section className="panel">
         <div className="row">
@@ -3839,10 +4032,44 @@ export default function ManagerClient() {
               </div>
               <button className="danger" onClick={() => setSelectedCustomer(null)}>{t("common.close")}</button>
             </div>
-            <div className="grid three customer-profile-metrics">
+            <div className="grid four customer-profile-metrics">
               <Metric label={t("manager.visits")} value={formatNumber(selectedCustomer.visits || 0)} />
               <Metric label={t("common.children")} value={formatNumber(selectedCustomer.children?.length || 0)} />
+              <Metric label={language === "ar" ? "إجمالي المشتريات" : "Total spend"} value={currency(selectedCustomer.totalSpend || 0)} />
               <Metric label={t("manager.recordLastActivity")} value={selectedCustomer.lastOrderAt ? formatDateTime(selectedCustomer.lastOrderAt) : "-"} />
+            </div>
+            <div className="loyalty-customer-panel">
+              <div className="row">
+                <div>
+                  <b>{language === "ar" ? "كارت ونقاط الولاء" : "Loyalty card and points"}</b>
+                  <div className="muted">{selectedCustomer.loyalty?.cardSerial || (language === "ar" ? "لم يصدر كارت بعد" : "No card issued")}</div>
+                </div>
+                {!selectedCustomer.loyalty && <button className="btn-confirm" onClick={() => issueLoyaltyCard(selectedCustomer)}>{language === "ar" ? "إصدار كارت" : "Issue card"}</button>}
+              </div>
+              {selectedCustomer.loyalty && <>
+                <div className="grid two loyalty-wallet-grid">
+                  <Metric label={language === "ar" ? "نقاط الزيارات" : "Entrance points"} value={formatNumber(selectedCustomer.loyalty.entrancePoints || 0)} />
+                  <Metric label={language === "ar" ? "نقاط المطعم" : "Restaurant points"} value={formatNumber(selectedCustomer.loyalty.restaurantPoints || 0)} />
+                </div>
+                <div className="form-grid loyalty-adjust-grid">
+                  <select aria-label={language === "ar" ? "محفظة النقاط" : "Points wallet"} value={loyaltyAdjustment.walletType} onChange={(event) => setLoyaltyAdjustment((current) => ({ ...current, walletType: event.target.value }))}>
+                    <option value="ENTRANCE">{language === "ar" ? "الزيارات" : "Entrance"}</option>
+                    <option value="RESTAURANT">{language === "ar" ? "المطعم" : "Restaurant"}</option>
+                  </select>
+                  <input type="number" value={loyaltyAdjustment.points} onChange={(event) => setLoyaltyAdjustment((current) => ({ ...current, points: event.target.value }))} placeholder={language === "ar" ? "+ أو - نقاط" : "+ or - points"} />
+                  <input value={loyaltyAdjustment.reason} onChange={(event) => setLoyaltyAdjustment((current) => ({ ...current, reason: event.target.value }))} placeholder={language === "ar" ? "سبب التعديل" : "Adjustment reason"} />
+                  <button className="btn-edit" onClick={() => adjustCustomerLoyalty(selectedCustomer)}>{language === "ar" ? "تعديل الرصيد" : "Adjust balance"}</button>
+                </div>
+                <div className="loyalty-ledger-list">
+                  {(selectedCustomer.loyalty.transactions || []).slice(0, 6).map((transaction) => (
+                    <div className="customer-profile-row" key={transaction.id}>
+                      <span>{transaction.walletType === "ENTRANCE" ? (language === "ar" ? "زيارات" : "Entrance") : (language === "ar" ? "مطعم" : "Restaurant")}</span>
+                      <b className={transaction.points >= 0 ? "loyalty-credit" : "loyalty-debit"}>{transaction.points >= 0 ? "+" : ""}{formatNumber(transaction.points)}</b>
+                      <span>{transaction.reason || transaction.type}</span>
+                    </div>
+                  ))}
+                </div>
+              </>}
             </div>
             {selectedCustomer.comments && <div className="customer-profile-note">{selectedCustomer.comments}</div>}
             <div className="grid two">
@@ -3908,34 +4135,23 @@ export default function ManagerClient() {
             <h3>{t("manager.productManagement")}</h3>
             <div className="muted">{t("manager.productManagementHint")}</div>
           </div>
-          {productForm.id && <button className="danger" onClick={resetProductForm}>{t("common.cancel")}</button>}
+          <button className="btn-confirm" onClick={productManagementTab === "items" ? createProduct : createCategory}>
+            {productManagementTab === "items" ? t("manager.addProduct") : t("manager.addCategory")}
+          </button>
         </div>
-        <div className="product-preview-panel">
-          <div>
-            <h4>{t("manager.productPreview")}</h4>
-            <div className="muted">{t("manager.productPreviewHint")}</div>
-          </div>
-          <div className="card product product-custom-accent product-preview-card" style={productPreviewStyle}>
-            {productForm.imageUrl ? (
-              <img className="front-product-image" src={productForm.imageUrl} alt={productForm.name || t("manager.productName")} loading="lazy" decoding="async" />
-            ) : (
-              <div className="front-product-letter product-custom-visual">{productPreviewText(productForm)}</div>
-            )}
-            <div className="product-name">{productForm.name || t("manager.productName")}</div>
-            <div className="product-body">
-              <span className="product-price">{currency(Number(productForm.price) || 0)}</span>
-            </div>
-          </div>
+        <div className="catalog-inner-tabs" role="tablist" aria-label={t("manager.productManagement")}>
+          <button type="button" role="tab" aria-selected={productManagementTab === "items"} className={productManagementTab === "items" ? "active" : ""} onClick={() => setProductManagementTab("items")}>{language === "ar" ? "الآيتمز" : "Items"}</button>
+          <button type="button" role="tab" aria-selected={productManagementTab === "categories"} className={productManagementTab === "categories" ? "active" : ""} onClick={() => setProductManagementTab("categories")}>{language === "ar" ? "الكاتيجوريز" : "Categories"}</button>
         </div>
-        <div className="category-manager-panel">
+        {productManagementTab === "categories" && <div className="category-manager-panel">
           <div className="row compact-row">
             <div>
               <h4>{t("manager.categoryManagement")}</h4>
               <div className="muted">{t("manager.categoryManagementHint")}</div>
             </div>
-            {categoryForm.id && <button className="danger" onClick={resetCategoryForm}>{t("common.cancel")}</button>}
+            <button className="btn-confirm" onClick={createCategory}>{t("manager.addCategory")}</button>
           </div>
-          <div className="form-grid category-form-grid">
+          {false && <div className="form-grid category-form-grid">
             <input value={categoryForm.name} onChange={(event) => setCategoryForm((current) => ({ ...current, name: event.target.value }))} placeholder={t("manager.categoryName")} />
             <select
               aria-label={t("manager.productDepartment")}
@@ -3998,7 +4214,7 @@ export default function ManagerClient() {
               <small className="muted">{t("manager.categoryAvailabilityHint")}</small>
             </div>
             <button className="btn-confirm" onClick={saveCategory}>{categoryForm.id ? t("manager.updateCategory") : t("manager.addCategory")}</button>
-          </div>
+          </div>}
           <div className="form-grid settings-filter-grid category-filter-grid">
             <input value={categoryFilter.query} onChange={(event) => setCategoryFilter((current) => ({ ...current, query: event.target.value }))} placeholder={t("manager.categorySearch")} />
             <select
@@ -4044,11 +4260,10 @@ export default function ManagerClient() {
                     <small>{category.id}</small>
                   </span>
                   <span>
-                    <select
+                    <select aria-label={t("manager.productDepartment")}
                       className="inline-table-select"
                       value={category.department}
                       onChange={(event) => quickSaveCategory(category, { department: event.target.value })}
-                      aria-label={t("manager.productDepartment")}
                     >
                       {productDepartments.map((department) => <option key={department} value={department}>{labelDepartment(department)}</option>)}
                     </select>
@@ -4105,11 +4320,150 @@ export default function ManagerClient() {
             })}
             {!visibleCategories.length && <div className="muted settings-empty-row">{t("common.noData")}</div>}
           </div>
-        </div>
-        <div className="form-grid product-form-grid">
+        </div>}
+        {categoryEditorOpen && (
+          <div className="modal-backdrop" role="presentation" onMouseDown={(event) => {
+            if (event.target === event.currentTarget) resetCategoryForm();
+          }}>
+            <section className="detail-modal product-editor-modal category-editor-modal" role="dialog" aria-modal="true" aria-labelledby="category-editor-title">
+              <div className="modal-head">
+                <div>
+                  <h2 id="category-editor-title">{categoryForm.id ? t("manager.updateCategory") : t("manager.addCategory")}</h2>
+                  <div className="muted">{t("manager.categoryManagementHint")}</div>
+                </div>
+                <button className="danger" onClick={resetCategoryForm}>{t("common.cancel")}</button>
+              </div>
+              <div className="product-editor-tabs category-editor-tabs" role="tablist" aria-label={t("manager.categoryManagement")}>
+                {[
+                  ["category", language === "ar" ? "الكاتيجوري" : "Category", "product"],
+                  ["preview", language === "ar" ? "معاينة الشكل" : "Preview", "preview"],
+                  ["activation", language === "ar" ? "التفعيل والجدولة" : "Activation & Schedule", "activation"],
+                  ["visibility", language === "ar" ? "الكاتيجوري تظهر فين" : "Visibility", "visibility"],
+                ].map(([key, label, tone]) => (
+                  <button type="button" role="tab" aria-selected={categoryEditorTab === key} className={`product-editor-tab tone-${tone} ${categoryEditorTab === key ? "active" : ""}`} key={key} onClick={() => setCategoryEditorTab(key)}>{label}</button>
+                ))}
+              </div>
+              <div className="product-editor-layout">
+                {categoryEditorTab === "preview" && <div className="category-live-preview" style={{ "--category-preview-color": categoryForm.color || "#3d1859" }}>
+                  <span className="category-preview-tab">{categoryForm.name || t("manager.categoryName")}</span>
+                  <div>
+                    <h4>{language === "ar" ? "معاينة الكاتيجوري" : "Category preview"}</h4>
+                    <div className="muted">{language === "ar" ? "اللون ده هيظهر في تبويبات المنتجات" : "This color is used in product tabs"}</div>
+                  </div>
+                </div>}
+                <div className="form-grid category-popup-form">
+                  {categoryEditorTab === "category" && <>
+                    <input value={categoryForm.name} onChange={(event) => setCategoryForm((current) => ({ ...current, name: event.target.value }))} placeholder={t("manager.categoryName")} />
+                    <select aria-label={t("manager.productDepartment")} value={categoryForm.department} onChange={(event) => setCategoryForm((current) => ({
+                      ...current,
+                      department: event.target.value,
+                      showInDataOrder: event.target.value === "KITCHEN" ? current.showInDataOrder : false,
+                      showInQuickOrder: event.target.value !== "ENTRANCE" ? current.showInQuickOrder : false,
+                    }))}>
+                      {productDepartments.map((department) => <option key={department} value={department}>{labelDepartment(department)}</option>)}
+                    </select>
+                    <input type="number" min="1" value={categoryForm.sortOrder} onChange={(event) => setCategoryForm((current) => ({ ...current, sortOrder: event.target.value }))} placeholder={t("manager.sortOrder")} />
+                  </>}
+                  {categoryEditorTab === "preview" && <label className="category-color-control"><span>{t("manager.categoryColor")}</span><input type="color" value={categoryForm.color || "#3d1859"} onChange={(event) => setCategoryForm((current) => ({ ...current, color: event.target.value }))} /></label>}
+                  {categoryEditorTab === "activation" && <>
+                    <div className="product-schedule-editor">
+                      <b>{t("manager.categoryAvailability")}</b>
+                      <div className="product-day-grid">
+                        {productAvailabilityDays.map((day) => <label className="toggle-row" key={day}>
+                          <input type="checkbox" checked={categoryForm.availabilityDays.includes(day)} onChange={(event) => setCategoryForm((current) => ({
+                            ...current,
+                            availabilityDays: event.target.checked ? [...new Set([...current.availabilityDays, day])] : current.availabilityDays.filter((item) => item !== day),
+                          }))} />
+                          <span>{t(`day.${day}`)}</span>
+                        </label>)}
+                      </div>
+                      <div className="form-grid product-time-grid">
+                        <label><span>{t("manager.availabilityStart")}</span><input type="time" value={categoryForm.availabilityStartTime} onChange={(event) => setCategoryForm((current) => ({ ...current, availabilityStartTime: event.target.value }))} /></label>
+                        <label><span>{t("manager.availabilityEnd")}</span><input type="time" value={categoryForm.availabilityEndTime} onChange={(event) => setCategoryForm((current) => ({ ...current, availabilityEndTime: event.target.value }))} /></label>
+                      </div>
+                    </div>
+                    <label className="toggle-row"><input type="checkbox" checked={categoryForm.active} onChange={(event) => setCategoryForm((current) => ({ ...current, active: event.target.checked }))} /><span>{categoryForm.active ? t("common.active") : t("common.inactive")}</span></label>
+                  </>}
+                  {categoryEditorTab === "visibility" && <>
+                    <label className="toggle-row"><input type="checkbox" disabled={categoryForm.department !== "KITCHEN"} checked={categoryForm.department === "KITCHEN" && categoryForm.showInDataOrder} onChange={(event) => setCategoryForm((current) => ({ ...current, showInDataOrder: event.target.checked }))} /><span>{t("manager.showInDataOrder")}</span></label>
+                    <label className="toggle-row"><input type="checkbox" disabled={categoryForm.department === "ENTRANCE"} checked={categoryForm.department !== "ENTRANCE" && categoryForm.showInQuickOrder} onChange={(event) => setCategoryForm((current) => ({ ...current, showInQuickOrder: event.target.checked }))} /><span>{t("manager.showInQuickOrder")}</span></label>
+                  </>}
+                  <div className="product-editor-actions">
+                    <button className="secondary" onClick={resetCategoryForm}>{t("common.cancel")}</button>
+                    <button className="btn-confirm" onClick={saveCategory}>{categoryForm.id ? t("manager.updateCategory") : t("manager.addCategory")}</button>
+                  </div>
+                </div>
+              </div>
+            </section>
+          </div>
+        )}
+        {productManagementTab === "items" && <>
+        {productEditorOpen && (
+          <div className="modal-backdrop" role="presentation" onMouseDown={(event) => {
+            if (event.target === event.currentTarget) resetProductForm();
+          }}>
+            <section className="detail-modal product-editor-modal" role="dialog" aria-modal="true" aria-labelledby="product-editor-title">
+              <div className="modal-head">
+                <div>
+                  <h2 id="product-editor-title">{productForm.id ? t("manager.updateProduct") : t("manager.addProduct")}</h2>
+                  <div className="muted">{t("manager.productManagementHint")}</div>
+                </div>
+                <button className="danger" onClick={resetProductForm}>{t("common.cancel")}</button>
+              </div>
+              <div className="product-editor-tabs" role="tablist" aria-label={t("manager.updateProduct")}>
+                {[
+                  ["product", "manager.productEditorProductTab", "product"],
+                  ["preview", "manager.productEditorPreviewTab", "preview"],
+                  ["activation", "manager.productEditorActivationTab", "activation"],
+                  ["tax", "manager.productEditorTaxTab", "tax"],
+                  ["visibility", "manager.productEditorVisibilityTab", "visibility"],
+                ].map(([key, labelKey, tone]) => (
+                  <button
+                    type="button"
+                    role="tab"
+                    aria-selected={productEditorTab === key}
+                    className={`product-editor-tab tone-${tone} ${productEditorTab === key ? "active" : ""}`}
+                    key={key}
+                    onClick={() => setProductEditorTab(key)}
+                  >
+                    {t(labelKey)}
+                  </button>
+                ))}
+              </div>
+              <div className="product-editor-layout">
+                {productEditorTab === "preview" && <div className="product-preview-panel product-editor-preview">
+                  <div>
+                    <h4>{t("manager.productPreview")}</h4>
+                    <div className="muted">{t("manager.productPreviewHint")}</div>
+                  </div>
+                  <div className="card product product-custom-accent product-preview-card" style={productPreviewStyle}>
+                    {productPreviewImage ? (
+                      <img
+                        className="front-product-image"
+                        src={productPreviewImage}
+                        alt={productForm.name || t("manager.productName")}
+                        loading="eager"
+                        decoding="async"
+                        onError={(event) => {
+                          if (!event.currentTarget.src.endsWith("/products/fallback.jpg")) event.currentTarget.src = "/products/fallback.jpg";
+                        }}
+                      />
+                    ) : (
+                      <div className="front-product-letter product-custom-visual">{productPreviewText(productForm)}</div>
+                    )}
+                    <div className="product-name">{productForm.name || t("manager.productName")}</div>
+                    <div className="product-body">
+                      <span className="product-price">{currency(Number(productForm.price) || 0)}</span>
+                    </div>
+                  </div>
+                </div>}
+                <div className="form-grid product-form-grid product-editor-form">
+          {productEditorTab === "product" && <>
           <input value={productForm.name} onChange={(event) => setProductForm((current) => ({ ...current, name: event.target.value }))} placeholder={t("manager.productName")} />
           <input type="number" min="0" value={productForm.price} onChange={(event) => setProductForm((current) => ({ ...current, price: event.target.value }))} placeholder={t("manager.productPrice")} />
           <input type="number" min="1" value={productForm.sortOrder} onChange={(event) => setProductForm((current) => ({ ...current, sortOrder: event.target.value }))} placeholder={t("manager.sortOrder")} />
+          </>}
+          {productEditorTab === "visibility" && <>
           <select
             aria-label={t("manager.productDepartment")}
             value={productForm.department}
@@ -4136,9 +4490,12 @@ export default function ManagerClient() {
           <datalist id="product-category-options">
             {productFormCategoryOptions.map((category) => <option key={category.id} value={category.name} />)}
           </datalist>
-          <input value={productForm.imageUrl} onChange={(event) => setProductForm((current) => ({ ...current, imageUrl: event.target.value }))} placeholder={t("manager.productImage")} />
-          <input value={productForm.iconText} onChange={(event) => setProductForm((current) => ({ ...current, iconText: event.target.value }))} placeholder={t("manager.productIconText")} />
-          <div className="product-tax-editor">
+          </>}
+          {productEditorTab === "preview" && <>
+            <input value={productForm.imageUrl} onChange={(event) => setProductForm((current) => ({ ...current, imageUrl: event.target.value }))} placeholder={t("manager.productImage")} />
+            <input value={productForm.iconText} onChange={(event) => setProductForm((current) => ({ ...current, iconText: event.target.value }))} placeholder={t("manager.productIconText")} />
+          </>}
+          {productEditorTab === "tax" && <div className="product-tax-editor">
             <b>{t("manager.productTaxEta")}</b>
             <div className="form-grid product-tax-grid">
               <input type="number" min="0" step="0.01" value={productForm.originalPrice} onChange={(event) => setProductForm((current) => ({ ...current, originalPrice: event.target.value }))} placeholder={t("manager.originalPrice")} />
@@ -4152,7 +4509,8 @@ export default function ManagerClient() {
               <input value={productForm.etaTaxSubType} onChange={(event) => setProductForm((current) => ({ ...current, etaTaxSubType: event.target.value }))} placeholder={t("manager.etaTaxSubType")} />
             </div>
             <small className="muted">{t("manager.productTaxEtaHint")}</small>
-          </div>
+          </div>}
+          {productEditorTab === "preview" && <>
           <label>
             <span>{t("manager.cardStartColor")}</span>
             <input type="color" value={productForm.cardColorStart} onChange={(event) => setProductForm((current) => ({ ...current, cardColorStart: event.target.value }))} />
@@ -4169,6 +4527,8 @@ export default function ManagerClient() {
             <span>{t("manager.cardAccentColor")}</span>
             <input type="color" value={productForm.cardAccentColor} onChange={(event) => setProductForm((current) => ({ ...current, cardAccentColor: event.target.value }))} />
           </label>
+          </>}
+          {productEditorTab === "activation" && <>
           <div className="product-schedule-editor">
             <b>{t("manager.productAvailability")}</b>
             <div className="product-day-grid">
@@ -4208,6 +4568,8 @@ export default function ManagerClient() {
             <input type="checkbox" checked={productForm.active} onChange={(event) => setProductForm((current) => ({ ...current, active: event.target.checked }))} />
             <span>{productForm.active ? t("common.active") : t("common.inactive")}</span>
           </label>
+          </>}
+          {productEditorTab === "visibility" && <>
           <label className="toggle-row">
             <input type="checkbox" disabled={productForm.department === "ENTRANCE"} checked={productForm.printOnKitchen && productForm.department !== "ENTRANCE"} onChange={(event) => setProductForm((current) => ({ ...current, printOnKitchen: event.target.checked }))} />
             <span>{t("manager.printOnKitchen")}</span>
@@ -4220,8 +4582,16 @@ export default function ManagerClient() {
             <input type="checkbox" disabled={productForm.department === "ENTRANCE"} checked={productForm.department !== "ENTRANCE" && productForm.showInQuickOrder} onChange={(event) => setProductForm((current) => ({ ...current, showInQuickOrder: event.target.checked }))} />
             <span>{t("manager.showInQuickOrder")}</span>
           </label>
-          <button className="btn-confirm" onClick={saveProduct}>{productForm.id ? t("manager.updateProduct") : t("manager.addProduct")}</button>
-        </div>
+          </>}
+                  <div className="product-editor-actions">
+                    <button className="secondary" onClick={resetProductForm}>{t("common.cancel")}</button>
+                    <button className="btn-confirm" onClick={saveProduct}>{productForm.id ? t("manager.updateProduct") : t("manager.addProduct")}</button>
+                  </div>
+                </div>
+              </div>
+            </section>
+          </div>
+        )}
         <div className="product-overview-panel">
           <div className="row compact-row">
             <div>
@@ -4336,7 +4706,6 @@ export default function ManagerClient() {
                   <b>{t("manager.productPrice")}</b>
                   <b>{t("manager.popularProduct")}</b>
                   <b>{t("manager.sortOrder")}</b>
-                  <b>{t("manager.productScope")}</b>
                   <b>{t("common.status")}</b>
                   <b>{t("common.actions")}</b>
                 </div>
@@ -4365,10 +4734,9 @@ export default function ManagerClient() {
                         onBlur={(event) => saveProductField(product, "name", event.target.value)}
                         aria-label={t("manager.productName")}
                       />
-                      <small>{product.id}</small>
                     </span>
                     <span>
-                      <select
+                      <select aria-label={t("manager.categoryName")}
                         className="inline-table-select"
                         value={currentCategoryValue}
                         onChange={(event) => {
@@ -4378,11 +4746,11 @@ export default function ManagerClient() {
                             categoryName: category?.name || event.target.value,
                           });
                         }}
-                        aria-label={t("manager.categoryName")}
                       >
                         {!hasCurrentCategory && <option value={currentCategoryValue}>{product.categoryName || currentCategoryValue}</option>}
                         {rowCategoryOptions.map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}
                       </select>
+                      <small className="product-category-code">{product.categoryId || matchedRowCategory?.id || "-"}</small>
                     </span>
                     <span>
                       <input
@@ -4414,38 +4782,6 @@ export default function ManagerClient() {
                         aria-label={t("manager.sortOrder")}
                       />
                     </span>
-                    <span className="product-scope-tags">
-                      <label className="scope-toggle data">
-                        <input
-                          type="checkbox"
-                          disabled={product.department !== "KITCHEN"}
-                          checked={product.department === "KITCHEN" && product.showInDataOrder}
-                          onChange={(event) => quickSaveProduct(product, { showInDataOrder: event.target.checked })}
-                        />
-                        <span>{t("manager.onlyData")}</span>
-                      </label>
-                      <label className="scope-toggle quick">
-                        <input
-                          type="checkbox"
-                          disabled={product.department === "ENTRANCE"}
-                          checked={product.department !== "ENTRANCE" && product.showInQuickOrder}
-                          onChange={(event) => quickSaveProduct(product, { showInQuickOrder: event.target.checked })}
-                        />
-                        <span>{t("manager.onlyQuick")}</span>
-                      </label>
-                      <label className="scope-toggle print">
-                        <input
-                          type="checkbox"
-                          disabled={product.department === "ENTRANCE"}
-                          checked={product.department !== "ENTRANCE" && product.printOnKitchen}
-                          onChange={(event) => quickSaveProduct(product, { printOnKitchen: event.target.checked })}
-                        />
-                        <span>{t("manager.onlyKitchenPrint")}</span>
-                      </label>
-                      <span className={`scope-tag ${productHasSchedule(product) ? "scheduled" : "muted"}`}>
-                        {productHasSchedule(product) ? t("manager.scheduledProduct") : t("manager.unscheduledProduct")}
-                      </span>
-                    </span>
                     <span>
                       <label className={`status-switch ${product.active ? "active" : "inactive"}`}>
                         <input
@@ -4458,6 +4794,9 @@ export default function ManagerClient() {
                     </span>
                     <span className="actions">
                       <button className="btn-edit" onClick={() => editProduct(product)}>{t("common.edit")}</button>
+                      <button className={product.active ? "danger" : "btn-confirm"} onClick={() => toggleProduct(product)}>
+                        {product.active ? t("common.deactivate") : t("common.activate")}
+                      </button>
                     </span>
                   </div>
                   );
@@ -4467,6 +4806,7 @@ export default function ManagerClient() {
             );
           })}
         </div>
+        </>}
       </section>}
 
       {settingsTab === "users" && <section className="employee-manager">
@@ -4711,8 +5051,36 @@ export default function ManagerClient() {
             <h3>{t("manager.paymentProviderManagement")}</h3>
             <div className="muted">{t("manager.paymentProviderManagementHint")}</div>
           </div>
-          {paymentProviderForm.id && <button className="danger" onClick={resetPaymentProviderForm}>{t("common.cancel")}</button>}
+          <button className="btn-confirm" onClick={() => {
+            setPaymentProviderForm(emptyPaymentProviderForm);
+            setPaymentManagementTab("editor");
+          }}>
+            {t("manager.addPaymentProvider")}
+          </button>
         </div>
+        <div className="catalog-inner-tabs payment-management-tabs" role="tablist" aria-label={t("manager.paymentProviderManagement")}>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={paymentManagementTab === "list"}
+            className={paymentManagementTab === "list" ? "active" : ""}
+            onClick={resetPaymentProviderForm}
+          >
+            {language === "ar" ? "طرق الدفع الحالية" : "Payment methods"}
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={paymentManagementTab === "editor"}
+            className={paymentManagementTab === "editor" ? "active" : ""}
+            onClick={() => setPaymentManagementTab("editor")}
+          >
+            {paymentProviderForm.id
+              ? (language === "ar" ? "تعديل طريقة الدفع" : "Edit payment method")
+              : (language === "ar" ? "إضافة طريقة دفع" : "Add payment method")}
+          </button>
+        </div>
+        {paymentManagementTab === "editor" && <div className="payment-provider-editor-panel">
         <div className="form-grid payment-provider-form-grid">
           <input value={paymentProviderForm.id} readOnly placeholder={t("manager.paymentProviderId")} />
           <input value={paymentProviderForm.name} onChange={(event) => setPaymentProviderForm((current) => ({ ...current, name: event.target.value }))} placeholder={t("manager.paymentProviderName")} />
@@ -4762,6 +5130,11 @@ export default function ManagerClient() {
           </label>
           <button className="btn-confirm" onClick={savePaymentProvider}>{paymentProviderForm.id ? t("manager.updatePaymentProvider") : t("manager.addPaymentProvider")}</button>
         </div>
+        <div className="actions payment-editor-actions">
+          <button className="secondary" onClick={resetPaymentProviderForm}>{t("common.cancel")}</button>
+        </div>
+        </div>}
+        {paymentManagementTab === "list" && <>
         <div className="form-grid settings-filter-grid">
           <input value={paymentProviderFilter.query} onChange={(event) => setPaymentProviderFilter((current) => ({ ...current, query: event.target.value }))} placeholder={t("manager.paymentProviderSearch")} />
           <select
@@ -4814,6 +5187,57 @@ export default function ManagerClient() {
             </div>
           ))}
         </div>
+        </>}
+      </section>}
+
+      {settingsTab === "loyalty" && <section className="employee-manager loyalty-settings-page">
+        <div className="row">
+          <div>
+            <h3>{language === "ar" ? "نظام الولاء" : "Loyalty System"}</h3>
+            <div className="muted">{language === "ar" ? "قواعد الكسب والدفع بالنقاط وكتالوج المكافآت" : "Earning rules, points payment and reward catalog"}</div>
+          </div>
+          <button className="btn-confirm" onClick={() => saveSettingsGroup(settingsGroups.loyalty)}>{t("common.save")}</button>
+        </div>
+        {renderSettingsFields(settingsGroups.loyalty)}
+        <div className="settings-subsection loyalty-reward-editor">
+          <div className="row">
+            <h3>{language === "ar" ? "كتالوج المكافآت" : "Reward catalog"}</h3>
+            {loyaltyRewardForm.id && <button className="danger" onClick={() => setLoyaltyRewardForm(emptyLoyaltyRewardForm)}>{t("common.cancel")}</button>}
+          </div>
+          <div className="form-grid loyalty-reward-form">
+            <input value={loyaltyRewardForm.name} onChange={(event) => setLoyaltyRewardForm((current) => ({ ...current, name: event.target.value }))} placeholder={language === "ar" ? "اسم المكافأة بالعربي" : "Arabic reward name"} />
+            <input value={loyaltyRewardForm.nameEn} onChange={(event) => setLoyaltyRewardForm((current) => ({ ...current, nameEn: event.target.value }))} placeholder="English reward name" />
+            <select aria-label="Wallet type" value={loyaltyRewardForm.walletType} onChange={(event) => setLoyaltyRewardForm((current) => ({ ...current, walletType: event.target.value }))}>
+              <option value="ENTRANCE">{language === "ar" ? "نقاط الزيارات" : "Entrance points"}</option>
+              <option value="RESTAURANT">{language === "ar" ? "نقاط المطعم" : "Restaurant points"}</option>
+            </select>
+            <select aria-label="Reward type" value={loyaltyRewardForm.rewardType} onChange={(event) => setLoyaltyRewardForm((current) => ({ ...current, rewardType: event.target.value }))}>
+              <option value="PERCENT_DISCOUNT">{language === "ar" ? "خصم نسبة" : "Percent discount"}</option>
+              <option value="FIXED_DISCOUNT">{language === "ar" ? "خصم مبلغ" : "Fixed discount"}</option>
+              <option value="FREE_PRODUCT">{language === "ar" ? "منتج مجاني" : "Free product"}</option>
+            </select>
+            <input type="number" min="1" value={loyaltyRewardForm.pointsCost} onChange={(event) => setLoyaltyRewardForm((current) => ({ ...current, pointsCost: event.target.value }))} placeholder={language === "ar" ? "تكلفة النقاط" : "Points cost"} />
+            <input type="number" min="0" value={loyaltyRewardForm.discountPercent} onChange={(event) => setLoyaltyRewardForm((current) => ({ ...current, discountPercent: event.target.value }))} placeholder={language === "ar" ? "نسبة الخصم" : "Discount percent"} />
+            <input type="number" min="0" value={loyaltyRewardForm.discountAmount} onChange={(event) => setLoyaltyRewardForm((current) => ({ ...current, discountAmount: event.target.value }))} placeholder={language === "ar" ? "قيمة الخصم" : "Discount amount"} />
+            <select aria-label="Reward product" value={loyaltyRewardForm.productId} onChange={(event) => setLoyaltyRewardForm((current) => ({ ...current, productId: event.target.value }))}>
+              <option value="">{language === "ar" ? "بدون منتج محدد" : "No specific product"}</option>
+              {products.map((product) => <option value={product.id} key={product.id}>{product.name}</option>)}
+            </select>
+            <input type="number" value={loyaltyRewardForm.sortOrder} onChange={(event) => setLoyaltyRewardForm((current) => ({ ...current, sortOrder: event.target.value }))} placeholder={language === "ar" ? "الترتيب" : "Sort order"} />
+            <label className="toggle-row"><input type="checkbox" checked={loyaltyRewardForm.active} onChange={(event) => setLoyaltyRewardForm((current) => ({ ...current, active: event.target.checked }))} /><span>{loyaltyRewardForm.active ? t("common.active") : t("common.inactive")}</span></label>
+            <button className="btn-confirm" onClick={saveLoyaltyReward}>{loyaltyRewardForm.id ? (language === "ar" ? "حفظ التعديل" : "Save changes") : (language === "ar" ? "إضافة مكافأة" : "Add reward")}</button>
+          </div>
+          <div className="employee-table loyalty-reward-table">
+            {loyaltyRewards.map((reward) => <div className="employee-row loyalty-reward-row" key={reward.id}>
+              <span><b>{language === "en" && reward.nameEn ? reward.nameEn : reward.name}</b><small className="muted block">{reward.walletType}</small></span>
+              <span>{reward.rewardType}</span>
+              <b>{formatNumber(reward.pointsCost)} {language === "ar" ? "نقطة" : "pts"}</b>
+              <span>{reward.discountPercent ? `${reward.discountPercent}%` : reward.discountAmount ? currency(reward.discountAmount) : reward.productId || "-"}</span>
+              <span className={`badge ${reward.active ? "paid" : "unpaid"}`}>{reward.active ? t("common.active") : t("common.inactive")}</span>
+              <button className="btn-edit" onClick={() => editLoyaltyReward(reward)}>{t("common.edit")}</button>
+            </div>)}
+          </div>
+        </div>
       </section>}
 
       {settingsSection("branch", t("settings.branchSettings"), t("settings.branchSettingsHint"), settingsGroups.branch)}
@@ -4821,6 +5245,7 @@ export default function ManagerClient() {
       {settingsSection("printing", t("settings.printSettings"), t("settings.printSettingsHint"), settingsGroups.printing)}
       {settingsSection("business", t("settings.businessSettings"), t("settings.businessSettingsHint"), settingsGroups.business)}
       {settingsSection("workflow", t("settings.workflowSettings"), t("settings.workflowSettingsHint"), settingsGroups.workflow)}
+      {settingsSection("frontDashboard", settingsTabMeta.frontDashboard.label, settingsTabMeta.frontDashboard.hint, settingsGroups.frontDashboard)}
       {settingsSection("reports", t("settings.reportSettings"), t("settings.reportSettingsHint"), settingsGroups.reports)}
       {settingsTab === "recordsStyle" && <section className="employee-manager">
         <div className="row">
@@ -5362,6 +5787,49 @@ function ReportKpi({ label, value, tone }) {
     <div className={`report-kpi report-kpi-${tone}`}>
       <span>{label}</span>
       <b>{value}</b>
+    </div>
+  );
+}
+
+function ReviewChecklistRow({ label, value, tone, formatNumber }) {
+  return (
+    <div className={`review-check-row review-check-${tone}`}>
+      <i aria-hidden="true" />
+      <span>{label}</span>
+      <b>{formatNumber(value)}</b>
+    </div>
+  );
+}
+
+function ReviewOrdersTable({ title, rows, t, currency, formatNumber, onOpen }) {
+  return (
+    <div className="panel report-table-card day-review-table-card">
+      <div className="report-chart-head">
+        <h3>{title}</h3>
+        <b>{formatNumber(rows.length)}</b>
+      </div>
+      {rows.length === 0 ? (
+        <div className="review-empty-state">{t("common.noData")}</div>
+      ) : (
+        <div className="report-mini-table">
+          <div className="review-mini-table-head">
+            <span>{t("common.order")}</span>
+            <span>{t("common.bracelet")}</span>
+            <span>{t("common.children")}</span>
+            <span>{t("common.orderTotal")}</span>
+            <span>{t("manager.details")}</span>
+          </div>
+          {rows.slice(0, 12).map((row) => (
+            <div className="review-mini-table-row" key={row.id}>
+              <b>{row.id}</b>
+              <span>{row.braceletNo || "-"}</span>
+              <span>{row.childNames || "-"}</span>
+              <b>{currency(row.total)}</b>
+              <button className="btn-details review-row-action" onClick={() => onOpen(row)}>{t("manager.details")}</button>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

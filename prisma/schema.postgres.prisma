@@ -280,9 +280,93 @@ model Customer {
 
   children Child[]
   orders   Order[]
+  loyaltyAccount LoyaltyAccount?
 
   @@index([phone])
   @@index([name])
+}
+
+model LoyaltyAccount {
+  id               String   @id @default(cuid())
+  customerId       String   @unique
+  cardSerial       String   @unique
+  active           Boolean  @default(true)
+  entrancePoints   Int      @default(0)
+  restaurantPoints Int      @default(0)
+  issuedAt         DateTime @default(now())
+  expiresAt        DateTime?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  customer     Customer             @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  transactions LoyaltyTransaction[]
+  redemptions  LoyaltyRedemption[]
+
+  @@index([active])
+}
+
+model LoyaltyReward {
+  id                String   @id @default(cuid())
+  name              String
+  nameEn            String?
+  walletType        String
+  rewardType        String
+  pointsCost        Int
+  discountPercent   Float?
+  discountAmount    Float?
+  productId         String?
+  active            Boolean  @default(true)
+  sortOrder         Int      @default(100)
+  availabilityRules String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  redemptions LoyaltyRedemption[]
+
+  @@index([walletType, active])
+}
+
+model LoyaltyTransaction {
+  id             String   @id @default(cuid())
+  accountId      String
+  walletType     String
+  type           String
+  points         Int
+  balanceBefore  Int
+  balanceAfter   Int
+  orderId        String?
+  rewardId       String?
+  actorUserId    String?
+  actorName      String?
+  reason         String?
+  idempotencyKey String?  @unique
+  createdAt      DateTime @default(now())
+
+  account LoyaltyAccount @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  @@index([accountId, createdAt])
+  @@index([orderId])
+  @@index([walletType, type])
+}
+
+model LoyaltyRedemption {
+  id            String   @id @default(cuid())
+  accountId     String
+  rewardId      String?
+  orderId       String?
+  walletType    String
+  pointsUsed    Int
+  discountValue Float    @default(0)
+  status        String   @default("COMPLETED")
+  reference     String?
+  createdAt     DateTime @default(now())
+
+  account LoyaltyAccount @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  reward  LoyaltyReward? @relation(fields: [rewardId], references: [id], onDelete: SetNull)
+
+  @@index([accountId, createdAt])
+  @@index([orderId])
+  @@index([rewardId])
 }
 
 model Child {

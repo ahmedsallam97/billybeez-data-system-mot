@@ -83,7 +83,7 @@ const paymentProviders = [
   { id: "KIDZAPP", name: "Kidzapp", type: "CUSTOM", method: "KIDZAPP", editable: true, showInFrontOrder: true, showInDataOrder: false, showInQuickOrder: false, sortOrder: 10, reportBucket: "PARTNER" },
   { id: "WAFFARHA", name: "Waffarha", type: "CUSTOM", method: "WAFFARHA", editable: true, showInFrontOrder: true, showInDataOrder: true, showInQuickOrder: true, sortOrder: 11, reportBucket: "PARTNER" },
   { id: "E_INVOICE", name: "E-Invoice", type: "CUSTOM", method: "E_INVOICE", editable: true, showInFrontOrder: true, showInDataOrder: false, showInQuickOrder: false, sortOrder: 12, reportBucket: "PARTNER" },
-  { id: "CUSTOM_1", name: "Custom 1", type: "CUSTOM", method: "CUSTOM_1", editable: true, showInFrontOrder: true, showInDataOrder: false, showInQuickOrder: false, sortOrder: 13, reportBucket: "CUSTOM" },
+  { id: "CUSTOM_1", name: "Loyalty Points", type: "CUSTOM", method: "CUSTOM_1", editable: true, showInFrontOrder: true, showInDataOrder: true, showInQuickOrder: true, sortOrder: 13, reportBucket: "LOYALTY" },
   { id: "CUSTOM_2", name: "Custom 2", type: "CUSTOM", method: "CUSTOM_2", editable: true, showInFrontOrder: true, showInDataOrder: false, showInQuickOrder: false, sortOrder: 14, reportBucket: "CUSTOM" },
 ];
 
@@ -173,6 +173,21 @@ async function main() {
       where: { id: provider.id },
       create: provider,
       update: provider,
+    });
+  }
+
+  const loyaltyRewards = [
+    { id: "LOYALTY_ENTRANCE_25", name: "خصم دخول 25%", nameEn: "25% Entrance Discount", walletType: "ENTRANCE", rewardType: "PERCENT_DISCOUNT", pointsCost: 100, discountPercent: 25, sortOrder: 10 },
+    { id: "LOYALTY_ENTRANCE_30", name: "خصم دخول 30%", nameEn: "30% Entrance Discount", walletType: "ENTRANCE", rewardType: "PERCENT_DISCOUNT", pointsCost: 150, discountPercent: 30, sortOrder: 20 },
+    { id: "LOYALTY_ENTRANCE_50", name: "خصم دخول 50%", nameEn: "50% Entrance Discount", walletType: "ENTRANCE", rewardType: "PERCENT_DISCOUNT", pointsCost: 250, discountPercent: 50, sortOrder: 30 },
+    { id: "LOYALTY_RESTAURANT_ITEM", name: "منتج مجاني من المطعم", nameEn: "Free Restaurant Item", walletType: "RESTAURANT", rewardType: "FREE_PRODUCT", pointsCost: 200, sortOrder: 40 },
+    { id: "LOYALTY_RESTAURANT_MEAL", name: "وجبة مجانية من المطعم", nameEn: "Free Restaurant Meal", walletType: "RESTAURANT", rewardType: "FREE_PRODUCT", pointsCost: 500, sortOrder: 50 },
+  ];
+  for (const reward of loyaltyRewards) {
+    await prisma.loyaltyReward.upsert({
+      where: { id: reward.id },
+      create: reward,
+      update: reward,
     });
   }
 

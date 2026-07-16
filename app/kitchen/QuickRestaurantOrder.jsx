@@ -43,6 +43,7 @@ export default function QuickRestaurantOrder({ embedded = false, onOrderCreated 
   const [orders, setOrders] = useState([]);
   const [selectedDeviceId, setSelectedDeviceId] = useState("");
   const [paymentProviderId, setPaymentProviderId] = useState("CASH");
+  const [loyaltyLookup, setLoyaltyLookup] = useState("");
   const [cart, setCart] = useState([]);
   const [category, setCategory] = useState("All");
   const [productQuery, setProductQuery] = useState("");
@@ -156,6 +157,10 @@ export default function QuickRestaurantOrder({ embedded = false, onOrderCreated 
     }
 
     const provider = paymentProviders.find((item) => item.id === paymentProviderId) || selectedProvider;
+    if (provider?.method === "CUSTOM_1" && !loyaltyLookup.trim()) {
+      toast("أدخل رقم كارت الولاء أو تليفون العميل", "error");
+      return;
+    }
     const res = await fetch("/api/orders", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -165,6 +170,7 @@ export default function QuickRestaurantOrder({ embedded = false, onOrderCreated 
         deviceType: "KITCHEN_CASHIER",
         paymentProviderId: provider?.id,
         paymentMethod: provider?.method || "CASH",
+        loyaltyLookup: loyaltyLookup.trim(),
         childNames: ["Restaurant"],
         comments: "Quick restaurant order",
         items: cart,
@@ -178,6 +184,7 @@ export default function QuickRestaurantOrder({ embedded = false, onOrderCreated 
     }
 
     setOrders((current) => [data.order, ...current]);
+    setLoyaltyLookup("");
     if (typeof onOrderCreated === "function") onOrderCreated(data.order);
     toast(t("kitchenCashier.saved", { id: data.order.invoiceSerial || data.order.id }), "success");
     setPrintFrameUrl(`/invoice/${orderUrlId(data.order.id)}?print=${Date.now()}`);
@@ -187,6 +194,7 @@ export default function QuickRestaurantOrder({ embedded = false, onOrderCreated 
 
   return (
     <section className={`front-pos kitchen-cashier-pos ${embedded ? "kitchen-cashier-embedded" : ""}`}>
+      <div className="front-workspace">
       <div className="cart-panel front-cart">
         <div className="row">
           <h2>{t("kitchenCashier.createOrder")}</h2>
@@ -212,7 +220,6 @@ export default function QuickRestaurantOrder({ embedded = false, onOrderCreated 
         {message && <div className="message">{message}</div>}
       </div>
 
-      <div className="front-workspace">
         <aside className="front-details panel">
           <h3>{t("kitchenCashier.title")}</h3>
           <div className="device-fixed-value">
@@ -222,6 +229,7 @@ export default function QuickRestaurantOrder({ embedded = false, onOrderCreated 
           <select aria-label={t("front.paymentProvider")} value={paymentProviderId} onChange={(event) => setPaymentProviderId(event.target.value)}>
             {paymentProviders.map((provider) => <option value={provider.id} key={provider.id}>{provider.name || labelMethod(provider.method)}</option>)}
           </select>
+          {selectedProvider?.method === "CUSTOM_1" && <input value={loyaltyLookup} onChange={(event) => setLoyaltyLookup(event.target.value)} placeholder="رقم كارت الولاء أو التليفون" inputMode="numeric" />}
           <button className="secondary" onClick={loadAll}>{t("common.refresh")}</button>
         </aside>
 

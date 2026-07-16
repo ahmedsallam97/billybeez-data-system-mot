@@ -32,7 +32,7 @@ function uniqueChildren(children) {
   });
 }
 
-function serializeCustomer(customer) {
+function serializeCustomer(customer, totalSpend = 0) {
   const lastOrder = customer.orders?.[0] || null;
   const children = uniqueChildren(customer.children || []);
   return {
@@ -40,6 +40,25 @@ function serializeCustomer(customer) {
     name: customer.name,
     phone: customer.phone || "",
     comments: customer.comments || "",
+    totalSpend,
+    loyalty: customer.loyaltyAccount ? {
+      id: customer.loyaltyAccount.id,
+      cardSerial: customer.loyaltyAccount.cardSerial,
+      active: customer.loyaltyAccount.active,
+      entrancePoints: customer.loyaltyAccount.entrancePoints,
+      restaurantPoints: customer.loyaltyAccount.restaurantPoints,
+      issuedAt: serializeDate(customer.loyaltyAccount.issuedAt),
+      expiresAt: serializeDate(customer.loyaltyAccount.expiresAt),
+      transactions: (customer.loyaltyAccount.transactions || []).map((transaction) => ({
+        id: transaction.id,
+        walletType: transaction.walletType,
+        type: transaction.type,
+        points: transaction.points,
+        balanceAfter: transaction.balanceAfter,
+        reason: transaction.reason || "",
+        createdAt: serializeDate(transaction.createdAt),
+      })),
+    } : null,
     visits: customer._count?.orders || customer.orders?.length || 0,
     lastOrderAt: serializeDate(lastOrder?.createdAt || customer.updatedAt),
     recentOrders: (customer.orders || []).map((order) => ({
@@ -90,13 +109,22 @@ export async function GET(request) {
     include: {
       children: { orderBy: { createdAt: "desc" } },
       orders: { orderBy: { createdAt: "desc" }, take: 5 },
+      loyaltyAccount: {
+        include: { transactions: { orderBy: { createdAt: "desc" }, take: 10 } },
+      },
       _count: { select: { orders: true } },
     },
     orderBy: { updatedAt: "desc" },
     take: exportMode ? 2000 : 50,
   });
 
-  const serialized = customers.map(serializeCustomer);
+  const spendRows = customers.length ? await prisma.order.groupBy({
+    by: ["customerId"],
+    where: { customerId: { in: customers.map((customer) => customer.id) }, paymentStatus: "PAID" },
+    _sum: { total: true },
+  }) : [];
+  const spendMap = new Map(spendRows.map((row) => [row.customerId, Number(row._sum.total || 0)]));
+  const serialized = customers.map((customer) => serializeCustomer(customer, spendMap.get(customer.id) || 0));
 
   if (exportMode === "csv") {
     const rows = [["Customer", "Phone", "Visits", "Last order", "Child", "Birth date", "Age", "Child comments", "Customer comments"]];

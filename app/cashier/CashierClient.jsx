@@ -44,6 +44,7 @@ export default function CashierClient({ user }) {
   const [paymentProviderId, setPaymentProviderId] = useState("CASH");
   const [message, setMessage] = useState("");
   const [editingOrder, setEditingOrder] = useState(null);
+  const [linkedFrontOrder, setLinkedFrontOrder] = useState(null);
   const [activeBraceletOrder, setActiveBraceletOrder] = useState(null);
   const [cashierView, setCashierView] = useState("orders");
   const [showArchived, setShowArchived] = useState(false);
@@ -96,7 +97,7 @@ export default function CashierClient({ user }) {
       return;
     }
 
-    if (editingOrder?.braceletNo === nextBracelet) {
+    if (editingOrder?.braceletNo === nextBracelet || linkedFrontOrder?.braceletNo === nextBracelet) {
       setActiveBraceletOrder(null);
       return;
     }
@@ -118,7 +119,7 @@ export default function CashierClient({ user }) {
       window.clearTimeout(timer);
       controller.abort();
     };
-  }, [braceletNo, editingOrder]);
+  }, [braceletNo, editingOrder, linkedFrontOrder]);
 
   async function loadUiMessages() {
     const res = await fetch("/api/settings?keys=UI_MESSAGE_CONFIG,EMPLOYEE_NAME_STYLE_CONFIG").catch(() => null);
@@ -303,6 +304,7 @@ export default function CashierClient({ user }) {
 
   function showNewOrder() {
     setEditingOrder(null);
+    setLinkedFrontOrder(null);
     setShowArchived(false);
     setMessage("");
     setBraceletNo("");
@@ -367,8 +369,37 @@ export default function CashierClient({ user }) {
   }
 
   function startEdit(order) {
+    if (order.deviceType === "FRONT") {
+      const linkedRestaurantOrder = orders.find((candidate) => (
+        candidate.id !== order.id
+        && candidate.deviceType !== "FRONT"
+        && !candidate.archivedAt
+        && candidate.braceletNo === order.braceletNo
+      ));
+      if (linkedRestaurantOrder) {
+        startEdit(linkedRestaurantOrder);
+        return;
+      }
+
+      const names = splitChildNames(order);
+      setEditingOrder(null);
+      setLinkedFrontOrder(order);
+      setCashierView("form");
+      setBraceletNo(order.braceletNo || "");
+      setCustomerPhone(order.customerPhone || "");
+      setChildCount(names.length);
+      setChildNames(names);
+      setCart([]);
+      setMessage("");
+      setActiveBraceletOrder(null);
+      window.history.replaceState(null, "", "#new-restaurant-order");
+      scrollToSection(formRef);
+      return;
+    }
+
     const names = splitChildNames(order);
     setEditingOrder(order);
+    setLinkedFrontOrder(null);
     setCashierView("form");
     setBraceletNo(order.braceletNo || "");
     setCustomerPhone(order.customerPhone || "");
@@ -387,6 +418,7 @@ export default function CashierClient({ user }) {
 
   function cancelEdit() {
     setEditingOrder(null);
+    setLinkedFrontOrder(null);
     setCart([]);
     setMessage("");
     showOrders(false);
@@ -406,7 +438,7 @@ export default function CashierClient({ user }) {
       toast(error, "error");
       return;
     }
-    if (activeBraceletOrder) {
+    if (activeBraceletOrder && !linkedFrontOrder) {
       const error = t("cashier.braceletActiveOrder", { bracelet: braceletNo.trim(), order: activeBraceletOrder.id });
       setMessage(error);
       toast(error, "error");
@@ -419,6 +451,9 @@ export default function CashierClient({ user }) {
         braceletNo,
         customerPhone,
         childNames,
+        customerName: linkedFrontOrder?.customerName || "",
+        linkedFrontOrderId: linkedFrontOrder?.id || "",
+        deviceType: "KITCHEN",
         dataEmployeeId: linkedOperationEmployeeId || dataEmployeeId,
         paymentProviderId,
         paymentMethod,
@@ -436,6 +471,7 @@ export default function CashierClient({ user }) {
     showUiToast("orderSaved", { id: data.order.id });
     if (!linkedOperationEmployeeId) localStorage.setItem("lastDataEmployeeId", dataEmployeeId);
     setEditingOrder(null);
+    setLinkedFrontOrder(null);
     setBraceletNo("");
     setCustomerPhone("");
     setChildNames([""]);
@@ -624,7 +660,7 @@ export default function CashierClient({ user }) {
 
       {(cashierView === "form" || editingOrder) && (
       <section className="panel stack new-order-panel" id="new-order" ref={formRef}>
-        <h2>{editingOrder ? t("cashier.editOrder") : t("cashier.addNewOrder")}</h2>
+        <h2>{editingOrder ? t("cashier.editOrder") : linkedFrontOrder ? t("cashier.addKitchenItems") : t("cashier.addNewOrder")}</h2>
         <datalist id="child-name-history">
           {childNameHistory.map((name) => <option key={name} value={name} />)}
         </datalist>
@@ -686,7 +722,19 @@ export default function CashierClient({ user }) {
           </div>
         ) : (
           <>
-            {frontAdmissions.length > 0 && (
+            {linkedFrontOrder && (
+              <div className="linked-front-order-summary">
+                <div className="row">
+                  <h3>{t("cashier.frontAdmissions")}</h3>
+                  <b>{linkedFrontOrder.id}</b>
+                </div>
+                <div className="meta-line"><span>{t("common.bracelet")}</span><b>{shortBracelet(linkedFrontOrder.invoiceSerial || linkedFrontOrder.braceletNo)}</b></div>
+                {linkedFrontOrder.customerPhone && <div className="meta-line"><span>{t("common.phone")}</span><b>{linkedFrontOrder.customerPhone}</b></div>}
+                <div className="meta-line"><span>{t("common.children")}</span><b>{linkedFrontOrder.childNames}</b></div>
+                <div className="linked-front-zero-note">{t("cashier.restaurantStartsFromZero")}</div>
+              </div>
+            )}
+            {!linkedFrontOrder && frontAdmissions.length > 0 && (
               <div className="front-admissions-strip">
                 <div className="row">
                   <h3>{t("cashier.frontAdmissions")}</h3>
@@ -770,7 +818,7 @@ export default function CashierClient({ user }) {
                 />
               ))}
             </div>
-            {activeBraceletOrder && (
+            {activeBraceletOrder && !linkedFrontOrder && (
               <div className="bracelet-conflict-alert">
                 <div>
                   <b>{t("cashier.braceletActiveTitle")}</b>

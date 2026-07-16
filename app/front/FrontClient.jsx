@@ -100,7 +100,7 @@ function blankChildren(count, current = []) {
 
 export default function FrontClient({ user }) {
   const toast = useToast();
-  const { t, currency, formatNumber, labelCategory, labelMethod, labelStatus, formatDateTime } = useI18n();
+  const { language, t, currency, formatNumber, labelCategory, labelMethod, labelStatus, formatDateTime } = useI18n();
   const linkedEmployeeId = user?.employeeId && user?.employee?.department !== "KITCHEN" ? user.employeeId : "";
   const linkedEmployeeName = linkedEmployeeId ? user.employee.name : "";
 
@@ -128,6 +128,17 @@ export default function FrontClient({ user }) {
   const [customerMatches, setCustomerMatches] = useState([]);
   const [customerLookupMessage, setCustomerLookupMessage] = useState("");
   const [message, setMessage] = useState("");
+  const [printFrameUrl, setPrintFrameUrl] = useState("");
+  const [dashboardMetrics, setDashboardMetrics] = useState({
+    children: 0,
+    customers: 0,
+    trips: 0,
+    birthdays: 0,
+    paidSales: 0,
+    dailyTarget: 0,
+    targetPercent: 0,
+    visibility: { children: true, customers: true, trips: true, birthdays: true, target: true },
+  });
 
   useEffect(() => {
     loadAll();
@@ -187,21 +198,23 @@ export default function FrontClient({ user }) {
   }, [orders, orderQuery]);
 
   async function loadAll() {
-    const [productsRes, devicesRes, employeesRes, providersRes, ordersRes, namesRes] = await Promise.all([
+    const [productsRes, devicesRes, employeesRes, providersRes, ordersRes, namesRes, metricsRes] = await Promise.all([
       fetch("/api/products?department=ENTRANCE"),
       fetch("/api/devices"),
       fetch("/api/employees?department=ALL"),
       fetch("/api/payment-providers?context=front"),
       fetch("/api/orders?archived=false&deviceType=FRONT"),
       fetch("/api/child-names"),
+      fetch("/api/front-dashboard", { cache: "no-store" }),
     ]);
-    const [productsData, devicesData, employeesData, providersData, ordersData, namesData] = await Promise.all([
+    const [productsData, devicesData, employeesData, providersData, ordersData, namesData, metricsData] = await Promise.all([
       productsRes.json(),
       devicesRes.json(),
       employeesRes.json(),
       providersRes.json(),
       ordersRes.json(),
       namesRes.ok ? namesRes.json() : { names: [] },
+      metricsRes.ok ? metricsRes.json() : null,
     ]);
 
     setProducts(productsData);
@@ -210,6 +223,7 @@ export default function FrontClient({ user }) {
     setPaymentProviders(providersData.providers || []);
     setOrders(ordersData);
     setChildNameHistory(Array.isArray(namesData.names) ? namesData.names : []);
+    if (metricsData?.success) setDashboardMetrics(metricsData);
 
     const activeFrontDevices = (devicesData.devices || []).filter((device) => device.active && device.type === "FRONT");
     const firstProvider = (providersData.providers || []).find((provider) => provider.id === "CASH") || providersData.providers?.[0];
@@ -220,6 +234,13 @@ export default function FrontClient({ user }) {
         employee.active && (employee.department === "CASHIER" || cashierEmployeeNames.has(employee.name))
       ))?.id || ""
     ));
+  }
+
+  async function refreshDashboardMetrics() {
+    const response = await fetch("/api/front-dashboard", { cache: "no-store" }).catch(() => null);
+    if (!response?.ok) return;
+    const metrics = await response.json();
+    if (metrics?.success) setDashboardMetrics(metrics);
   }
 
   function updateChild(index, patch) {
@@ -315,6 +336,11 @@ export default function FrontClient({ user }) {
     return encodeURIComponent(orderId);
   }
 
+  function printAdmission(orderId) {
+    setPrintFrameUrl(`/invoice/${orderUrlId(orderId)}?print=${Date.now()}`);
+    window.setTimeout(() => setPrintFrameUrl(""), 5000);
+  }
+
   async function saveAdmission() {
     setMessage("");
     const cleanedChildren = children.map((child) => ({ ...child, name: child.name.trim() })).filter((child) => child.name);
@@ -380,6 +406,7 @@ export default function FrontClient({ user }) {
 
       setOrders((current) => current.map((order) => order.id === data.order.id ? data.order : order));
       setChildNameHistory((current) => [...new Set([...childNames, ...current])]);
+      void refreshDashboardMetrics();
       toast(t("cashier.orderUpdated"), "success");
       resetForm();
       return;
@@ -408,6 +435,7 @@ export default function FrontClient({ user }) {
 
     setOrders((current) => [data.order, ...current]);
     setChildNameHistory((current) => [...new Set([...childNames, ...current])]);
+    void refreshDashboardMetrics();
     toast(t("cashier.saved", { id: data.order.invoiceSerial || data.order.id }), "success");
     resetForm();
   }
@@ -427,20 +455,18 @@ export default function FrontClient({ user }) {
             </div>
             <button className="btn-confirm" onClick={startNewAdmission}>{t("front.addNewCustomer")}</button>
           </div>
-          <div className="front-admission-list">
-            {visibleOrders.slice(0, 18).map((order) => (
-              <button className="front-admission-chip" key={order.id} onClick={() => startEdit(order)}>
-                <b>{shortBracelet(order.invoiceSerial || order.braceletNo)}</b>
-                <span>{order.customerName || "-"}</span>
-                <small>{order.childNames}</small>
-              </button>
-            ))}
-            {!visibleOrders.length && <div className="muted">{t("common.noData")}</div>}
+          <div className="front-live-kpi-grid">
+            {dashboardMetrics.visibility?.children !== false && <FrontKpiCard tone="pink" label={t("front.currentChildrenCount")} value={formatNumber(dashboardMetrics.children)} caption={t("front.currentlyInside")} />}
+            {dashboardMetrics.visibility?.customers !== false && <FrontKpiCard tone="purple" label={t("front.currentCustomersCount")} value={formatNumber(dashboardMetrics.customers)} caption={t("front.currentlyInside")} />}
+            {dashboardMetrics.visibility?.trips !== false && <FrontKpiCard tone="blue" label={t("front.currentTripsCount")} value={formatNumber(dashboardMetrics.trips)} caption={t("front.currentlyInside")} />}
+            {dashboardMetrics.visibility?.birthdays !== false && <FrontKpiCard tone="orange" label={t("front.currentBirthdaysCount")} value={formatNumber(dashboardMetrics.birthdays)} caption={t("front.currentlyInside")} />}
+            {dashboardMetrics.visibility?.target !== false && <FrontKpiCard tone="green" label={t("front.dailyTarget")} value={`${formatNumber(dashboardMetrics.targetPercent)}%`} caption={`${currency(dashboardMetrics.paidSales)} / ${currency(dashboardMetrics.dailyTarget)}`} />}
           </div>
         </section>
       )}
 
       {(showAdmissionForm || editingOrder) && <>
+      <div className="front-workspace">
       <div className="cart-panel front-cart">
         <div className="row">
           <h2>{editingOrder ? t("front.editAdmission") : t("front.createAdmission")}</h2>
@@ -466,7 +492,6 @@ export default function FrontClient({ user }) {
         {message && <div className="message">{message}</div>}
       </div>
 
-      <div className="front-workspace">
         <aside className="front-details panel">
           <h3>{t("front.customerName")}</h3>
           <div className="device-fixed-value">
@@ -488,6 +513,7 @@ export default function FrontClient({ user }) {
                       return `${child.name}${age ? ` (${age})` : ""}`;
                     }).join("، ") || t("common.noData")}
                   </small>
+                  {customer.loyalty && <small className="customer-loyalty-balance">Loyalty: {customer.loyalty.entrancePoints || 0} / {customer.loyalty.restaurantPoints || 0}</small>}
                 </button>
               ))}
             </div>
@@ -495,6 +521,7 @@ export default function FrontClient({ user }) {
           <select aria-label={t("front.paymentProvider")} value={paymentProviderId} onChange={(event) => setPaymentProviderId(event.target.value)} disabled={Boolean(editingOrder)}>
             {paymentProviders.map((provider) => <option value={provider.id} key={provider.id}>{provider.name || labelMethod(provider.method)}</option>)}
           </select>
+          {selectedProvider?.method === "CUSTOM_1" && <div className="loyalty-payment-hint">{language === "ar" ? "سيتم الخصم من نقاط الزيارات المرتبطة برقم التليفون" : "Entrance points linked to this phone will be used"}</div>}
           {linkedEmployeeId ? (
             <div className={`employee-fixed-value ${employeeGenderClass(linkedEmployeeName)}`}>{linkedEmployeeName}</div>
           ) : (
@@ -519,7 +546,7 @@ export default function FrontClient({ user }) {
             <input type="checkbox" checked={allowOpenCharges} onChange={(event) => setAllowOpenCharges(event.target.checked)} />
             <span>I</span>
           </label>
-          <textarea value={customerComments} onChange={(event) => setCustomerComments(event.target.value)} placeholder={t("front.customerComments")} />
+          <textarea aria-label={t("front.customerComments")} value={customerComments} onChange={(event) => setCustomerComments(event.target.value)} placeholder={t("front.customerComments")} />
         </aside>
 
         <main className="front-products panel">
@@ -585,7 +612,10 @@ export default function FrontClient({ user }) {
           <button className="secondary" onClick={() => setOrderQuery("")}>{t("common.clearFilters")}</button>
         </div>
         <div className="grid three">
-          {visibleOrders.slice(0, 60).map((order) => (
+          {visibleOrders.slice(0, 60).map((order) => {
+            const admissionItems = (order.items || []).filter((item) => item.department === "ENTRANCE");
+            const admissionTotal = admissionItems.reduce((sum, item) => sum + Number(item.total || 0), 0);
+            return (
             <div className="card admission-card" key={order.id}>
               <div className="row order-head">
                 <b>{shortBracelet(order.invoiceSerial || order.braceletNo)}</b>
@@ -596,24 +626,37 @@ export default function FrontClient({ user }) {
               <div className="meta-line"><span>{t("front.customerName")}</span><b>{order.customerName || "-"}</b></div>
               {order.customerPhone && <div className="meta-line"><span>{t("common.phone")}</span><b>{order.customerPhone}</b></div>}
               <div className="meta-line"><span>{t("common.children")}</span><b>{order.childNames}</b></div>
-              <div className="meta-line"><span>{t("common.orderTotal")}</span><b>{currency(order.total)}</b></div>
+              <div className="meta-line"><span>{t("common.orderTotal")}</span><b>{currency(admissionTotal)}</b></div>
               <div className="front-admission-items">
-                {(order.items || []).map((item) => (
+                {admissionItems.map((item) => (
                   <div className="order-item-row" key={item.id || item.productId || item.name}>
                     <b>{currency(item.total)}</b>
                     <span>{item.name} x {item.qty}</span>
                   </div>
                 ))}
-                {!(order.items || []).length && <div className="muted">{t("common.noItems")}</div>}
+                {!admissionItems.length && <div className="muted">{t("common.noItems")}</div>}
               </div>
               <div className="actions">
                 <button className="btn-details" onClick={() => startEdit(order)}>{t("common.edit")}</button>
-                <a className="btn-print" href={`/invoice/${encodeURIComponent(order.id)}`} target="_blank" rel="noreferrer">{t("common.print")}</a>
+                <button className="btn-print" onClick={() => printAdmission(order.id)}>{t("common.print")}</button>
               </div>
             </div>
-          ))}
+            );
+          })}
         </div>
       </section>
+      {printFrameUrl && <iframe className="print-frame" src={printFrameUrl} title="Front invoice print" />}
     </section>
+  );
+}
+
+function FrontKpiCard({ tone, label, value, caption }) {
+  return (
+    <div className={`front-live-kpi front-live-kpi-${tone}`}>
+      <span>{label}</span>
+      <b>{value}</b>
+      <small>{caption}</small>
+      <i aria-hidden="true" />
+    </div>
   );
 }

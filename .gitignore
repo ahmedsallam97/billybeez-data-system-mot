@@ -9,5 +9,12 @@ build.log
 prisma-studio*.log
 next-production*.log
 server-*.log
+.codex-dev-*.log
 tmp/
 backups/
+storage/
+artifacts/employee360-closure/
+output/pdf/
+check-admin.js
+reset-admin.js
+scripts/migrate-bb-oms.js

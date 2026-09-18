@@ -7,6 +7,7 @@ const dictionaries = {
   en: {
     "app.name": "BillyBeez POS & Data System",
     "nav.manager": "Manager",
+    "nav.operations": "Operations",
     "nav.front": "Front",
     "nav.kitchenCashier": "Quick Restaurant",
     "nav.data": "Data",
@@ -26,6 +27,7 @@ const dictionaries = {
     "title.cashier": "Data Interface",
     "title.kitchen": "Restaurant Interface",
     "title.manager": "Manager Interface",
+    "title.operations": "Operations Management",
     "role.ADMIN": "Admin",
     "role.MANAGER": "Manager",
     "role.CASHIER": "Data",
@@ -810,6 +812,7 @@ const dictionaries = {
   ar: {
     "app.name": "BillyBeez POS & Data System",
     "nav.manager": "المدير",
+    "nav.operations": "العمليات",
     "nav.front": "الفرونت",
     "nav.kitchenCashier": "طلب مطعم سريع",
     "nav.data": "الداتا",
@@ -829,6 +832,7 @@ const dictionaries = {
     "title.cashier": "واجهة الداتا",
     "title.kitchen": "واجهة المطعم",
     "title.manager": "واجهة المدير",
+    "title.operations": "إدارة العمليات",
     "role.ADMIN": "أدمن",
     "role.MANAGER": "مدير",
     "role.CASHIER": "الداتا",

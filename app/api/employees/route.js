@@ -13,10 +13,11 @@ async function employeePayload(body) {
   const departments = normalizeEmployeeDepartments(await getSetting("EMPLOYEE_DEPARTMENT_CONFIG", ""));
   const departmentIds = departments.map((department) => department.id);
   const name = String(body.name || "").trim().replace(/\s+/g, " ");
+  const nameAr = String(body.nameAr || "").trim().replace(/\s+/g, " ") || null;
   const department = departmentIds.includes(body.department) ? body.department : "OPERATION";
   const active = body.active !== false;
 
-  return { name, department, active };
+  return { name, nameEn: name, nameAr, department, active };
 }
 
 export async function GET(request) {
@@ -60,6 +61,16 @@ export async function GET(request) {
   const employees = await prisma.employee.findMany({
     where,
     orderBy: { name: "asc" },
+    select: {
+      id: true,
+      name: true,
+      nameAr: true,
+      nameEn: true,
+      department: true,
+      active: true,
+      createdAt: true,
+      updatedAt: true,
+    },
   });
 
   return NextResponse.json(employees);
@@ -92,7 +103,19 @@ export async function POST(request) {
     metadata: { employeeId: employee.id, department: employee.department },
   });
 
-  return NextResponse.json({ success: true, employee });
+  return NextResponse.json({
+    success: true,
+    employee: {
+      id: employee.id,
+      name: employee.name,
+      nameAr: employee.nameAr,
+      nameEn: employee.nameEn,
+      department: employee.department,
+      active: employee.active,
+      createdAt: employee.createdAt,
+      updatedAt: employee.updatedAt,
+    },
+  });
 }
 
 export async function PATCH(request) {
@@ -139,5 +162,17 @@ export async function PATCH(request) {
     metadata: { employeeId: employee.id, department: employee.department, active: employee.active },
   });
 
-  return NextResponse.json({ success: true, employee });
+  return NextResponse.json({
+    success: true,
+    employee: {
+      id: employee.id,
+      name: employee.name,
+      nameAr: employee.nameAr,
+      nameEn: employee.nameEn,
+      department: employee.department,
+      active: employee.active,
+      createdAt: employee.createdAt,
+      updatedAt: employee.updatedAt,
+    },
+  });
 }

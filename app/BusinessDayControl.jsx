@@ -7,8 +7,9 @@ import { formatUiMessage, normalizeUiMessages, uiMessageStyle } from "./uiMessag
 
 export default function BusinessDayControl({ requiresPassword = false, showActions = true }) {
   const toast = useToast();
-  const { t, labelBusinessMessage } = useI18n();
+  const { t, isArabic, labelBusinessMessage } = useI18n();
   const [businessState, setBusinessState] = useState(null);
+  const [expanded, setExpanded] = useState(false);
   const [password, setPassword] = useState("");
   const [busyAction, setBusyAction] = useState("");
   const [uiMessages, setUiMessages] = useState(normalizeUiMessages());
@@ -66,11 +67,15 @@ export default function BusinessDayControl({ requiresPassword = false, showActio
   }
 
   return (
-    <section className={`business-day-control ${businessState?.isOpen ? "status-open" : "status-closed"}`}>
-      <div>
-        <b>{businessState?.isOpen ? t("business.open") : t("business.closed")}</b>
-        <span>{businessState?.businessDate || "-"} · {labelBusinessMessage(businessState?.message)}</span>
-      </div>
+    <section className={`business-day-control ${businessState?.isOpen ? "status-open" : "status-closed"} ${expanded ? "is-expanded" : ""}`}>
+      <button className="business-day-toggle" type="button" onClick={() => setExpanded((value) => !value)} aria-expanded={expanded}>
+        <span aria-hidden="true">◷</span>{isArabic ? "إدارة اليوم" : "Day controls"}
+      </button>
+      {expanded && <>
+        <div className="business-day-summary">
+          <b>{businessState?.isOpen ? t("business.open") : t("business.closed")}</b>
+          <span>{businessState?.businessDate || "-"} · {labelBusinessMessage(businessState?.message)}</span>
+        </div>
       {showActions && (
         <div className={`business-day-actions ${requiresPassword ? "requires-password" : ""}`}>
           {requiresPassword && (
@@ -105,6 +110,7 @@ export default function BusinessDayControl({ requiresPassword = false, showActio
           </button>
         </div>
       )}
+      </>}
     </section>
   );
 }

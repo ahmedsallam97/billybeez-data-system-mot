@@ -114,6 +114,7 @@ function normalizeInvoiceLayouts(value) {
 const emptyEmployeeForm = {
   id: "",
   name: "",
+  nameAr: "",
   department: "OPERATION",
   active: true,
 };
@@ -1880,6 +1881,7 @@ export default function ManagerClient() {
     setEmployeeForm({
       id: employee.id,
       name: employee.name,
+      nameAr: employee.nameAr || "",
       department: employee.department,
       active: employee.active,
     });
@@ -3791,7 +3793,12 @@ export default function ManagerClient() {
           <input
             value={employeeForm.name}
             onChange={(event) => setEmployeeForm((current) => ({ ...current, name: event.target.value }))}
-            placeholder={t("manager.employeeName")}
+            placeholder="Employee name (English)"
+          />
+          <input
+            value={employeeForm.nameAr}
+            onChange={(event) => setEmployeeForm((current) => ({ ...current, nameAr: event.target.value }))}
+            placeholder="الاسم بالعربي (اختياري)"
           />
           <select
             aria-label={t("common.department")}

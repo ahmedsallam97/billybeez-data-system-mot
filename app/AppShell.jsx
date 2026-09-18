@@ -6,11 +6,14 @@ import BusinessDayControl from "./BusinessDayControl";
 import PreferenceIconButtons from "./PreferenceIconButtons";
 import { useI18n } from "./i18n";
 
+const HIDE_SECONDARY_WORKSPACES = true;
+
 export default function AppShell({ title, user, children }) {
   const router = useRouter();
-  const { t, labelRole } = useI18n();
+  const { t, labelRole, isArabic } = useI18n();
   const shellTitle = title?.startsWith("title.") ? t(title) : title;
-  const requiresDayPassword = title !== "title.manager" || ["CASHIER", "KITCHEN", "DATA"].includes(user.role);
+  const managerialWorkspace = title === "title.manager" || title === "الإعدادات" || title === "Settings";
+  const requiresDayPassword = !managerialWorkspace || ["CASHIER", "KITCHEN", "DATA"].includes(user.role);
 
   async function logout() {
     await fetch("/api/auth/logout", { method: "POST" });
@@ -28,11 +31,12 @@ export default function AppShell({ title, user, children }) {
           </div>
         </div>
         <nav className="nav">
-          {(user.role === "ADMIN" || user.role === "MANAGER") && <Link className="nav-manager" href="/manager">{t("nav.manager")}</Link>}
-          {(user.role === "ADMIN" || user.role === "MANAGER" || user.role === "CASHIER" || user.role === "DATA") && <Link className="nav-front" href="/front">{t("nav.front")}</Link>}
-          {(user.role === "ADMIN" || user.role === "CASHIER" || user.role === "DATA") && <Link className="nav-data" href="/data">{t("nav.data")}</Link>}
-          {(user.role === "ADMIN" || user.role === "MANAGER" || user.role === "KITCHEN") && <Link className="nav-kitchen" href="/kitchen">{t("nav.kitchen")}</Link>}
-          {(user.role === "ADMIN" || user.role === "MANAGER") && (
+          {(user.role === "ADMIN" || user.role === "MANAGER") && <Link className="nav-manager" href="/settings">{isArabic ? "الإعدادات" : "Settings"}</Link>}
+          {(user.role === "ADMIN" || user.role === "MANAGER") && <Link className="nav-manager" href="/operations">{t("nav.operations")}</Link>}
+          {!HIDE_SECONDARY_WORKSPACES && (user.role === "ADMIN" || user.role === "MANAGER" || user.role === "CASHIER" || user.role === "DATA") && <Link className="nav-front" href="/front">{t("nav.front")}</Link>}
+          {!HIDE_SECONDARY_WORKSPACES && (user.role === "ADMIN" || user.role === "CASHIER" || user.role === "DATA") && <Link className="nav-data" href="/data">{t("nav.data")}</Link>}
+          {!HIDE_SECONDARY_WORKSPACES && (user.role === "ADMIN" || user.role === "MANAGER" || user.role === "KITCHEN") && <Link className="nav-kitchen" href="/kitchen">{t("nav.kitchen")}</Link>}
+          {!HIDE_SECONDARY_WORKSPACES && (user.role === "ADMIN" || user.role === "MANAGER") && (
             <a className="nav-database" href="http://127.0.0.1:5556" target="_blank" rel="noreferrer">
               {t("nav.database")}
             </a>

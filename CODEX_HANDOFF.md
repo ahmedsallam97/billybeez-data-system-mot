@@ -324,7 +324,9 @@ No currently reproduced runtime-blocking roster API error remains in the committ
 - Latest verified local counts: 16 total employees, 13 active, 3 inactive, 8 active HRIS, 5 active Part-Time.
 - SQLite integrity was verified as `ok` before the Employee 360 schema changes and again during closure work.
 - Pre-change backup: `backups/manual-2026-09-14T02-24-42-035Z.db`.
-- Latest phase backup: `backups/manual-2026-09-17T21-05-15-982Z.db`.
+- Latest verified backup: `backups/manual-2026-09-18T08-45-22-765Z.db`.
+- Full confidential non-Git restore package: `D:\Projects\billybeez-system-backups\BillyBeez-MOT-restore-2026-09-18T08-45-22Z.zip`.
+- Read `BACKUP_INVENTORY.md` and `RESTORE_GUIDE.md` before restoring. The archive remains local and must never be uploaded to GitHub.
 - The local database contains the operational schedule/history and must not be reseeded or reset.
 - The latest local rotation plan at handoff is V5 for 2026-09-17 with 58 assignments, no cashier rotations, and no duplicate position/hour assignment. Its 32 warnings reflect real staffing coverage gaps.
 - A local ignored migration helper exists at `scripts/migrate-bb-oms.js`. It contains private employee reconciliation data and a source-database path. Do not commit, publish, or treat it as a supported repeatable migration. The reconciliation is already complete.

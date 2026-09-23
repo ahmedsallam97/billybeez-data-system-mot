@@ -1362,6 +1362,7 @@ model OpsDailyOffer {
   startTime   String?
   endTime     String?
   permanent   Boolean  @default(false)
+  weekdaysJson String?
   active      Boolean  @default(true)
   createdBy   String?
   updatedBy   String?
@@ -1432,6 +1433,11 @@ model OpsWristbandStock {
   stockCategory  String   @default("BRACELET")
   unit           String   @default("ITEM")
   color          String?
+  usageType      String?
+  size           String?
+  rollStyle      String?
+  cashierQuantity Int     @default(0)
+  warehouseQuantity Int   @default(0)
   availableStock Int
   allocated      Int      @default(0)
   issued         Int      @default(0)

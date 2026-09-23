@@ -4,17 +4,42 @@ import { authorizeApi } from "@/lib/api-auth";
 import { writeAudit } from "@/lib/audit";
 import { getSetting } from "@/lib/settings";
 import { buildExpectedTeam, mergeExpectedActual, canAssign, overlaps, generateRotation, coverageFor, buildReadiness, needsAttention, closeDayValidation } from "@/lib/operations/live-daily";
+import { normalizeWeekdays, offerAppliesOnDate, stockAvailable, stockKey } from "@/lib/operations/planning";
 
 const validDate = (value) => /^\d{4}-\d{2}-\d{2}$/.test(String(value || ""));
 const parseJson = (value) => { try { return JSON.parse(value || "{}"); } catch { return {}; } };
 const isToday = (date) => date === new Intl.DateTimeFormat("en-CA", { timeZone: "Africa/Cairo", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
 function hourlySlots(shifts, team = [], slotCount = 8) { return ["AM", "BW", "PM"].flatMap((shiftCode) => { const shift = shifts[shiftCode]; if (!shift?.startTime || !shift?.endTime || !team.some((item) => item.shiftCode === shiftCode && item.working)) return []; const start = Number(shift.startTime.slice(0, 2)); return Array.from({ length: Math.max(1, Number(slotCount) || 8) }, (_, index) => ({ shiftCode, startTime: `${String((start + index) % 24).padStart(2, "0")}:00`, endTime: `${String((start + index + 1) % 24).padStart(2, "0")}:00` })); }); }
 
+function offerValues(body, userId) {
+  const title = String(body.title || "").trim();
+  if (!title) throw new Error("Offer title is required");
+  const from = validDate(body.effectiveFrom) ? String(body.effectiveFrom) : "2000-01-01";
+  const to = validDate(body.effectiveTo) ? String(body.effectiveTo) : "2999-12-31";
+  if (from > to) throw new Error("Offer end date must be on or after its start date");
+  const weekdays = normalizeWeekdays(body.weekdays);
+  const permanent = body.offerMode === "PERMANENT" || (!validDate(body.effectiveFrom) && !validDate(body.effectiveTo));
+  return {
+    title,
+    details: String(body.details || "").trim() || null,
+    priceBefore: body.priceBefore === "" || body.priceBefore == null ? null : Number(body.priceBefore),
+    priceAfter: body.priceAfter === "" || body.priceAfter == null ? null : Number(body.priceAfter),
+    permanent,
+    effectiveFrom: permanent ? "2000-01-01" : from,
+    effectiveTo: permanent ? "2999-12-31" : to,
+    weekdaysJson: JSON.stringify(weekdays),
+    startTime: String(body.startTime || "") || null,
+    endTime: String(body.endTime || "") || null,
+    active: true,
+    updatedBy: userId,
+  };
+}
+
 async function loadDaily(date, branch = "MOT") {
   const timelineStart = new Date(`${date}T00:00:00.000Z`);
   const timelineEnd = new Date(`${date}T00:00:00.000Z`);
   timelineEnd.setUTCDate(timelineEnd.getUTCDate() + 1);
-  const [schedule, attendanceDay, day, shiftRows, positions, trips, events, offers, notices, wristbands, tripPartners, birthdayCustomers, timeline] = await Promise.all([
+  const [schedule, attendanceDay, day, shiftRows, positions, trips, events, offerRows, notices, stockRows, tripPartners, birthdayCustomers, timeline] = await Promise.all([
     prisma.opsSchedule.findFirst({ where: { status: "PUBLISHED", periodStart: { lte: date }, periodEnd: { gte: date } }, orderBy: { version: "desc" } }),
     prisma.opsAttendanceDay.findFirst({ where: { workDate: date }, include: { records: true }, orderBy: { version: "desc" } }),
     prisma.opsOperationsDay.findFirst({ where: { workDate: date, branch }, include: { rotationPlans: { orderBy: { version: "desc" }, include: { assignments: { include: { employee: { select: { id: true, name: true, jobTitle: true } }, position: true }, orderBy: [{ startTime: "asc" }, { employee: { name: "asc" } }] }, breaks: { include: { employee: { select: { id: true, name: true } } }, orderBy: { startTime: "asc" } } } } }, orderBy: { version: "desc" } }),
@@ -22,13 +47,16 @@ async function loadDaily(date, branch = "MOT") {
     prisma.opsOperationalPosition.findMany({ where: { active: true }, include: { staffingRequirements: true }, orderBy: { sortOrder: "asc" } }),
     prisma.opsDailyTrip.findMany({ where: { branch, workDate: date, status: { not: "CANCELLED" } }, orderBy: { startTime: "asc" } }),
     prisma.opsDailyEvent.findMany({ where: { branch, workDate: date, status: { not: "CANCELLED" } }, orderBy: { startTime: "asc" } }),
-    prisma.opsDailyOffer.findMany({ where: { branch, active: true, OR: [{ permanent: true }, { effectiveFrom: { lte: date }, effectiveTo: { gte: date } }] }, orderBy: { title: "asc" } }),
+    prisma.opsDailyOffer.findMany({ where: { branch, active: true }, orderBy: [{ title: "asc" }, { createdAt: "desc" }] }),
     prisma.opsOperationalNotice.findMany({ where: { branch, active: true, effectiveFrom: { lte: date }, OR: [{ effectiveTo: null }, { effectiveTo: { gte: date } }] }, orderBy: { priority: "asc" } }),
-    prisma.opsWristbandStock.findMany({ where: { branch, workDate: date }, orderBy: { wristbandType: "asc" } }),
+    prisma.opsWristbandStock.findMany({ where: { branch, workDate: { in: ["ALL", date] } }, orderBy: [{ workDate: "asc" }, { stockCategory: "asc" }, { wristbandType: "asc" }] }),
     prisma.opsTripPartner.findMany({ where: { branch }, orderBy: { name: "asc" } }),
     prisma.opsBirthdayCustomer.findMany({ where: { branch }, orderBy: [{ customerName: "asc" }, { childName: "asc" }] }),
     prisma.auditLog.findMany({ where: { action: { startsWith: "OPS_" }, createdAt: { gte: timelineStart, lt: timelineEnd } }, include: { user: { select: { name: true } } }, orderBy: { createdAt: "desc" }, take: 30 }),
   ]);
+  const offers = offerRows.filter((offer) => offerAppliesOnDate(offer, date));
+  const globalStock = stockRows.filter((item) => item.workDate === "ALL");
+  const wristbands = globalStock.length ? globalStock : stockRows.filter((item) => item.workDate === date);
   const amStartsAtNine = trips.some((trip) => String(trip.startTime || "").startsWith("09:"));
   const shifts = Object.fromEntries(shiftRows.map((item) => [item.code, item.code === "AM" && amStartsAtNine ? { ...item, startTime: "09:00", endTime: "17:00" } : item]));
   const scheduleAssignments = schedule ? await prisma.opsScheduleAssignment.findMany({ where: { scheduleId: schedule.id, workDate: date }, include: { employee: { select: { id: true, name: true, nameEn: true, operationalName: true, gender: true, operationsTeamLeader: true, hrisNumber: true, localEmployeeCode: true, jobTitle: true, department: true, employmentType: true, employmentStatus: true, active: true } } }, orderBy: [{ shiftCode: "asc" }, { employee: { name: "asc" } }] }) : [];
@@ -44,11 +72,11 @@ async function loadDaily(date, branch = "MOT") {
   const readiness = buildReadiness({ schedule, team, liveDay: live, attendanceDay, coverage, rotationAssignments: assignments, breaks, trips, wristbands, notices });
   const attention = needsAttention({ readiness, team, coverage, qualifications, breaks, trips, wristbands, notices });
   const close = closeDayValidation({ attendanceDay, alerts: attention, rotationAssignments: assignments, breaks });
-  return { date, branch, liveMode: live ? "LIVE" : "PLANNING", schedule, attendanceDay, day, shifts, positions, expected, team, qualifications, plan, assignments, breaks, coverage, readiness, attention, close, trips, events, offers, notices, wristbands, tripPartners, birthdayCustomers, timeline };
+  return { date, branch, liveMode: live ? "LIVE" : "PLANNING", schedule, attendanceDay, day, shifts, positions, expected, team, qualifications, plan, assignments, breaks, coverage, readiness, attention, close, trips, events, offers, offerCatalog: offerRows, notices, wristbands, tripPartners, birthdayCustomers, timeline };
 }
 
 function serialize(data) {
-  return { success: true, date: data.date, branch: data.branch, liveMode: data.liveMode, source: "PUBLISHED_MONTHLY_SCHEDULE", schedule: data.schedule ? { id: data.schedule.id, version: data.schedule.version, status: data.schedule.status, periodStart: data.schedule.periodStart, periodEnd: data.schedule.periodEnd, publishedAt: data.schedule.publishedAt } : null, attendanceDay: data.attendanceDay, day: data.day ? { ...data.day, rotationPlans: undefined } : null, shifts: data.shifts, positions: data.positions, expected: data.expected, team: data.team, qualifications: data.qualifications, rotation: data.plan ? { id: data.plan.id, version: data.plan.version, status: data.plan.status, assignments: data.assignments, breaks: data.breaks } : null, coverage: data.coverage, readiness: data.readiness, attention: data.attention, close: data.close, trips: data.trips, events: data.events, offers: data.offers, notices: data.notices, wristbands: data.wristbands, tripPartners: data.tripPartners, birthdayCustomers: data.birthdayCustomers, timeline: data.timeline.map((item) => ({ id: item.id, action: item.action, summary: item.summary, createdAt: item.createdAt, user: item.user?.name || "System" })) };
+  return { success: true, date: data.date, branch: data.branch, liveMode: data.liveMode, source: "PUBLISHED_MONTHLY_SCHEDULE", schedule: data.schedule ? { id: data.schedule.id, version: data.schedule.version, status: data.schedule.status, periodStart: data.schedule.periodStart, periodEnd: data.schedule.periodEnd, publishedAt: data.schedule.publishedAt } : null, attendanceDay: data.attendanceDay, day: data.day ? { ...data.day, rotationPlans: undefined } : null, shifts: data.shifts, positions: data.positions, expected: data.expected, team: data.team, qualifications: data.qualifications, rotation: data.plan ? { id: data.plan.id, version: data.plan.version, status: data.plan.status, assignments: data.assignments, breaks: data.breaks } : null, coverage: data.coverage, readiness: data.readiness, attention: data.attention, close: data.close, trips: data.trips, events: data.events, offers: data.offers, offerCatalog: data.offerCatalog, notices: data.notices, wristbands: data.wristbands, tripPartners: data.tripPartners, birthdayCustomers: data.birthdayCustomers, timeline: data.timeline.map((item) => ({ id: item.id, action: item.action, summary: item.summary, createdAt: item.createdAt, user: item.user?.name || "System" })) };
 }
 
 export async function GET(request) {
@@ -128,18 +156,26 @@ export async function POST(request) {
       return NextResponse.json({ success: true, record, customer });
     }
     if (body.action === "createOffer") {
-      if (!String(body.title || "").trim()) throw new Error("Offer title is required");
-      const permanent = body.offerMode === "PERMANENT" || body.permanent === true;
-      if (!permanent && (!body.effectiveFrom || !body.effectiveTo)) throw new Error("Offer date range is required");
-      const record = await prisma.opsDailyOffer.create({ data: { branch, title: String(body.title).trim(), details: String(body.details || "").trim() || null, priceBefore: body.priceBefore === "" || body.priceBefore == null ? null : Number(body.priceBefore), priceAfter: body.priceAfter === "" || body.priceAfter == null ? null : Number(body.priceAfter), permanent, effectiveFrom: permanent ? "2000-01-01" : String(body.effectiveFrom), effectiveTo: permanent ? "2999-12-31" : String(body.effectiveTo), startTime: String(body.startTime || "") || null, endTime: String(body.endTime || "") || null, active: true, createdBy: user.id, updatedBy: user.id } });
-      await writeAudit({ action: "OPS_CREATEOFFER", user, summary: `Created offer ${record.title}`, metadata: { id: record.id, permanent, branch } });
+      const values = offerValues(body, user.id);
+      const record = await prisma.opsDailyOffer.create({ data: { branch, ...values, createdBy: user.id } });
+      await writeAudit({ action: "OPS_CREATEOFFER", user, summary: `Created offer ${record.title}`, metadata: { id: record.id, permanent: record.permanent, weekdays: normalizeWeekdays(record.weekdaysJson), branch } });
       return NextResponse.json({ success: true, record });
     }
-    if (body.action === "setWristband") {
-      if (!body.wristbandType || body.availableStock === undefined || body.availableStock === "") throw new Error("Stock item and quantity are required");
-      const values = { stockCategory: String(body.stockCategory || "BRACELET"), unit: String(body.unit || "ITEM"), color: String(body.color || "").trim() || null, availableStock: number("availableStock"), allocated: number("allocated"), issued: number("issued"), notes: String(body.notes || "").trim() || null };
-      const record = await prisma.opsWristbandStock.upsert({ where: { branch_workDate_wristbandType: { branch, workDate: date, wristbandType: String(body.wristbandType) } }, update: { ...values, updatedBy: user.id }, create: { branch, workDate: date, wristbandType: String(body.wristbandType), ...values, createdBy: user.id, updatedBy: user.id } });
-      await writeAudit({ action: "OPS_SETWRISTBAND", user, summary: `Updated stock ${record.wristbandType}`, metadata: { id: record.id, branch, date } });
+    if (body.action === "setWristband" || body.action === "setStock") {
+      const stockCategory = String(body.stockCategory || "BRACELET");
+      const usageType = String(body.usageType || body.wristbandType || "").trim() || null;
+      const size = String(body.size || "").trim() || null;
+      const rollStyle = String(body.rollStyle || "").trim() || null;
+      const color = String(body.color || "").trim() || null;
+      if (stockCategory === "BRACELET" && !usageType) throw new Error("Bracelet usage is required");
+      if (stockCategory === "SOCKS" && !size) throw new Error("Sock size is required");
+      if (["CASH_ROLL", "VISA_ROLL"].includes(stockCategory) && !rollStyle) throw new Error("Roll style is required");
+      const cashierQuantity = number("cashierQuantity");
+      const warehouseQuantity = number("warehouseQuantity");
+      const wristbandType = stockKey({ stockCategory, usageType, size, rollStyle, color });
+      const values = { stockCategory, unit: String(body.unit || "ITEM"), color, usageType, size, rollStyle, cashierQuantity, warehouseQuantity, availableStock: cashierQuantity + warehouseQuantity, allocated: 0, issued: 0, notes: String(body.notes || "").trim() || null };
+      const record = await prisma.opsWristbandStock.upsert({ where: { branch_workDate_wristbandType: { branch, workDate: "ALL", wristbandType } }, update: { ...values, updatedBy: user.id }, create: { branch, workDate: "ALL", wristbandType, ...values, createdBy: user.id, updatedBy: user.id } });
+      await writeAudit({ action: "OPS_SETSTOCK", user, summary: `Updated stock ${record.usageType || record.size || record.rollStyle || record.wristbandType}`, metadata: { id: record.id, branch, available: stockAvailable(record), category: stockCategory } });
       return NextResponse.json({ success: true, record });
     }
     if (body.action === "createNotice") {
@@ -154,6 +190,20 @@ export async function POST(request) {
 export async function PATCH(request) {
   const { user, error } = await authorizeApi("OPS_DAILY_MANAGE"); if (error) return error; const body = await request.json();
   try {
+    if (body.action === "updateOffer") {
+      const current = await prisma.opsDailyOffer.findFirst({ where: { id: String(body.offerId || ""), branch: String(body.branch || "MOT") } });
+      if (!current) throw new Error("Offer not found");
+      const record = await prisma.opsDailyOffer.update({ where: { id: current.id }, data: offerValues(body, user.id) });
+      await writeAudit({ action: "OPS_UPDATEOFFER", user, summary: `Updated offer ${record.title}`, metadata: { id: record.id, branch: record.branch } });
+      return NextResponse.json({ success: true, record });
+    }
+    if (body.action === "deleteOffer") {
+      const current = await prisma.opsDailyOffer.findFirst({ where: { id: String(body.offerId || ""), branch: String(body.branch || "MOT") } });
+      if (!current) throw new Error("Offer not found");
+      const record = await prisma.opsDailyOffer.update({ where: { id: current.id }, data: { active: false, updatedBy: user.id } });
+      await writeAudit({ action: "OPS_DELETEOFFER", user, summary: `Removed offer ${record.title}`, metadata: { id: record.id, branch: record.branch } });
+      return NextResponse.json({ success: true, record });
+    }
     if (body.action === "updateBreak") { const current = await prisma.opsBreakAssignment.findUnique({ where: { id: String(body.breakId || "") }, include: { rotationPlan: { include: { operationsDay: true, assignments: true } } } }); if (!current) throw new Error("Break not found"); if (current.rotationPlan.operationsDay.status === "CLOSED") throw new Error("Closed day must be reopened before editing breaks"); const update = { startTime: body.startTime || current.startTime, endTime: body.endTime || current.endTime, status: body.status || current.status, note: body.note === undefined ? current.note : String(body.note || "").trim() || null, updatedBy: user.id }; if (current.rotationPlan.assignments.some((item) => item.employeeId === current.employeeId && overlaps(item.startTime, item.endTime, update.startTime, update.endTime))) throw new Error("Break conflicts with a rotation assignment"); const item = await prisma.opsBreakAssignment.update({ where: { id: current.id }, data: update }); await writeAudit({ action: "OPS_BREAK_UPDATED", user, summary: `Updated break ${item.id}`, metadata: { breakId: item.id, before: { startTime: current.startTime, endTime: current.endTime, status: current.status }, after: update } }); return NextResponse.json({ success: true, break: item }); }
     const day = await prisma.opsOperationsDay.findUnique({ where: { id: String(body.dayId || "") } }); if (!day) throw new Error("Operations day not found");
     if (body.action === "close") { const data = await loadDaily(day.workDate, day.branch); if (!data.close.ready && !(body.override && String(body.reason || "").trim())) return NextResponse.json({ success: false, error: "Close Day checklist is not ready", blockers: data.close.blockers }, { status: 409 }); const updated = await prisma.opsOperationsDay.update({ where: { id: day.id }, data: { status: "CLOSED", readinessScore: data.readiness.score, readinessSnapshotJson: JSON.stringify({ readiness: data.readiness, attention: data.attention, close: data.close }), closedBy: user.id, closedAt: new Date(), teamNote: String(body.teamNote || day.teamNote || "").trim() || null, handoverNote: String(body.handoverNote || "").trim() || null } }); await prisma.opsRotationPlan.updateMany({ where: { operationsDayId: day.id, status: "ACTIVE" }, data: { status: "CLOSED" } }); await writeAudit({ action: body.override ? "OPS_DAY_CLOSED_OVERRIDE" : "OPS_DAY_CLOSED", user, summary: `Closed operations day ${day.workDate}`, metadata: { dayId: day.id, branch: day.branch, readinessScore: data.readiness.score, blockers: data.close.blockers }, reason: body.reason }); return NextResponse.json({ success: true, day: updated }); }

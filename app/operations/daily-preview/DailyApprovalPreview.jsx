@@ -134,26 +134,119 @@ async function readApiJson(response, fallbackMessage) {
   if (!response.ok) throw new Error(body.error || fallbackMessage);
   return body;
 }
-async function posterPngBlob(node) {
-  const clone = node.cloneNode(true);
-  const sources = [node, ...node.querySelectorAll("*")];
-  const targets = [clone, ...clone.querySelectorAll("*")];
-  sources.forEach((source, index) => {
-    const style = window.getComputedStyle(source);
-    targets[index].setAttribute("style", `${targets[index].getAttribute("style") || ""};${Array.from(style).map((key) => `${key}:${style.getPropertyValue(key)}`).join(";")}`);
+async function posterPngBlob({ data, config, weekday, grouped }) {
+  const width = 1500;
+  const margin = 28;
+  const contentWidth = width - margin * 2;
+  const assignments = data.rotation?.assignments || [];
+  const nonWorking = Object.entries(grouped)
+    .filter(([key]) => !WORKING_SHIFTS.includes(key))
+    .flatMap(([group, people]) => people.map((person) => ({ ...person, group })));
+  const visibleCards = config.cardOrder.filter((card) => config.visibleCards[card] && (card !== "trips" || data.trips?.length) && (card !== "birthdays" || data.events?.length));
+  const rosterRows = WORKING_SHIFTS.reduce((total, shift) => total + (grouped[shift]?.length ? grouped[shift].length + 2 : 0), 0);
+  const cardHeight = visibleCards.length ? 152 : 0;
+  const leavesHeight = config.visibleSections.leaves ? 52 + Math.max(1, nonWorking.length) * 34 : 0;
+  const notesHeight = config.visibleSections.notes ? 82 : 0;
+  const height = 150 + cardHeight + 76 + rosterRows * 42 + leavesHeight + notesHeight + 86;
+  const xml = (value) => String(value ?? "").replace(/[&<>"']/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&apos;" })[char]);
+  const short = (value, limit = 34) => { const text = String(value || ""); return text.length > limit ? `${text.slice(0, limit - 1)}…` : text; };
+  const nodes = [];
+  const rect = (x, y, w, h, fill, stroke = "none", radius = 0) => nodes.push(`<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="${radius}" fill="${fill}" stroke="${stroke}"/>`);
+  const text = (value, x, y, size = 20, weight = 700, fill = config.text, anchor = "start") => nodes.push(`<text x="${x}" y="${y}" font-family="Arial, sans-serif" font-size="${size}" font-weight="${weight}" fill="${fill}" text-anchor="${anchor}">${xml(value)}</text>`);
+  let y = 0;
+  rect(0, 0, width, height, "#ffffff");
+  rect(0, 0, width, 126, config.primary);
+  text(config.title, width / 2, 53, 38, 900, "#ffffff", "middle");
+  text(data.motivationalPhrase || config.subtitle, width / 2, 88, 17, 800, config.accent, "middle");
+  text(config.branchName, margin, 48, 24, 900, "#ffffff");
+  text(weekday, margin, 82, 16, 700, "#ffffff");
+  y = 146;
+
+  if (visibleCards.length) {
+    const gap = 12;
+    const cardWidth = (contentWidth - gap * (visibleCards.length - 1)) / visibleCards.length;
+    visibleCards.forEach((card, index) => {
+      const x = margin + index * (cardWidth + gap);
+      const tone = card === "offers" ? "#d98a31" : card === "trips" ? "#3182bd" : card === "birthdays" ? "#4f8c5c" : "#2e7da5";
+      rect(x, y, cardWidth, 132, "#fffdf8", tone, 12);
+      rect(x, y, cardWidth, 38, tone, "none", 10);
+      text(cardLabels[card], x + cardWidth / 2, y + 26, 17, 900, "#ffffff", "middle");
+      const lines = card === "offers"
+        ? (data.offers || []).map((offer) => `${offer.title}${offer.priceAfter != null ? ` · ${offer.priceAfter} EGP` : ""}`)
+        : previewCardLines(card, data);
+      (lines.length ? lines : [config.cardContent?.[card] || "—"]).slice(0, 4).forEach((line, lineIndex) => text(short(line, 42), x + 14, y + 65 + lineIndex * 21, 14, 700));
+    });
+    y += 152;
+  }
+
+  const numberWidth = 46, nameWidth = 230, attendanceWidth = 118, breakWidth = 118;
+  const rotationX = margin + numberWidth + nameWidth + attendanceWidth + breakWidth;
+  const rotationWidth = contentWidth - numberWidth - nameWidth - attendanceWidth - breakWidth;
+  rect(margin, y, contentWidth, 54, config.primary);
+  text("#", margin + numberWidth / 2, y + 34, 15, 900, "#ffffff", "middle");
+  text("EMPLOYEE", margin + numberWidth + nameWidth / 2, y + 34, 15, 900, "#ffffff", "middle");
+  text("ATTENDANCE  IN / OUT", margin + numberWidth + nameWidth + attendanceWidth / 2, y + 34, 13, 900, "#ffffff", "middle");
+  text("BREAK  FROM / TO", margin + numberWidth + nameWidth + attendanceWidth + breakWidth / 2, y + 34, 13, 900, "#ffffff", "middle");
+  text("ROTATION (HOURLY)", rotationX + rotationWidth / 2, y + 34, 15, 900, "#ffffff", "middle");
+  y += 54;
+
+  WORKING_SHIFTS.forEach((shift) => {
+    const people = grouped[shift] || [];
+    if (!people.length) return;
+    const shiftColor = shift === "AM" ? config.amColor : shift === "BW" ? config.bwColor : config.pmColor;
+    const startHour = Number(data?.shifts?.[shift]?.startTime?.slice(0, 2) || (shift === "PM" ? 15 : 10));
+    const hours = Array.from({ length: 8 }, (_, index) => String((startHour + index - 1) % 12 + 1));
+    rect(margin, y, contentWidth, 38, shiftColor, "#8b8794");
+    text(shift === "AM" ? "MORNING SHIFT (AM)" : shift === "BW" ? "BETWEEN SHIFT (BW)" : "NIGHT SHIFT (PM)", margin + 12, y + 25, 16, 900);
+    text(`${formatTime12(data?.shifts?.[shift]?.startTime)} — ${formatTime12(data?.shifts?.[shift]?.endTime)}`, margin + contentWidth - 12, y + 25, 15, 800, config.text, "end");
+    y += 38;
+    rect(margin, y, contentWidth, 30, "#f3edf8", "#8b8794");
+    text("ROTATION TIME", margin + numberWidth + nameWidth + (attendanceWidth + breakWidth) / 2, y + 20, 12, 900, config.text, "middle");
+    hours.forEach((hour, index) => text(hour, rotationX + rotationWidth / 8 * (index + 0.5), y + 20, 13, 900, config.text, "middle"));
+    y += 30;
+    people.forEach((person, personIndex) => {
+      const role = rosterRole(person);
+      const tone = employeeTone(person);
+      const nameTone = tone === "cashier" ? "#b9e2c3" : tone === "leader" ? "#c3e9f6" : tone === "cashier-leader" ? "#d5b9ec" : tone === "female" ? "#fff0a8" : "#e7d6f6";
+      rect(margin, y, contentWidth, 42, "#ffffff", "#bcb5c3");
+      rect(margin + numberWidth, y, nameWidth, 42, nameTone, "#bcb5c3");
+      text(personIndex + 1, margin + numberWidth / 2, y + 27, 14, 900, config.text, "middle");
+      text(short(rosterName(person.employee), 25), margin + numberWidth + 10, y + 27, 15, 900);
+      if (role) {
+        rect(rotationX, y, rotationWidth, 42, nameTone, "#bcb5c3");
+        text(role.label, rotationX + rotationWidth / 2, y + 27, 15, 900, config.text, "middle");
+      } else {
+        hours.forEach((hour, index) => {
+          const slotHour = (startHour + index) % 24;
+          const assignment = assignments.find((item) => item.employeeId === person.employee.id && Number(item.startTime?.slice(0, 2)) === slotHour);
+          const cellX = rotationX + rotationWidth / 8 * index;
+          if (index) nodes.push(`<line x1="${cellX}" y1="${y}" x2="${cellX}" y2="${y + 42}" stroke="#bcb5c3"/>`);
+          text(short(assignment?.position?.code || "", 10), cellX + rotationWidth / 16, y + 27, 12, 800, config.text, "middle");
+        });
+      }
+      y += 42;
+    });
   });
-  clone.querySelectorAll("img").forEach((image) => image.remove());
-  const width = Math.ceil(node.scrollWidth);
-  const height = Math.ceil(node.scrollHeight);
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}"><foreignObject width="100%" height="100%"><div xmlns="http://www.w3.org/1999/xhtml">${clone.outerHTML}</div></foreignObject></svg>`;
+
+  if (config.visibleSections.leaves) {
+    y += 14; rect(margin, y, contentWidth, 38, config.primary, "none", 8); text("TODAY'S LEAVES / OFF", margin + contentWidth - 14, y + 25, 16, 900, "#ffffff", "end"); y += 38;
+    (nonWorking.length ? nonWorking : [{ group: "—", employee: { name: "No leave / off in the published schedule" } }]).forEach((item) => { rect(margin, y, contentWidth, 34, "#fff", "#d4ced8"); text(item.group, margin + 14, y + 23, 13, 900); text(rosterName(item.employee), margin + 110, y + 23, 14, 700); y += 34; });
+  }
+  if (config.visibleSections.notes) {
+    y += 14; rect(margin, y, contentWidth, 38, config.primary, "none", 8); text("OPERATIONAL NOTES", margin + contentWidth - 14, y + 25, 16, 900, "#ffffff", "end"); y += 38;
+    const notes = data.notices?.length ? data.notices.map((item) => item.title) : ["No operational notices recorded"];
+    text(short(notes.join(" · "), 150), margin + 14, y + 27, 14, 700); y += 42;
+  }
+  y += 22; rect(margin, y, contentWidth, 5, config.accent); text(data.motivationalPhrase || config.footerMotto, width / 2, y + 35, 15, 900, config.text, "middle");
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">${nodes.join("")}</svg>`;
   const image = new Image();
   const url = URL.createObjectURL(new Blob([svg], { type: "image/svg+xml;charset=utf-8" }));
   try {
     await new Promise((resolve, reject) => { image.onload = resolve; image.onerror = reject; image.src = url; });
     const canvas = document.createElement("canvas");
-    canvas.width = width * 2; canvas.height = height * 2;
+    canvas.width = width; canvas.height = height;
     const context = canvas.getContext("2d");
-    context.scale(2, 2); context.fillStyle = "#ffffff"; context.fillRect(0, 0, width, height); context.drawImage(image, 0, 0);
+    context.fillStyle = "#ffffff"; context.fillRect(0, 0, width, height); context.drawImage(image, 0, 0);
     return await new Promise((resolve, reject) => canvas.toBlob((blob) => blob ? resolve(blob) : reject(new Error("Image generation failed")), "image/png"));
   } finally { URL.revokeObjectURL(url); }
 }
@@ -671,14 +764,30 @@ export default function DailyApprovalPreview() {
     setError(""); setActionMessage("");
     const popup = window.open("about:blank", "_blank");
     try {
-      const poster = document.querySelector(".daily-operations-poster");
-      if (!poster) throw new Error("Roster preview is not ready");
-      const blob = await posterPngBlob(poster);
+      if (!data?.schedule) throw new Error("Roster preview is not ready");
       if (!navigator.clipboard?.write || typeof ClipboardItem === "undefined") throw new Error("Image clipboard is not supported in this browser");
-      await navigator.clipboard.write([new ClipboardItem({ "image/png": blob })]);
-      const message = isArabic ? `روستر Billy Beez MOT - ${date}\nتم نسخ صورة الروستر؛ الصقها داخل المحادثة.` : `Billy Beez MOT roster - ${date}\nThe roster image is copied; paste it in the chat.`;
+      // Start the clipboard write inside the click's user-activation window. The
+      // ClipboardItem may resolve its PNG asynchronously without losing access.
+      const png = posterPngBlob({ data, config, weekday, grouped });
+      let copied = true;
+      try {
+        await navigator.clipboard.write([new ClipboardItem({ "image/png": png })]);
+      } catch (clipboardError) {
+        if (!/permission|notallowed/i.test(`${clipboardError?.name || ""} ${clipboardError?.message || ""}`)) throw clipboardError;
+        copied = false;
+        const blob = await png;
+        const downloadUrl = URL.createObjectURL(blob);
+        const download = document.createElement("a");
+        download.href = downloadUrl;
+        download.download = `BillyBeez-MOT-roster-${date}.png`;
+        download.click();
+        window.setTimeout(() => URL.revokeObjectURL(downloadUrl), 1500);
+      }
+      const message = isArabic ? `روستر Billy Beez MOT - ${date}\nصورة الروستر جاهزة؛ الصقها أو أرفق الملف المنزل.` : `Billy Beez MOT roster - ${date}\nThe roster image is ready; paste it or attach the downloaded file.`;
       if (popup) popup.location.href = `https://wa.me/?text=${encodeURIComponent(message)}`;
-      setActionMessage(isArabic ? "تم نسخ صورة الروستر وفتح واتساب" : "Roster image copied and WhatsApp opened");
+      setActionMessage(copied
+        ? (isArabic ? "تم نسخ صورة الروستر وفتح واتساب" : "Roster image copied and WhatsApp opened")
+        : (isArabic ? "المتصفح منع النسخ التلقائي؛ تم تنزيل صورة الروستر وفتح واتساب" : "Clipboard access was blocked; the roster image was downloaded and WhatsApp opened"));
     } catch (shareError) { if (popup) popup.close(); setError(shareError.message); }
   };
   const save = async () => {

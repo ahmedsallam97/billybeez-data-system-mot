@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { authorizeApi } from "@/lib/api-auth";
 import { getSetting } from "@/lib/settings";
+import { offerAppliesOnDate } from "@/lib/operations/planning";
 
 export async function GET(request) {
   const { error } = await authorizeApi("OPS_SCHEDULE_READ");
@@ -14,7 +15,7 @@ export async function GET(request) {
   const branch = branchConfig.branchCode || "MOT";
   const schedule = await prisma.opsSchedule.findFirst({ where: { status: "PUBLISHED", periodStart: { lte: date }, periodEnd: { gte: date } }, orderBy: { version: "desc" } });
   if (!schedule) return NextResponse.json({ success: true, date, schedule: null, roster: [] });
-  const [assignments, shiftDefinitions, operationsDay, attendanceDay, trips, events, offers, notices, wristbands, cashierConfigRaw, phrasesRaw] = await Promise.all([
+  const [assignments, shiftDefinitions, operationsDay, attendanceDay, trips, events, offerRows, notices, stockRows, cashierConfigRaw, phrasesRaw] = await Promise.all([
     prisma.opsScheduleAssignment.findMany({ where: { scheduleId: schedule.id, workDate: date, employee: { department: { in: ["OPERATION", "CASHIER"] } } }, include: { employee: { select: { id: true, name: true, nameEn: true, operationalName: true, gender: true, operationsTeamLeader: true, hrisNumber: true, localEmployeeCode: true, jobTitle: true, department: true } } }, orderBy: [{ shiftCode: "asc" }, { employee: { name: "asc" } }] }),
     prisma.opsShiftDefinition.findMany({ where: { active: true }, select: { code: true, label: true, labelAr: true, startTime: true, endTime: true }, orderBy: { sortOrder: "asc" } }),
     prisma.opsOperationsDay.findFirst({
@@ -40,14 +41,17 @@ export async function GET(request) {
     prisma.opsAttendanceDay.findFirst({ where: { workDate: date }, orderBy: { version: "desc" }, include: { records: true } }),
     prisma.opsDailyTrip.findMany({ where: { branch, workDate: date, status: { not: "CANCELLED" } }, orderBy: { startTime: "asc" } }),
     prisma.opsDailyEvent.findMany({ where: { branch, workDate: date, status: { not: "CANCELLED" } }, orderBy: { startTime: "asc" } }),
-    prisma.opsDailyOffer.findMany({ where: { branch, active: true, OR: [{ permanent: true }, { effectiveFrom: { lte: date }, effectiveTo: { gte: date } }] }, orderBy: { title: "asc" } }),
+    prisma.opsDailyOffer.findMany({ where: { branch, active: true }, orderBy: { title: "asc" } }),
     prisma.opsOperationalNotice.findMany({ where: { branch, active: true, effectiveFrom: { lte: date }, OR: [{ effectiveTo: null }, { effectiveTo: { gte: date } }] }, orderBy: { priority: "asc" } }),
-    prisma.opsWristbandStock.findMany({ where: { branch, workDate: date }, orderBy: { wristbandType: "asc" } }),
+    prisma.opsWristbandStock.findMany({ where: { branch, workDate: { in: ["ALL", date] } }, orderBy: [{ workDate: "asc" }, { wristbandType: "asc" }] }),
     getSetting("OPS_CASHIER_CONFIG", "{}"),
     getSetting("OPS_MOTIVATION_PHRASES", "[]"),
   ]);
   const cashierConfig = parse(cashierConfigRaw, { primaryEmployeeIds: [], backupEmployeeIds: [] });
   const phrases = parse(phrasesRaw, []);
+  const offers = offerRows.filter((offer) => offerAppliesOnDate(offer, date));
+  const globalStock = stockRows.filter((item) => item.workDate === "ALL");
+  const wristbands = globalStock.length ? globalStock : stockRows.filter((item) => item.workDate === date);
   const phraseIndex = Math.abs(new Date(`${date}T00:00:00Z`).getTime() / 86400000) % Math.max(phrases.length, 1);
   const amStartsAtNine = trips.some((trip) => String(trip.startTime || "").startsWith("09:"));
   const shifts = Object.fromEntries(shiftDefinitions.map((shift) => [shift.code, shift.code === "AM" && amStartsAtNine ? { ...shift, startTime: "09:00", endTime: "17:00" } : shift]));

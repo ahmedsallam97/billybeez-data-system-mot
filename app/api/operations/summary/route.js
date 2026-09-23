@@ -26,7 +26,7 @@ export async function GET() {
     prisma.employee.count({ where: { active: true, OR: [{ operationalName: null }, { operationalName: "" }] } }),
     prisma.opsDailyTrip.count({ where: { workDate: { gte: today, lte: nextWeekDate }, status: { not: "CANCELLED" } } }),
     prisma.opsDailyEvent.count({ where: { workDate: { gte: today, lte: nextWeekDate }, status: { not: "CANCELLED" } } }),
-    prisma.opsWristbandStock.count({ where: { workDate: today, availableStock: { lte: 10 } } }),
+    prisma.opsWristbandStock.count({ where: { workDate: { in: ["ALL", today] }, availableStock: { lte: 10 } } }),
   ]);
   const currentSchedule = schedules.find((schedule) => schedule.periodStart <= today && schedule.periodEnd >= today) || null;
   const attention = [];

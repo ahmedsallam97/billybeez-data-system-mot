@@ -103,7 +103,7 @@ export default function OperationsClient() {
     <section className={`operations-shell ${navigationOpen ? "operations-nav-open" : "operations-nav-collapsed"}`}>
       <nav className="operations-main-nav" aria-label={isArabic ? "أقسام العمليات" : "Operations areas"}>
         <button className="operations-nav-toggle" type="button" aria-label={isArabic ? "فتح أقسام العمليات" : "Open operations areas"} aria-expanded={navigationOpen} onClick={() => setNavigationOpen((value) => !value)}><span aria-hidden="true">☰</span><i>{isArabic ? "أقسام العمليات" : "Operations areas"}</i></button>
-        {navigationOpen && tabs.map(([key, number, label, description]) => <button key={key} className={tab === key ? "active" : ""} onClick={() => { navigate(key); setNavigationOpen(false); }}><small>{number}</small><b>{label}</b><span>{description}</span></button>)}
+        {navigationOpen && tabs.map(([key, number, label, description]) => <button key={key} className={tab === key ? "active" : ""} onClick={() => navigate(key)}><small>{number}</small><b>{label}</b><span>{description}</span></button>)}
       </nav>
       <div className="operations-content">
       {tab === "roster" && <DailyApprovalPreview />}

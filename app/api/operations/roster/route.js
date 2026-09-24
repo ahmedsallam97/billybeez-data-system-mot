@@ -3,6 +3,7 @@ import { prisma } from "@/lib/db";
 import { authorizeApi } from "@/lib/api-auth";
 import { getSetting } from "@/lib/settings";
 import { offerAppliesOnDate } from "@/lib/operations/planning";
+import { applyCashierFallbacks } from "@/lib/operations/cashiers";
 
 export async function GET(request) {
   const { error } = await authorizeApi("OPS_SCHEDULE_READ");
@@ -56,15 +57,16 @@ export async function GET(request) {
   const amStartsAtNine = trips.some((trip) => String(trip.startTime || "").startsWith("09:"));
   const shifts = Object.fromEntries(shiftDefinitions.map((shift) => [shift.code, shift.code === "AM" && amStartsAtNine ? { ...shift, startTime: "09:00", endTime: "17:00" } : shift]));
   const rotationPlan = operationsDay?.rotationPlans?.[0] || null;
+  const rosterAssignments = applyCashierFallbacks(assignments, cashierConfig);
   return NextResponse.json({
     success: true,
     date,
     source: "PUBLISHED_MONTHLY_SCHEDULE",
     schedule: { id: schedule.id, version: schedule.version, status: schedule.status, publishedAt: schedule.publishedAt, operationalYear: schedule.operationalYear, operationalMonth: schedule.operationalMonth },
     shifts,
-    roster: assignments.map((item) => ({ id: item.id, code: item.code, shiftCode: item.shiftCode, rawValue: item.importRawValue, metadata: item.importMetadata ? parse(item.importMetadata, null) : null, employee: item.employee })).sort((left, right) => {
-      const leftCashier = left.employee.department === "CASHIER" ? 0 : 1;
-      const rightCashier = right.employee.department === "CASHIER" ? 0 : 1;
+    roster: rosterAssignments.map((item) => ({ id: item.id, code: item.code, shiftCode: item.shiftCode, rawValue: item.importRawValue, metadata: item.metadata || (item.importMetadata ? parse(item.importMetadata, null) : null), employee: item.employee })).sort((left, right) => {
+      const leftCashier = left.employee.department === "CASHIER" || left.metadata?.frontAssignment === "FRONT_CASHIER" ? 0 : 1;
+      const rightCashier = right.employee.department === "CASHIER" || right.metadata?.frontAssignment === "FRONT_CASHIER" ? 0 : 1;
       return String(left.shiftCode || left.code || "").localeCompare(String(right.shiftCode || right.code || "")) || leftCashier - rightCashier || String(left.employee.name || "").localeCompare(String(right.employee.name || ""));
     }),
     attendance: attendanceDay ? { id: attendanceDay.id, status: attendanceDay.status, records: attendanceDay.records } : null,

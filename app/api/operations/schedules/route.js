@@ -64,7 +64,7 @@ export async function POST(request) {
       const dateValue = (value) => value instanceof Date ? value.toISOString().slice(0, 10) : String(value || "").trim();
       const headers = rows[0].map(dateValue); const dates = headers.slice(2).map(dateValue);
       if (!dates.length || dates.some((day) => !/^\d{4}-\d{2}-\d{2}$/.test(day) || day < schedule.periodStart || day > schedule.periodEnd)) throw new Error("Use Employee, Employee ID, then YYYY-MM-DD columns inside this operational period");
-      const employees = await prisma.employee.findMany({ where: { department: "OPERATION", active: true }, select: { id: true, name: true, nameEn: true, hrisNumber: true, localEmployeeCode: true } });
+      const employees = await prisma.employee.findMany({ where: { department: { in: ["OPERATION", "CASHIER"] }, active: true }, select: { id: true, name: true, nameEn: true, hrisNumber: true, localEmployeeCode: true } });
       const lookup = new Map(employees.flatMap((employee) => [employee.name, employee.nameEn, employee.hrisNumber, employee.localEmployeeCode].filter(Boolean).map((value) => [String(value).trim().toLowerCase(), employee])));
       const imported = [];
       for (const row of rows.slice(1)) { const employee = lookup.get(String(row[1] || row[0] || "").trim().toLowerCase()); if (!employee) continue; dates.forEach((workDate, index) => { const normalized = normalizeScheduleCode(row[index + 2]); if (normalized.code && !normalized.error) imported.push({ scheduleId: schedule.id, employeeId: employee.id, workDate, code: normalized.code, shiftCode: normalized.countsAsWorking ? normalized.code : null, source: "IMPORT", importRawValue: normalized.rawValue, importMetadata: normalized.metadata ? JSON.stringify(normalized.metadata) : null }); }); }

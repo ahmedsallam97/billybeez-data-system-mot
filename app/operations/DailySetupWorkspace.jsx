@@ -62,6 +62,8 @@ export default function DailySetupWorkspace({ section = "trips" }) {
   const [messageKind, setMessageKind] = useState("success");
   const [busy, setBusy] = useState(false);
   const [editingOffer, setEditingOffer] = useState(null);
+  const [editingTrip, setEditingTrip] = useState(null);
+  const [editingEvent, setEditingEvent] = useState(null);
 
   const request = useCallback((url, options = {}) => fetch(url, { credentials: "same-origin", ...options }).then(apiJson), []);
 
@@ -95,6 +97,8 @@ export default function DailySetupWorkspace({ section = "trips" }) {
       await request("/api/operations/daily", { method, headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
       formElement.reset();
       setEditingOffer(null);
+      setEditingTrip(null);
+      setEditingEvent(null);
       setMessageKind("success"); setMessage(isArabic ? "تم الحفظ" : "Saved");
       await load();
     } catch (error) { setMessageKind("danger"); setMessage(error.message); } finally { setBusy(false); }
@@ -107,6 +111,24 @@ export default function DailySetupWorkspace({ section = "trips" }) {
       await request("/api/operations/daily", { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ action: "deleteOffer", offerId: offer.id, branch: offer.branch || "MOT" }) });
       if (editingOffer?.id === offer.id) setEditingOffer(null);
       setMessageKind("success"); setMessage(isArabic ? "تم حذف العرض" : "Offer deleted");
+      await load();
+    } catch (error) { setMessageKind("danger"); setMessage(error.message); } finally { setBusy(false); }
+  }
+
+  async function removePlanningItem(kind, item) {
+    const isTrip = kind === "trip";
+    const label = isTrip ? (item.name || "trip") : (item.childName || item.name || "birthday");
+    if (!window.confirm(isArabic ? `حذف ${label}؟` : `Delete ${label}?`)) return;
+    setBusy(true); setMessage("");
+    try {
+      await request("/api/operations/daily", {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ action: isTrip ? "deleteTrip" : "deleteEvent", [isTrip ? "tripId" : "eventId"]: item.id, branch: item.branch || "MOT" }),
+      });
+      if (isTrip && editingTrip?.id === item.id) setEditingTrip(null);
+      if (!isTrip && editingEvent?.id === item.id) setEditingEvent(null);
+      setMessageKind("success"); setMessage(isArabic ? "تم الحذف" : "Deleted");
       await load();
     } catch (error) { setMessageKind("danger"); setMessage(error.message); } finally { setBusy(false); }
   }
@@ -143,8 +165,8 @@ export default function DailySetupWorkspace({ section = "trips" }) {
     </section>}
 
     <div className="ops-setup-grid">
-      {section === "trips" && <TripForm daily={daily} submit={submit} isArabic={isArabic} />}
-      {section === "birthdays" && <BirthdayForm daily={daily} catalogues={catalogues} submit={submit} isArabic={isArabic} />}
+      {section === "trips" && <TripForm key={editingTrip?.id || "new"} trip={editingTrip} daily={daily} submit={submit} cancel={() => setEditingTrip(null)} isArabic={isArabic} />}
+      {section === "birthdays" && <BirthdayForm key={editingEvent?.id || "new"} event={editingEvent} daily={daily} catalogues={catalogues} submit={submit} cancel={() => setEditingEvent(null)} isArabic={isArabic} />}
       {section === "offers" && <OfferForm key={editingOffer?.id || "new"} offer={editingOffer} busy={busy} isArabic={isArabic} submit={submit} cancel={() => setEditingOffer(null)} />}
       {section === "stock" && <>
         <StockCard title={isArabic ? "ستوك الشرابات" : "Socks stock"} category="SOCKS" unit="PAIR" color="#f2c94c" kind="socks" submit={submit} isArabic={isArabic} />
@@ -157,30 +179,31 @@ export default function DailySetupWorkspace({ section = "trips" }) {
     {section === "offers" && <OfferList offers={offerCatalog} isArabic={isArabic} busy={busy} edit={setEditingOffer} remove={deleteOffer} />}
     {section === "stock" && <StockList items={daily?.wristbands || []} isArabic={isArabic} />}
     {!["rosterSettings", "offers", "stock"].includes(section) && <section className="panel ops-setup-current"><h2>{isArabic ? "المسجل للتاريخ المحدد" : "Saved for selected date"}</h2><div className="ops-current-grid">
-      {section === "trips" && <Current title={isArabic ? "الرحلات" : "Trips"} items={daily?.trips} render={(item) => `${item.name} · ${item.startTime || "—"} · ${item.expectedChildren ?? 0}`} />}
-      {section === "birthdays" && <Current title={isArabic ? "أعياد الميلاد" : "Birthdays"} items={daily?.events} render={(item) => `${item.childName || item.name} · ${item.customerName || "—"} · ${item.startTime || "—"}`} />}
+      {section === "trips" && <Current title={isArabic ? "الرحلات" : "Trips"} items={daily?.trips} render={(item) => `${item.name} · ${item.startTime || "—"} · ${item.expectedChildren ?? 0}${item.braceletColor ? ` · ${item.braceletMaterial || ""} ${item.braceletColor}` : ""}`} edit={setEditingTrip} remove={(item) => removePlanningItem("trip", item)} isArabic={isArabic} />}
+      {section === "birthdays" && <Current title={isArabic ? "أعياد الميلاد" : "Birthdays"} items={daily?.events} render={(item) => `${item.childName || item.name} · ${item.customerName || "—"} · ${item.startTime || "—"}${item.braceletColor ? ` · ${item.braceletMaterial || ""} ${item.braceletColor}` : ""}`} edit={setEditingEvent} remove={(item) => removePlanningItem("event", item)} isArabic={isArabic} />}
     </div></section>}
   </section>;
 }
 
-function TripForm({ daily, submit, isArabic }) {
-  return <FormCard title={isArabic ? "رحلة جديدة" : "New trip"} hint={isArabic ? "سجل المدرسة والموعد والأعداد والوجبة والبريسلت والعمالة المطلوبة." : "School, timing, headcount, meal, bracelet and staffing."} button={isArabic ? "حفظ الرحلة" : "Save trip"} onSubmit={(event) => submit("createTrip", event)}>
+function TripForm({ trip, daily, submit, cancel, isArabic }) {
+  return <FormCard title={trip ? (isArabic ? "تعديل الرحلة" : "Edit trip") : (isArabic ? "رحلة جديدة" : "New trip")} hint={isArabic ? "سجل المدرسة والموعد والأعداد والوجبة؛ لون البريسلت يختار تلقائيًا من الستوك." : "School, timing, headcount and meals; bracelet stock is assigned automatically."} button={isArabic ? "حفظ الرحلة" : "Save trip"} onSubmit={(event) => submit(trip ? "updateTrip" : "createTrip", event, trip ? { tripId: trip.id, branch: trip.branch || "MOT" } : {}, trip ? "PATCH" : "POST")} secondary={trip && <button type="button" className="secondary" onClick={cancel}>{isArabic ? "إلغاء التعديل" : "Cancel edit"}</button>}>
     <select name="tripPartnerId" aria-label={isArabic ? "أكاديمية مسجلة" : "Saved academy"} defaultValue="" onChange={(event) => { const item = daily?.tripPartners?.find((row) => row.id === event.target.value); const form = event.currentTarget.form; if (item && form) { form.elements.name.value = item.name; form.elements.supervisorName.value = item.supervisorName || ""; form.elements.supervisorPhone.value = item.supervisorPhone || ""; } }}><option value="">{isArabic ? "أكاديمية جديدة" : "New academy"}</option>{(daily?.tripPartners || []).map((item) => <option key={item.id} value={item.id}>{item.name}{item.supervisorName ? ` · ${item.supervisorName}` : ""}</option>)}</select>
-    <input name="name" placeholder={isArabic ? "اسم المدرسة أو الأكاديمية الجديدة" : "New school / academy name"} /><label>{isArabic ? "من" : "From"}<input name="startTime" type="time" required /></label><label>{isArabic ? "إلى" : "To"}<input name="endTime" type="time" /></label>
-    <input name="expectedChildren" type="number" min="0" placeholder={isArabic ? "عدد الأطفال" : "Children"} /><input name="supervisorName" placeholder={isArabic ? "اسم المشرف" : "Supervisor name"} /><input name="supervisorPhone" type="tel" placeholder={isArabic ? "تليفون المشرف" : "Supervisor phone"} />
-    <input name="chickenNuggets" type="number" min="0" placeholder={isArabic ? "عدد تشيكن ناجتس" : "Chicken nuggets meals"} /><input name="beefBurgers" type="number" min="0" placeholder={isArabic ? "عدد بيف برجر" : "Beef burger meals"} /><input name="chickenBurgers" type="number" min="0" placeholder={isArabic ? "عدد تشيكن برجر" : "Chicken burger meals"} />
-    <input name="braceletType" placeholder={isArabic ? "نوع البريسلت" : "Bracelet type"} /><input name="staffingRequired" type="number" min="0" placeholder={isArabic ? "الموظفون المطلوبون" : "Staff required"} /><textarea name="notes" aria-label={isArabic ? "ملاحظات الرحلة" : "Trip notes"} placeholder={isArabic ? "ملاحظات الرحلة" : "Trip notes"} />
+    <input name="name" defaultValue={trip?.name || ""} placeholder={isArabic ? "اسم المدرسة أو الأكاديمية الجديدة" : "New school / academy name"} /><label>{isArabic ? "من" : "From"}<input name="startTime" type="time" required defaultValue={trip?.startTime || ""} /></label><label>{isArabic ? "إلى" : "To"}<input name="endTime" type="time" defaultValue={trip?.endTime || ""} /></label>
+    <input name="expectedChildren" type="number" min="0" defaultValue={trip?.expectedChildren ?? ""} placeholder={isArabic ? "عدد الأطفال" : "Children"} /><input name="supervisorName" defaultValue={trip?.supervisorName || ""} placeholder={isArabic ? "اسم المشرف" : "Supervisor name"} /><input name="supervisorPhone" type="tel" defaultValue={trip?.supervisorPhone || ""} placeholder={isArabic ? "تليفون المشرف" : "Supervisor phone"} />
+    <label className="ops-check-line"><input name="mealIncluded" type="checkbox" defaultChecked={trip?.mealIncluded === true} /> {isArabic ? "الرحلة تشمل وجبة" : "Meal included"}</label>
+    <input name="chickenNuggets" type="number" min="0" defaultValue={trip?.chickenNuggets ?? ""} placeholder={isArabic ? "عدد تشيكن ناجتس" : "Chicken nuggets meals"} /><input name="beefBurgers" type="number" min="0" defaultValue={trip?.beefBurgers ?? ""} placeholder={isArabic ? "عدد بيف برجر" : "Beef burger meals"} /><input name="chickenBurgers" type="number" min="0" defaultValue={trip?.chickenBurgers ?? ""} placeholder={isArabic ? "عدد تشيكن برجر" : "Chicken burger meals"} />
+    <input name="staffingRequired" type="number" min="0" defaultValue={trip?.staffingRequired ?? ""} placeholder={isArabic ? "الموظفون المطلوبون" : "Staff required"} /><textarea name="notes" defaultValue={trip?.notes || ""} aria-label={isArabic ? "ملاحظات الرحلة" : "Trip notes"} placeholder={isArabic ? "ملاحظات الرحلة" : "Trip notes"} />
   </FormCard>;
 }
 
-function BirthdayForm({ daily, catalogues, submit, isArabic }) {
-  return <FormCard title={isArabic ? "عيد ميلاد جديد" : "New birthday"} hint={isArabic ? "بيانات العميل والطفل والموعد والوجبات وعدد الضيوف." : "Customer, child, timing, meals and guests."} button={isArabic ? "حفظ عيد الميلاد" : "Save birthday"} onSubmit={(event) => submit("createEvent", event)}>
+function BirthdayForm({ event, daily, catalogues, submit, cancel, isArabic }) {
+  return <FormCard title={event ? (isArabic ? "تعديل عيد الميلاد" : "Edit birthday") : (isArabic ? "عيد ميلاد جديد" : "New birthday")} hint={isArabic ? "بيانات العميل والطفل والموعد والوجبات وعدد الضيوف." : "Customer, child, timing, meals and guests."} button={isArabic ? "حفظ عيد الميلاد" : "Save birthday"} onSubmit={(formEvent) => submit(event ? "updateEvent" : "createEvent", formEvent, event ? { eventId: event.id, branch: event.branch || "MOT" } : {}, event ? "PATCH" : "POST")} secondary={event && <button type="button" className="secondary" onClick={cancel}>{isArabic ? "إلغاء التعديل" : "Cancel edit"}</button>}>
     <select name="birthdayCustomerId" aria-label={isArabic ? "عميل مسجل" : "Saved customer"} defaultValue="" onChange={(event) => { const item = daily?.birthdayCustomers?.find((row) => row.id === event.target.value); const form = event.currentTarget.form; if (item && form) { form.elements.customerName.value = item.customerName; form.elements.customerPhone.value = item.phone; form.elements.childName.value = item.childName || ""; } }}><option value="">{isArabic ? "عميل جديد" : "New customer"}</option>{(daily?.birthdayCustomers || []).map((item) => <option key={item.id} value={item.id}>{item.customerName} · {item.phone}{item.childName ? ` · ${item.childName}` : ""}</option>)}</select>
-    <input name="name" placeholder={isArabic ? "عنوان الحجز (اختياري)" : "Booking title (optional)"} /><input name="customerName" placeholder={isArabic ? "اسم العميل" : "Customer name"} /><input name="customerPhone" type="tel" placeholder={isArabic ? "رقم التليفون" : "Phone number"} /><input name="childName" placeholder={isArabic ? "اسم الطفل" : "Child name"} />
-    <label>{isArabic ? "من" : "From"}<input name="startTime" type="time" required /></label><label>{isArabic ? "إلى" : "To"}<input name="endTime" type="time" /></label><input name="expectedGuests" type="number" min="0" placeholder={isArabic ? "عدد الضيوف" : "Guests"} />
-    <input name="chickenNuggets" type="number" min="0" placeholder={isArabic ? "عدد تشيكن ناجتس" : "Chicken nuggets meals"} /><input name="beefBurgers" type="number" min="0" placeholder={isArabic ? "عدد بيف برجر" : "Beef burger meals"} /><input name="chickenBurgers" type="number" min="0" placeholder={isArabic ? "عدد تشيكن برجر" : "Chicken burger meals"} />
-    <input name="partyRoomHours" type="number" min="0" step="0.5" placeholder={isArabic ? "حجز Party Room بالساعات" : "Party Room hours"} /><select name="location" defaultValue=""><option value="">{isArabic ? "اختر الغرفة" : "Choose room"}</option>{(catalogues.partyRooms || []).map((item) => { const name = typeof item === "string" ? item : item.name; return <option key={name} value={name}>{name}</option>; })}</select>
-    <input name="staffingRequired" type="number" min="0" placeholder={isArabic ? "الموظفون المطلوبون" : "Staff required"} /><textarea name="notes" aria-label={isArabic ? "ملاحظات عيد الميلاد" : "Birthday notes"} placeholder={isArabic ? "ملاحظات" : "Notes"} />
+    <input name="name" defaultValue={event?.name || ""} placeholder={isArabic ? "عنوان الحجز (اختياري)" : "Booking title (optional)"} /><input name="customerName" defaultValue={event?.customerName || ""} placeholder={isArabic ? "اسم العميل" : "Customer name"} /><input name="customerPhone" type="tel" defaultValue={event?.customerPhone || ""} placeholder={isArabic ? "رقم التليفون" : "Phone number"} /><input name="childName" defaultValue={event?.childName || ""} placeholder={isArabic ? "اسم الطفل" : "Child name"} />
+    <label>{isArabic ? "من" : "From"}<input name="startTime" type="time" required defaultValue={event?.startTime || ""} /></label><label>{isArabic ? "إلى" : "To"}<input name="endTime" type="time" defaultValue={event?.endTime || ""} /></label><input name="expectedGuests" type="number" min="0" defaultValue={event?.expectedGuests ?? ""} placeholder={isArabic ? "عدد الضيوف" : "Guests"} />
+    <input name="chickenNuggets" type="number" min="0" defaultValue={event?.chickenNuggets ?? ""} placeholder={isArabic ? "عدد تشيكن ناجتس" : "Chicken nuggets meals"} /><input name="beefBurgers" type="number" min="0" defaultValue={event?.beefBurgers ?? ""} placeholder={isArabic ? "عدد بيف برجر" : "Beef burger meals"} /><input name="chickenBurgers" type="number" min="0" defaultValue={event?.chickenBurgers ?? ""} placeholder={isArabic ? "عدد تشيكن برجر" : "Chicken burger meals"} />
+    <input name="partyRoomHours" type="number" min="0" step="0.5" defaultValue={event?.partyRoomHours ?? ""} placeholder={isArabic ? "حجز Party Room بالساعات" : "Party Room hours"} /><select name="location" defaultValue={event?.location || ""}><option value="">{isArabic ? "اختر الغرفة" : "Choose room"}</option>{(catalogues.partyRooms || []).map((item) => { const name = typeof item === "string" ? item : item.name; return <option key={name} value={name}>{name}</option>; })}</select>
+    <input name="staffingRequired" type="number" min="0" defaultValue={event?.staffingRequired ?? ""} placeholder={isArabic ? "الموظفون المطلوبون" : "Staff required"} /><textarea name="notes" defaultValue={event?.notes || ""} aria-label={isArabic ? "ملاحظات عيد الميلاد" : "Birthday notes"} placeholder={isArabic ? "ملاحظات" : "Notes"} />
   </FormCard>;
 }
 
@@ -206,16 +229,17 @@ function StockCard({ title, category, unit, color, kind, submit, isArabic }) {
   return <FormCard title={title} hint={isArabic ? "أدخل كمية الكاشير وكمية المخزن؛ الإعداد دائم لكل الأيام." : "Enter cashier and warehouse quantities; this applies every day."} button={isArabic ? "حفظ" : "Save"} onSubmit={(event) => submit("setStock", event)}>
     <input type="hidden" name="stockCategory" value={category} /><input type="hidden" name="unit" value={unit} />
     {kind === "socks" && <label>{isArabic ? "المقاس" : "Size"}<select name="size" defaultValue="M"><option value="M">M</option><option value="L">L</option></select></label>}
-    {kind === "bracelet" && <label>{isArabic ? "استخدام البريسلت" : "Bracelet use"}<select name="usageType" defaultValue="KID">{[["KID","Kid"],["TODDLER","Toddler"],["S_N","S.N"],["VISITOR","Visitor"],["TRIP","Trip"],["BIRTHDAY","Birthday"]].map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>}
+    {kind === "bracelet" && <><label>{isArabic ? "استخدام البريسلت" : "Bracelet use"}<select name="usageType" defaultValue="KID">{[["KID","Kid"],["TODDLER","Toddler"],["S_N","S.N"],["VISITOR","Visitor"],["TRIP","Trip"],["BIRTHDAY","Birthday"]].map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label><label>{isArabic ? "خامة البريسلت" : "Bracelet material"}<select name="material" defaultValue="SATAN"><option value="SATAN">Satan</option><option value="PAPER">Paper</option><option value="PLASTIC">Plastic</option></select></label></>}
     {kind === "roll" && <label>{isArabic ? "حالة الرول" : "Roll type"}<select name="rollStyle" defaultValue="PRINTED"><option value="PRINTED">{isArabic ? "مطبوع" : "Printed"}</option><option value="PLAIN">{isArabic ? "سادة" : "Plain"}</option></select></label>}
-    {kind !== "roll" && <label>{isArabic ? "لون الصنف" : "Item color"}<input name="color" type="color" defaultValue={color} /></label>}
+    {kind === "socks" && <label>{isArabic ? "لون الشراب" : "Sock color"}<select name="color" defaultValue="#f2c94c"><option value="#f2c94c">Yellow</option><option value="#e77aa8">Pink</option></select></label>}
+    {kind === "bracelet" && <label>{isArabic ? "لون البريسلت" : "Bracelet color"}<input name="color" type="color" defaultValue={color} /></label>}
     <label>{isArabic ? "الكمية في الكاشير" : "Cashier quantity"}<input name="cashierQuantity" type="number" min="0" defaultValue="0" /></label><label>{isArabic ? "الكمية في المخزن" : "Warehouse quantity"}<input name="warehouseQuantity" type="number" min="0" defaultValue="0" /></label>
     <textarea name="notes" aria-label={`${title} notes`} placeholder={isArabic ? "ملاحظات" : "Notes"} />
   </FormCard>;
 }
 
 function StockList({ items, isArabic }) {
-  const label = (item) => item.stockCategory === "BRACELET" ? (item.usageType || item.wristbandType) : item.stockCategory === "SOCKS" ? `${item.size || "—"}${item.color ? ` · ${item.color}` : ""}` : `${item.stockCategory === "CASH_ROLL" ? (isArabic ? "رول كاش" : "Cash roll") : (isArabic ? "رول فيزا" : "Visa roll")} · ${item.rollStyle === "PLAIN" ? (isArabic ? "سادة" : "Plain") : (isArabic ? "مطبوع" : "Printed")}`;
+  const label = (item) => item.stockCategory === "BRACELET" ? `${item.usageType || item.wristbandType}${item.material ? ` · ${item.material}` : ""}` : item.stockCategory === "SOCKS" ? `${item.size || "—"}${item.color ? ` · ${item.color}` : ""}` : `${item.stockCategory === "CASH_ROLL" ? (isArabic ? "رول كاش" : "Cash roll") : (isArabic ? "رول فيزا" : "Visa roll")} · ${item.rollStyle === "PLAIN" ? (isArabic ? "سادة" : "Plain") : (isArabic ? "مطبوع" : "Printed")}`;
   const quantities = (item) => {
     const cashier = Number(item.cashierQuantity || 0);
     const warehouse = Number(item.warehouseQuantity || 0);
@@ -232,6 +256,6 @@ function RosterNameRow({ employee, disabled, save, isArabic }) {
   return <div><span><b>{employee.name}</b><small>{employee.hrisNumber || employee.localEmployeeCode}</small></span><input aria-label={`${employee.name} roster name`} value={value} onChange={(event) => setValue(event.target.value)} placeholder={isArabic ? "الاسم الثنائي" : "Two-name roster label"} /><button type="button" disabled={disabled || !value.trim()} onClick={() => save(employee.id, value)}>{isArabic ? "حفظ" : "Save"}</button></div>;
 }
 
-function Current({ title, items = [], render }) {
-  return <article><h3>{title}</h3>{items.length ? items.map((item) => <p key={item.id}>{render(item)}</p>) : <p className="muted">—</p>}</article>;
+function Current({ title, items = [], render, edit, remove, isArabic }) {
+  return <article><h3>{title}</h3>{items.length ? items.map((item) => <div className="ops-current-item" key={item.id}><p>{render(item)}</p><span><button type="button" onClick={() => edit(item)}>{isArabic ? "تعديل" : "Edit"}</button><button type="button" className="danger" onClick={() => remove(item)}>{isArabic ? "حذف" : "Delete"}</button></span></div>) : <p className="muted">—</p>}</article>;
 }

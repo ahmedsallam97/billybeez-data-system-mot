@@ -143,8 +143,13 @@ async function posterPngBlob({ data, config, weekday, grouped }) {
     .filter(([key]) => !WORKING_SHIFTS.includes(key))
     .flatMap(([group, people]) => people.map((person) => ({ ...person, group })));
   const visibleCards = config.cardOrder.filter((card) => config.visibleCards[card] && (card !== "trips" || data.trips?.length) && (card !== "birthdays" || data.events?.length));
+  const cardLinesByCard = Object.fromEntries(visibleCards.map((card) => [card, card === "offers"
+    ? (data.offers || []).map((offer) => `${offer.title}${offer.priceBefore != null ? ` · ${offer.priceBefore}→${offer.priceAfter ?? "—"} EGP` : offer.priceAfter != null ? ` · ${offer.priceAfter} EGP` : ""}`)
+    : previewCardLines(card, data)]));
+  const maxCardLines = Math.max(1, ...Object.values(cardLinesByCard).map((lines) => lines.length));
+  const cardInnerHeight = Math.max(132, 58 + maxCardLines * 21);
   const rosterRows = WORKING_SHIFTS.reduce((total, shift) => total + (grouped[shift]?.length ? grouped[shift].length + 2 : 0), 0);
-  const cardHeight = visibleCards.length ? 152 : 0;
+  const cardHeight = visibleCards.length ? cardInnerHeight + 20 : 0;
   const leavesHeight = config.visibleSections.leaves ? 52 + Math.max(1, nonWorking.length) * 34 : 0;
   const notesHeight = config.visibleSections.notes ? 82 : 0;
   const height = 150 + cardHeight + 76 + rosterRows * 42 + leavesHeight + notesHeight + 86;
@@ -168,15 +173,13 @@ async function posterPngBlob({ data, config, weekday, grouped }) {
     visibleCards.forEach((card, index) => {
       const x = margin + index * (cardWidth + gap);
       const tone = card === "offers" ? "#d98a31" : card === "trips" ? "#3182bd" : card === "birthdays" ? "#4f8c5c" : "#2e7da5";
-      rect(x, y, cardWidth, 132, "#fffdf8", tone, 12);
+      rect(x, y, cardWidth, cardInnerHeight, "#fffdf8", tone, 12);
       rect(x, y, cardWidth, 38, tone, "none", 10);
       text(cardLabels[card], x + cardWidth / 2, y + 26, 17, 900, "#ffffff", "middle");
-      const lines = card === "offers"
-        ? (data.offers || []).map((offer) => `${offer.title}${offer.priceAfter != null ? ` · ${offer.priceAfter} EGP` : ""}`)
-        : previewCardLines(card, data);
-      (lines.length ? lines : [config.cardContent?.[card] || "—"]).slice(0, 4).forEach((line, lineIndex) => text(short(line, 42), x + 14, y + 65 + lineIndex * 21, 14, 700));
+      const lines = cardLinesByCard[card] || [];
+      (lines.length ? lines : [config.cardContent?.[card] || "—"]).forEach((line, lineIndex) => text(short(line, 42), x + 14, y + 65 + lineIndex * 21, 14, 700));
     });
-    y += 152;
+    y += cardHeight;
   }
 
   const numberWidth = 46, nameWidth = 230, attendanceWidth = 118, breakWidth = 118;
@@ -765,17 +768,22 @@ export default function DailyApprovalPreview() {
     const popup = window.open("about:blank", "_blank");
     try {
       if (!data?.schedule) throw new Error("Roster preview is not ready");
+      const blob = await posterPngBlob({ data, config, weekday, grouped });
+      const file = new File([blob], `BillyBeez-MOT-roster-${date}.png`, { type: "image/png" });
+      const message = isArabic ? `روستر Billy Beez MOT - ${date}` : `Billy Beez MOT roster - ${date}`;
+      if (navigator.share && navigator.canShare?.({ files: [file] })) {
+        if (popup) popup.close();
+        await navigator.share({ files: [file], title: message, text: message });
+        setActionMessage(isArabic ? "تم فتح المشاركة بصورة الروستر؛ اختر واتساب" : "The roster image is ready to share; choose WhatsApp");
+        return;
+      }
       if (!navigator.clipboard?.write || typeof ClipboardItem === "undefined") throw new Error("Image clipboard is not supported in this browser");
-      // Start the clipboard write inside the click's user-activation window. The
-      // ClipboardItem may resolve its PNG asynchronously without losing access.
-      const png = posterPngBlob({ data, config, weekday, grouped });
       let copied = true;
       try {
-        await navigator.clipboard.write([new ClipboardItem({ "image/png": png })]);
+        await navigator.clipboard.write([new ClipboardItem({ "image/png": blob })]);
       } catch (clipboardError) {
         if (!/permission|notallowed/i.test(`${clipboardError?.name || ""} ${clipboardError?.message || ""}`)) throw clipboardError;
         copied = false;
-        const blob = await png;
         const downloadUrl = URL.createObjectURL(blob);
         const download = document.createElement("a");
         download.href = downloadUrl;
@@ -783,8 +791,8 @@ export default function DailyApprovalPreview() {
         download.click();
         window.setTimeout(() => URL.revokeObjectURL(downloadUrl), 1500);
       }
-      const message = isArabic ? `روستر Billy Beez MOT - ${date}\nصورة الروستر جاهزة؛ الصقها أو أرفق الملف المنزل.` : `Billy Beez MOT roster - ${date}\nThe roster image is ready; paste it or attach the downloaded file.`;
-      if (popup) popup.location.href = `https://wa.me/?text=${encodeURIComponent(message)}`;
+      const fallbackMessage = isArabic ? `${message}\nصورة الروستر جاهزة؛ الصقها أو أرفق الملف المنزل.` : `${message}\nThe roster image is ready; paste it or attach the downloaded file.`;
+      if (popup) popup.location.href = `https://wa.me/?text=${encodeURIComponent(fallbackMessage)}`;
       setActionMessage(copied
         ? (isArabic ? "تم نسخ صورة الروستر وفتح واتساب" : "Roster image copied and WhatsApp opened")
         : (isArabic ? "المتصفح منع النسخ التلقائي؛ تم تنزيل صورة الروستر وفتح واتساب" : "Clipboard access was blocked; the roster image was downloaded and WhatsApp opened"));

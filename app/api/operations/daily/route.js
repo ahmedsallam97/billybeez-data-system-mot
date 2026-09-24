@@ -3,8 +3,9 @@ import { prisma } from "@/lib/db";
 import { authorizeApi } from "@/lib/api-auth";
 import { writeAudit } from "@/lib/audit";
 import { getSetting } from "@/lib/settings";
-import { buildExpectedTeam, mergeExpectedActual, canAssign, overlaps, generateRotation, coverageFor, buildReadiness, needsAttention, closeDayValidation } from "@/lib/operations/live-daily";
+import { buildExpectedTeam, mergeExpectedActual, canAssign, overlaps, generateRotation, normalizeRotationRules, coverageFor, buildReadiness, needsAttention, closeDayValidation } from "@/lib/operations/live-daily";
 import { normalizeWeekdays, offerAppliesOnDate, stockAvailable, stockKey } from "@/lib/operations/planning";
+import { applyCashierFallbacks } from "@/lib/operations/cashiers";
 
 const validDate = (value) => /^\d{4}-\d{2}-\d{2}$/.test(String(value || ""));
 const parseJson = (value) => { try { return JSON.parse(value || "{}"); } catch { return {}; } };
@@ -35,11 +36,21 @@ function offerValues(body, userId) {
   };
 }
 
+function bool(value) { return value === true || value === "true" || value === "on" || value === "YES"; }
+function braceletFor(stockRows, usageType, offset = 0) {
+  const candidates = (stockRows || [])
+    .filter((item) => item.stockCategory === "BRACELET" && item.usageType === usageType && stockAvailable(item) > 0)
+    .sort((left, right) => stockAvailable(right) - stockAvailable(left) || String(left.color || "").localeCompare(String(right.color || "")));
+  if (!candidates.length) return { braceletType: null, braceletColor: null, braceletMaterial: null };
+  const item = candidates[offset % candidates.length];
+  return { braceletType: item.wristbandType, braceletColor: item.color || null, braceletMaterial: item.material || null };
+}
+
 async function loadDaily(date, branch = "MOT") {
   const timelineStart = new Date(`${date}T00:00:00.000Z`);
   const timelineEnd = new Date(`${date}T00:00:00.000Z`);
   timelineEnd.setUTCDate(timelineEnd.getUTCDate() + 1);
-  const [schedule, attendanceDay, day, shiftRows, positions, trips, events, offerRows, notices, stockRows, tripPartners, birthdayCustomers, timeline] = await Promise.all([
+  const [schedule, attendanceDay, day, shiftRows, positions, trips, events, offerRows, notices, stockRows, tripPartners, birthdayCustomers, timeline, cashierConfigRaw] = await Promise.all([
     prisma.opsSchedule.findFirst({ where: { status: "PUBLISHED", periodStart: { lte: date }, periodEnd: { gte: date } }, orderBy: { version: "desc" } }),
     prisma.opsAttendanceDay.findFirst({ where: { workDate: date }, include: { records: true }, orderBy: { version: "desc" } }),
     prisma.opsOperationsDay.findFirst({ where: { workDate: date, branch }, include: { rotationPlans: { orderBy: { version: "desc" }, include: { assignments: { include: { employee: { select: { id: true, name: true, jobTitle: true } }, position: true }, orderBy: [{ startTime: "asc" }, { employee: { name: "asc" } }] }, breaks: { include: { employee: { select: { id: true, name: true } } }, orderBy: { startTime: "asc" } } } } }, orderBy: { version: "desc" } }),
@@ -53,13 +64,15 @@ async function loadDaily(date, branch = "MOT") {
     prisma.opsTripPartner.findMany({ where: { branch }, orderBy: { name: "asc" } }),
     prisma.opsBirthdayCustomer.findMany({ where: { branch }, orderBy: [{ customerName: "asc" }, { childName: "asc" }] }),
     prisma.auditLog.findMany({ where: { action: { startsWith: "OPS_" }, createdAt: { gte: timelineStart, lt: timelineEnd } }, include: { user: { select: { name: true } } }, orderBy: { createdAt: "desc" }, take: 30 }),
+    getSetting("OPS_CASHIER_CONFIG", "{}"),
   ]);
   const offers = offerRows.filter((offer) => offerAppliesOnDate(offer, date));
   const globalStock = stockRows.filter((item) => item.workDate === "ALL");
   const wristbands = globalStock.length ? globalStock : stockRows.filter((item) => item.workDate === date);
   const amStartsAtNine = trips.some((trip) => String(trip.startTime || "").startsWith("09:"));
   const shifts = Object.fromEntries(shiftRows.map((item) => [item.code, item.code === "AM" && amStartsAtNine ? { ...item, startTime: "09:00", endTime: "17:00" } : item]));
-  const scheduleAssignments = schedule ? await prisma.opsScheduleAssignment.findMany({ where: { scheduleId: schedule.id, workDate: date }, include: { employee: { select: { id: true, name: true, nameEn: true, operationalName: true, gender: true, operationsTeamLeader: true, hrisNumber: true, localEmployeeCode: true, jobTitle: true, department: true, employmentType: true, employmentStatus: true, active: true } } }, orderBy: [{ shiftCode: "asc" }, { employee: { name: "asc" } }] }) : [];
+  const rawScheduleAssignments = schedule ? await prisma.opsScheduleAssignment.findMany({ where: { scheduleId: schedule.id, workDate: date }, include: { employee: { select: { id: true, name: true, nameEn: true, operationalName: true, gender: true, operationsTeamLeader: true, hrisNumber: true, localEmployeeCode: true, jobTitle: true, department: true, employmentType: true, employmentStatus: true, active: true } } }, orderBy: [{ shiftCode: "asc" }, { employee: { name: "asc" } }] }) : [];
+  const scheduleAssignments = applyCashierFallbacks(rawScheduleAssignments, parseJson(cashierConfigRaw));
   const expected = buildExpectedTeam(scheduleAssignments, shifts);
   const live = isToday(date);
   const team = mergeExpectedActual(expected, attendanceDay?.records || [], live).map((item) => ({ ...item, liveDay: live }));
@@ -104,9 +117,9 @@ export async function POST(request) {
     if (body.action === "open") return NextResponse.json({ success: true, day: await ensureDay(date, branch, user, body.teamNote) }, { status: 201 });
     if (body.action === "generateRotation") {
       const day = await ensureDay(date, branch, user); if (day.status === "CLOSED") throw new Error("Closed days must be reopened before rotation changes");
-      const data = await loadDaily(date, branch); const rotationRules = parseJson(await getSetting("OPS_ROTATION_RULES", "{}")); const slots = hourlySlots(data.shifts, data.team, rotationRules.slotsPerShift || 8); const generated = generateRotation({ workDate: date, team: data.team, positions: data.positions, qualifications: data.qualifications, breaks: data.breaks, slots, rules: rotationRules });
+      const data = await loadDaily(date, branch); const rotationRules = normalizeRotationRules(parseJson(await getSetting("OPS_ROTATION_RULES", "{}"))); const slots = hourlySlots(data.shifts, data.team, rotationRules.slotsPerShift || 8); const fixedAssignments = rotationRules.preserveManualLocks ? data.assignments.filter((item) => item.manualLock || item.source === "MANUAL") : []; const generated = generateRotation({ workDate: date, team: data.team, positions: data.positions, qualifications: data.qualifications, breaks: data.breaks, slots, rules: rotationRules, fixedAssignments });
       const latestVersion = data.day?.rotationPlans?.[0]?.version || 0;
-      const plan = await prisma.$transaction(async (tx) => { await tx.opsRotationPlan.updateMany({ where: { operationsDayId: day.id, status: { in: ["DRAFT", "ACTIVE"] } }, data: { status: "SUPERSEDED" } }); return tx.opsRotationPlan.create({ data: { operationsDayId: day.id, branch, version: latestVersion + 1, status: "ACTIVE", generatedBy: user.id, generatedAt: new Date(), generationSnapshotJson: JSON.stringify({ alerts: generated.alerts, slots }), assignments: { create: generated.assignments.map((item) => ({ employeeId: item.employeeId, operationalPositionId: item.operationalPositionId, startTime: item.startTime, endTime: item.endTime, source: "AUTO", manualLock: item.manualLock, createdBy: user.id, updatedBy: user.id })) } }, include: { assignments: true } }); });
+       const plan = await prisma.$transaction(async (tx) => { await tx.opsRotationPlan.updateMany({ where: { operationsDayId: day.id, status: { in: ["DRAFT", "ACTIVE"] } }, data: { status: "SUPERSEDED" } }); return tx.opsRotationPlan.create({ data: { operationsDayId: day.id, branch, version: latestVersion + 1, status: "ACTIVE", generatedBy: user.id, generatedAt: new Date(), generationSnapshotJson: JSON.stringify({ alerts: generated.alerts, slots, rules: rotationRules }), assignments: { create: generated.assignments.map((item) => ({ employeeId: item.employeeId, operationalPositionId: item.operationalPositionId, startTime: item.startTime, endTime: item.endTime, source: item.source === "MANUAL" ? "MANUAL" : "AUTO", manualLock: Boolean(item.manualLock), overrideReason: item.overrideReason || null, createdBy: user.id, updatedBy: user.id })) } }, include: { assignments: true } }); });
       await writeAudit({ action: "OPS_ROTATION_GENERATED", user, summary: `Generated rotation for ${date}`, metadata: { dayId: day.id, planId: plan.id, version: plan.version, assignmentCount: plan.assignments.length, shortageCount: generated.alerts.length, branch } });
       return NextResponse.json({ success: true, plan, alerts: generated.alerts });
     }
@@ -140,7 +153,10 @@ export async function POST(request) {
         update: { supervisorName: String(body.supervisorName || partner?.supervisorName || "").trim() || null, supervisorPhone: String(body.supervisorPhone || partner?.supervisorPhone || "").trim() || null, updatedBy: user.id },
         create: { branch, name: partnerName, supervisorName: String(body.supervisorName || "").trim() || null, supervisorPhone: String(body.supervisorPhone || "").trim() || null, createdBy: user.id, updatedBy: user.id },
       });
-      const record = await prisma.opsDailyTrip.create({ data: { branch, workDate: date, tripPartnerId: partner.id, name: partner.name, startTime: String(body.startTime), endTime: String(body.endTime || "") || null, expectedChildren: number("expectedChildren"), supervisorName: String(body.supervisorName || partner.supervisorName || "").trim() || null, supervisorPhone: String(body.supervisorPhone || partner.supervisorPhone || "").trim() || null, chickenNuggets: number("chickenNuggets"), beefBurgers: number("beefBurgers"), chickenBurgers: number("chickenBurgers"), braceletType: String(body.braceletType || "").trim() || null, staffingRequired: number("staffingRequired"), notes: String(body.notes || "").trim() || null, createdBy: user.id, updatedBy: user.id } });
+      const stockRows = await prisma.opsWristbandStock.findMany({ where: { branch, workDate: "ALL" } });
+      const existingCount = await prisma.opsDailyTrip.count({ where: { branch, workDate: date, status: { not: "CANCELLED" } } });
+      const bracelet = braceletFor(stockRows, "TRIP", existingCount);
+      const record = await prisma.opsDailyTrip.create({ data: { branch, workDate: date, tripPartnerId: partner.id, name: partner.name, startTime: String(body.startTime), endTime: String(body.endTime || "") || null, expectedChildren: number("expectedChildren"), supervisorName: String(body.supervisorName || partner.supervisorName || "").trim() || null, supervisorPhone: String(body.supervisorPhone || partner.supervisorPhone || "").trim() || null, mealIncluded: bool(body.mealIncluded), chickenNuggets: number("chickenNuggets"), beefBurgers: number("beefBurgers"), chickenBurgers: number("chickenBurgers"), ...bracelet, staffingRequired: number("staffingRequired"), notes: String(body.notes || "").trim() || null, createdBy: user.id, updatedBy: user.id } });
       await writeAudit({ action: "OPS_CREATETRIP", user, summary: `Created trip for ${partner.name}`, metadata: { id: record.id, partnerId: partner.id, branch, date } });
       return NextResponse.json({ success: true, record, partner });
     }
@@ -151,7 +167,10 @@ export async function POST(request) {
       const childName = String(body.childName || customer?.childName || "").trim();
       if (!phone || !customerName || !childName || !body.startTime) throw new Error("Customer, phone, child and start time are required");
       customer = await prisma.opsBirthdayCustomer.upsert({ where: { branch_phone: { branch, phone } }, update: { customerName, childName, updatedBy: user.id }, create: { branch, phone, customerName, childName, createdBy: user.id, updatedBy: user.id } });
-      const record = await prisma.opsDailyEvent.create({ data: { branch, workDate: date, birthdayCustomerId: customer.id, name: String(body.name || `${childName} Birthday`).trim(), customerName, customerPhone: phone, childName, startTime: String(body.startTime), endTime: String(body.endTime || "") || null, eventType: "BIRTHDAY", expectedGuests: number("expectedGuests"), chickenNuggets: number("chickenNuggets"), beefBurgers: number("beefBurgers"), chickenBurgers: number("chickenBurgers"), partyRoomHours: body.partyRoomHours ? Number(body.partyRoomHours) : null, location: String(body.location || "").trim() || null, staffingRequired: number("staffingRequired"), notes: String(body.notes || "").trim() || null, createdBy: user.id, updatedBy: user.id } });
+      const stockRows = await prisma.opsWristbandStock.findMany({ where: { branch, workDate: "ALL" } });
+      const existingCount = await prisma.opsDailyEvent.count({ where: { branch, workDate: date, eventType: "BIRTHDAY", status: { not: "CANCELLED" } } });
+      const bracelet = braceletFor(stockRows, "BIRTHDAY", existingCount);
+      const record = await prisma.opsDailyEvent.create({ data: { branch, workDate: date, birthdayCustomerId: customer.id, name: String(body.name || `${childName} Birthday`).trim(), customerName, customerPhone: phone, childName, startTime: String(body.startTime), endTime: String(body.endTime || "") || null, eventType: "BIRTHDAY", expectedGuests: number("expectedGuests"), chickenNuggets: number("chickenNuggets"), beefBurgers: number("beefBurgers"), chickenBurgers: number("chickenBurgers"), partyRoomHours: body.partyRoomHours ? Number(body.partyRoomHours) : null, ...bracelet, location: String(body.location || "").trim() || null, staffingRequired: number("staffingRequired"), notes: String(body.notes || "").trim() || null, createdBy: user.id, updatedBy: user.id } });
       await writeAudit({ action: "OPS_CREATEEVENT", user, summary: `Created birthday for ${childName}`, metadata: { id: record.id, customerId: customer.id, branch, date } });
       return NextResponse.json({ success: true, record, customer });
     }
@@ -166,14 +185,15 @@ export async function POST(request) {
       const usageType = String(body.usageType || body.wristbandType || "").trim() || null;
       const size = String(body.size || "").trim() || null;
       const rollStyle = String(body.rollStyle || "").trim() || null;
+      const material = String(body.material || "").trim() || null;
       const color = String(body.color || "").trim() || null;
       if (stockCategory === "BRACELET" && !usageType) throw new Error("Bracelet usage is required");
       if (stockCategory === "SOCKS" && !size) throw new Error("Sock size is required");
       if (["CASH_ROLL", "VISA_ROLL"].includes(stockCategory) && !rollStyle) throw new Error("Roll style is required");
       const cashierQuantity = number("cashierQuantity");
       const warehouseQuantity = number("warehouseQuantity");
-      const wristbandType = stockKey({ stockCategory, usageType, size, rollStyle, color });
-      const values = { stockCategory, unit: String(body.unit || "ITEM"), color, usageType, size, rollStyle, cashierQuantity, warehouseQuantity, availableStock: cashierQuantity + warehouseQuantity, allocated: 0, issued: 0, notes: String(body.notes || "").trim() || null };
+      const wristbandType = stockKey({ stockCategory, usageType, size, rollStyle, color, material });
+      const values = { stockCategory, unit: String(body.unit || "ITEM"), color, usageType, material, size, rollStyle, cashierQuantity, warehouseQuantity, availableStock: cashierQuantity + warehouseQuantity, allocated: 0, issued: 0, notes: String(body.notes || "").trim() || null };
       const record = await prisma.opsWristbandStock.upsert({ where: { branch_workDate_wristbandType: { branch, workDate: "ALL", wristbandType } }, update: { ...values, updatedBy: user.id }, create: { branch, workDate: "ALL", wristbandType, ...values, createdBy: user.id, updatedBy: user.id } });
       await writeAudit({ action: "OPS_SETSTOCK", user, summary: `Updated stock ${record.usageType || record.size || record.rollStyle || record.wristbandType}`, metadata: { id: record.id, branch, available: stockAvailable(record), category: stockCategory } });
       return NextResponse.json({ success: true, record });
@@ -190,6 +210,30 @@ export async function POST(request) {
 export async function PATCH(request) {
   const { user, error } = await authorizeApi("OPS_DAILY_MANAGE"); if (error) return error; const body = await request.json();
   try {
+    if (body.action === "updateTrip") {
+      const current = await prisma.opsDailyTrip.findFirst({ where: { id: String(body.tripId || ""), branch: String(body.branch || "MOT") } });
+      if (!current) throw new Error("Trip not found");
+      const record = await prisma.opsDailyTrip.update({ where: { id: current.id }, data: { name: String(body.name || current.name).trim(), startTime: String(body.startTime || current.startTime || "") || null, endTime: String(body.endTime || "") || null, expectedChildren: Math.max(0, Number(body.expectedChildren || 0)), supervisorName: String(body.supervisorName || "").trim() || null, supervisorPhone: String(body.supervisorPhone || "").trim() || null, mealIncluded: bool(body.mealIncluded), chickenNuggets: Math.max(0, Number(body.chickenNuggets || 0)), beefBurgers: Math.max(0, Number(body.beefBurgers || 0)), chickenBurgers: Math.max(0, Number(body.chickenBurgers || 0)), staffingRequired: Math.max(0, Number(body.staffingRequired || 0)), notes: String(body.notes || "").trim() || null, updatedBy: user.id } });
+      await writeAudit({ action: "OPS_UPDATETRIP", user, summary: `Updated trip ${record.name}`, metadata: { id: record.id, branch: record.branch } });
+      return NextResponse.json({ success: true, record });
+    }
+    if (body.action === "deleteTrip") {
+      const record = await prisma.opsDailyTrip.update({ where: { id: String(body.tripId || "") }, data: { status: "CANCELLED", updatedBy: user.id } });
+      await writeAudit({ action: "OPS_DELETETRIP", user, summary: `Cancelled trip ${record.name}`, metadata: { id: record.id, branch: record.branch } });
+      return NextResponse.json({ success: true, record });
+    }
+    if (body.action === "updateEvent") {
+      const current = await prisma.opsDailyEvent.findFirst({ where: { id: String(body.eventId || ""), branch: String(body.branch || "MOT") } });
+      if (!current) throw new Error("Birthday not found");
+      const record = await prisma.opsDailyEvent.update({ where: { id: current.id }, data: { name: String(body.name || current.name).trim(), customerName: String(body.customerName || current.customerName || "").trim() || null, customerPhone: String(body.customerPhone || current.customerPhone || "").trim() || null, childName: String(body.childName || current.childName || "").trim() || null, startTime: String(body.startTime || current.startTime || "") || null, endTime: String(body.endTime || "") || null, expectedGuests: Math.max(0, Number(body.expectedGuests || 0)), chickenNuggets: Math.max(0, Number(body.chickenNuggets || 0)), beefBurgers: Math.max(0, Number(body.beefBurgers || 0)), chickenBurgers: Math.max(0, Number(body.chickenBurgers || 0)), partyRoomHours: body.partyRoomHours ? Number(body.partyRoomHours) : null, location: String(body.location || "").trim() || null, staffingRequired: Math.max(0, Number(body.staffingRequired || 0)), notes: String(body.notes || "").trim() || null, updatedBy: user.id } });
+      await writeAudit({ action: "OPS_UPDATEEVENT", user, summary: `Updated birthday ${record.name}`, metadata: { id: record.id, branch: record.branch } });
+      return NextResponse.json({ success: true, record });
+    }
+    if (body.action === "deleteEvent") {
+      const record = await prisma.opsDailyEvent.update({ where: { id: String(body.eventId || "") }, data: { status: "CANCELLED", updatedBy: user.id } });
+      await writeAudit({ action: "OPS_DELETEEVENT", user, summary: `Cancelled birthday ${record.name}`, metadata: { id: record.id, branch: record.branch } });
+      return NextResponse.json({ success: true, record });
+    }
     if (body.action === "updateOffer") {
       const current = await prisma.opsDailyOffer.findFirst({ where: { id: String(body.offerId || ""), branch: String(body.branch || "MOT") } });
       if (!current) throw new Error("Offer not found");

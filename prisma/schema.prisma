@@ -1301,10 +1301,13 @@ model OpsDailyTrip {
   supervisorName    String?
   supervisorPhone   String?
   mealType          String?
+  mealIncluded      Boolean?
   chickenNuggets    Int      @default(0)
   beefBurgers       Int      @default(0)
   chickenBurgers    Int      @default(0)
   braceletType      String?
+  braceletColor     String?
+  braceletMaterial  String?
   staffingRequired  Int?
   status            String   @default("PLANNED")
   notes             String?
@@ -1336,6 +1339,9 @@ model OpsDailyEvent {
   chickenBurgers   Int      @default(0)
   partyRoomHours   Float?
   expectedGuests   Int?
+  braceletType     String?
+  braceletColor    String?
+  braceletMaterial String?
   location         String?
   staffingRequired Int?
   notes            String?
@@ -1434,6 +1440,7 @@ model OpsWristbandStock {
   unit           String   @default("ITEM")
   color          String?
   usageType      String?
+  material       String?
   size           String?
   rollStyle      String?
   cashierQuantity Int     @default(0)

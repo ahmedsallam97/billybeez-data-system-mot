@@ -1,13 +1,7 @@
 import { requireUser } from "@/lib/auth";
-import AppShell from "../AppShell";
-import ManagerClient from "./ManagerClient";
+import { redirect } from "next/navigation";
 
 export default async function ManagerPage() {
-  const user = await requireUser(["ADMIN", "MANAGER"]);
-
-  return (
-    <AppShell title="title.manager" user={user}>
-      <ManagerClient />
-    </AppShell>
-  );
+  await requireUser(["ADMIN", "MANAGER"]);
+  redirect("/settings?section=business");
 }

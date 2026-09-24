@@ -44,7 +44,16 @@ export async function POST(request) {
     } else if (body.action === "savePosition") {
       const code = String(body.code || "").trim().toUpperCase();
       if (!code) throw new Error("Position code is required");
-      record = await prisma.opsOperationalPosition.upsert({ where: { code }, update: { label: String(body.label || code), labelAr: String(body.labelAr || "") || null, critical: Boolean(body.critical), requiresQualification: body.requiresQualification !== false, active: body.active !== false }, create: { code, label: String(body.label || code), labelAr: String(body.labelAr || "") || null, critical: Boolean(body.critical), requiresQualification: body.requiresQualification !== false } });
+      const sortOrder = Number.isFinite(Number(body.sortOrder)) ? Number(body.sortOrder) : 0;
+      record = await prisma.opsOperationalPosition.upsert({ where: { code }, update: { label: String(body.label || code), labelAr: String(body.labelAr || "") || null, critical: Boolean(body.critical), requiresQualification: body.requiresQualification !== false, active: body.active !== false, sortOrder }, create: { code, label: String(body.label || code), labelAr: String(body.labelAr || "") || null, critical: Boolean(body.critical), requiresQualification: body.requiresQualification !== false, sortOrder } });
+    } else if (body.action === "saveRequirement") {
+      const position = await prisma.opsOperationalPosition.findUnique({ where: { id: String(body.operationalPositionId || "") } });
+      const shiftCode = String(body.shiftCode || "").trim().toUpperCase();
+      const effectiveFrom = String(body.effectiveFrom || "2000-01-01");
+      if (!position || !["AM", "BW", "PM"].includes(shiftCode)) throw new Error("Position and shift are required");
+      const current = await prisma.opsPositionStaffingRequirement.findFirst({ where: { operationalPositionId: position.id, shiftCode, effectiveTo: null }, orderBy: { effectiveFrom: "desc" } });
+      const data = { shiftCode, startTime: String(body.startTime || "") || null, endTime: String(body.endTime || "") || null, minEmployees: Math.max(0, Number(body.minEmployees || 0)), effectiveFrom, effectiveTo: String(body.effectiveTo || "") || null };
+      record = current ? await prisma.opsPositionStaffingRequirement.update({ where: { id: current.id }, data }) : await prisma.opsPositionStaffingRequirement.create({ data: { ...data, operationalPositionId: position.id } });
     } else if (body.action === "savePartner") {
       const name = String(body.name || "").trim(); if (!name) throw new Error("Academy name is required");
       record = await prisma.opsTripPartner.upsert({ where: { branch_name: { branch: "MOT", name } }, update: { supervisorName: String(body.supervisorName || "") || null, supervisorPhone: String(body.supervisorPhone || "") || null, notes: String(body.notes || "") || null, updatedBy: user.id }, create: { branch: "MOT", name, supervisorName: String(body.supervisorName || "") || null, supervisorPhone: String(body.supervisorPhone || "") || null, notes: String(body.notes || "") || null, createdBy: user.id, updatedBy: user.id } });

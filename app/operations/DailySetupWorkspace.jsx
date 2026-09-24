@@ -64,6 +64,7 @@ export default function DailySetupWorkspace({ section = "trips" }) {
   const [editingOffer, setEditingOffer] = useState(null);
   const [editingTrip, setEditingTrip] = useState(null);
   const [editingEvent, setEditingEvent] = useState(null);
+  const [editingStock, setEditingStock] = useState(null);
 
   const request = useCallback((url, options = {}) => fetch(url, { credentials: "same-origin", ...options }).then(apiJson), []);
 
@@ -99,6 +100,7 @@ export default function DailySetupWorkspace({ section = "trips" }) {
       setEditingOffer(null);
       setEditingTrip(null);
       setEditingEvent(null);
+      setEditingStock(null);
       setMessageKind("success"); setMessage(isArabic ? "تم الحفظ" : "Saved");
       await load();
     } catch (error) { setMessageKind("danger"); setMessage(error.message); } finally { setBusy(false); }
@@ -131,6 +133,37 @@ export default function DailySetupWorkspace({ section = "trips" }) {
       setMessageKind("success"); setMessage(isArabic ? "تم الحذف" : "Deleted");
       await load();
     } catch (error) { setMessageKind("danger"); setMessage(error.message); } finally { setBusy(false); }
+  }
+
+  async function stockAction(action, item, quantity = null) {
+    const labels = {
+      deleteStock: isArabic ? "حذف صف الستوك؟" : "Delete this stock row?",
+      issueStock: isArabic ? `تأكيد صرف ${quantity}؟` : `Issue ${quantity}?`,
+    };
+    if (!window.confirm(labels[action])) return;
+    setBusy(true); setMessage("");
+    try {
+      await request("/api/operations/daily", {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ action, stockId: item.id, branch: item.branch || "MOT", quantity }),
+      });
+      if (action === "deleteStock" && editingStock?.id === item.id) setEditingStock(null);
+      setMessageKind("success");
+      setMessage(action === "issueStock" ? (isArabic ? "تم تسجيل الصرف" : "Stock issue recorded") : (isArabic ? "تم حذف صف الستوك" : "Stock row deleted"));
+      await load();
+    } catch (error) { setMessageKind("danger"); setMessage(error.message); } finally { setBusy(false); }
+  }
+
+  function issueStock(item) {
+    const raw = window.prompt(isArabic ? "الكمية المصروفة" : "Quantity to issue", "1");
+    if (raw == null) return;
+    const quantity = Number(raw);
+    if (!Number.isFinite(quantity) || quantity <= 0) {
+      setMessageKind("danger"); setMessage(isArabic ? "اكتب كمية صحيحة أكبر من صفر" : "Enter a valid quantity greater than zero");
+      return;
+    }
+    stockAction("issueStock", item, quantity);
   }
 
   async function saveName(employeeId, operationalName) {
@@ -169,15 +202,15 @@ export default function DailySetupWorkspace({ section = "trips" }) {
       {section === "birthdays" && <BirthdayForm key={editingEvent?.id || "new"} event={editingEvent} daily={daily} catalogues={catalogues} submit={submit} cancel={() => setEditingEvent(null)} isArabic={isArabic} />}
       {section === "offers" && <OfferForm key={editingOffer?.id || "new"} offer={editingOffer} busy={busy} isArabic={isArabic} submit={submit} cancel={() => setEditingOffer(null)} />}
       {section === "stock" && <>
-        <StockCard title={isArabic ? "ستوك الشرابات" : "Socks stock"} category="SOCKS" unit="PAIR" color="#f2c94c" kind="socks" submit={submit} isArabic={isArabic} />
-        <StockCard title={isArabic ? "ستوك البريسلت" : "Bracelet stock"} category="BRACELET" unit="ITEM" color="#9b51e0" kind="bracelet" submit={submit} isArabic={isArabic} />
-        <StockCard title={isArabic ? "رول الكاش" : "Cash rolls"} category="CASH_ROLL" unit="ROLL" kind="roll" submit={submit} isArabic={isArabic} />
-        <StockCard title={isArabic ? "رول الفيزا" : "Visa rolls"} category="VISA_ROLL" unit="ROLL" kind="roll" submit={submit} isArabic={isArabic} />
+        <StockCard key={editingStock?.stockCategory === "SOCKS" ? editingStock.id : "socks-new"} title={isArabic ? "ستوك الشرابات" : "Socks stock"} category="SOCKS" unit="PAIR" color="#f2c94c" kind="socks" stock={editingStock?.stockCategory === "SOCKS" ? editingStock : null} cancel={() => setEditingStock(null)} submit={submit} isArabic={isArabic} />
+        <StockCard key={editingStock?.stockCategory === "BRACELET" ? editingStock.id : "bracelet-new"} title={isArabic ? "ستوك البريسلت" : "Bracelet stock"} category="BRACELET" unit="ITEM" color="#9b51e0" kind="bracelet" stock={editingStock?.stockCategory === "BRACELET" ? editingStock : null} cancel={() => setEditingStock(null)} submit={submit} isArabic={isArabic} />
+        <StockCard key={editingStock?.stockCategory === "CASH_ROLL" ? editingStock.id : "cash-new"} title={isArabic ? "رول الكاش" : "Cash rolls"} category="CASH_ROLL" unit="ROLL" kind="roll" stock={editingStock?.stockCategory === "CASH_ROLL" ? editingStock : null} cancel={() => setEditingStock(null)} submit={submit} isArabic={isArabic} />
+        <StockCard key={editingStock?.stockCategory === "VISA_ROLL" ? editingStock.id : "visa-new"} title={isArabic ? "رول الفيزا" : "Visa rolls"} category="VISA_ROLL" unit="ROLL" kind="roll" stock={editingStock?.stockCategory === "VISA_ROLL" ? editingStock : null} cancel={() => setEditingStock(null)} submit={submit} isArabic={isArabic} />
       </>}
     </div>
 
     {section === "offers" && <OfferList offers={offerCatalog} isArabic={isArabic} busy={busy} edit={setEditingOffer} remove={deleteOffer} />}
-    {section === "stock" && <StockList items={daily?.wristbands || []} isArabic={isArabic} />}
+    {section === "stock" && <StockList items={daily?.wristbands || []} isArabic={isArabic} busy={busy} edit={(item) => { setEditingStock(item); window.scrollTo({ top: 0, behavior: "smooth" }); }} issue={issueStock} remove={(item) => stockAction("deleteStock", item)} />}
     {!["rosterSettings", "offers", "stock"].includes(section) && <section className="panel ops-setup-current"><h2>{isArabic ? "المسجل للتاريخ المحدد" : "Saved for selected date"}</h2><div className="ops-current-grid">
       {section === "trips" && <Current title={isArabic ? "الرحلات" : "Trips"} items={daily?.trips} render={(item) => `${item.name} · ${item.startTime || "—"} · ${item.expectedChildren ?? 0}${item.braceletColor ? ` · ${item.braceletMaterial || ""} ${item.braceletColor}` : ""}`} edit={setEditingTrip} remove={(item) => removePlanningItem("trip", item)} isArabic={isArabic} />}
       {section === "birthdays" && <Current title={isArabic ? "أعياد الميلاد" : "Birthdays"} items={daily?.events} render={(item) => `${item.childName || item.name} · ${item.customerName || "—"} · ${item.startTime || "—"}${item.braceletColor ? ` · ${item.braceletMaterial || ""} ${item.braceletColor}` : ""}`} edit={setEditingEvent} remove={(item) => removePlanningItem("event", item)} isArabic={isArabic} />}
@@ -225,29 +258,30 @@ function OfferList({ offers, isArabic, busy, edit, remove }) {
   return <section className="panel ops-setup-current"><h2>{isArabic ? "كل العروض المسجلة" : "All saved offers"}</h2>{offers.length ? <div className="ops-offer-manager-list">{offers.map((offer) => <article key={offer.id}><div><b>{offer.title}</b><span>{offerSchedule(offer, isArabic)}</span><small>{offer.priceBefore != null ? `${offer.priceBefore} → ` : ""}{offer.priceAfter ?? ""}{offer.details ? ` · ${offer.details}` : ""}</small></div><div><button type="button" disabled={busy} onClick={() => { edit(offer); window.scrollTo({ top: 0, behavior: "smooth" }); }}>{isArabic ? "تعديل" : "Edit"}</button><button type="button" className="danger" disabled={busy} onClick={() => remove(offer)}>{isArabic ? "حذف" : "Delete"}</button></div></article>)}</div> : <p className="muted">—</p>}</section>;
 }
 
-function StockCard({ title, category, unit, color, kind, submit, isArabic }) {
-  return <FormCard title={title} hint={isArabic ? "أدخل كمية الكاشير وكمية المخزن؛ الإعداد دائم لكل الأيام." : "Enter cashier and warehouse quantities; this applies every day."} button={isArabic ? "حفظ" : "Save"} onSubmit={(event) => submit("setStock", event)}>
+function StockCard({ title, category, unit, color, kind, stock, cancel, submit, isArabic }) {
+  const editing = Boolean(stock);
+  return <FormCard title={editing ? `${isArabic ? "تعديل" : "Edit"} ${title}` : title} hint={isArabic ? "أدخل كمية الكاشير وكمية المخزن؛ الإعداد دائم لكل الأيام." : "Enter cashier and warehouse quantities; this applies every day."} button={editing ? (isArabic ? "حفظ التعديل" : "Save changes") : (isArabic ? "حفظ" : "Save")} onSubmit={(event) => submit(editing ? "updateStock" : "setStock", event, editing ? { stockId: stock.id, branch: stock.branch || "MOT" } : {}, editing ? "PATCH" : "POST")} secondary={editing && <button type="button" className="secondary" onClick={cancel}>{isArabic ? "إلغاء التعديل" : "Cancel edit"}</button>}>
     <input type="hidden" name="stockCategory" value={category} /><input type="hidden" name="unit" value={unit} />
-    {kind === "socks" && <label>{isArabic ? "المقاس" : "Size"}<select name="size" defaultValue="M"><option value="M">M</option><option value="L">L</option></select></label>}
-    {kind === "bracelet" && <><label>{isArabic ? "استخدام البريسلت" : "Bracelet use"}<select name="usageType" defaultValue="KID">{[["KID","Kid"],["TODDLER","Toddler"],["S_N","S.N"],["VISITOR","Visitor"],["TRIP","Trip"],["BIRTHDAY","Birthday"]].map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label><label>{isArabic ? "خامة البريسلت" : "Bracelet material"}<select name="material" defaultValue="SATAN"><option value="SATAN">Satan</option><option value="PAPER">Paper</option><option value="PLASTIC">Plastic</option></select></label></>}
-    {kind === "roll" && <label>{isArabic ? "حالة الرول" : "Roll type"}<select name="rollStyle" defaultValue="PRINTED"><option value="PRINTED">{isArabic ? "مطبوع" : "Printed"}</option><option value="PLAIN">{isArabic ? "سادة" : "Plain"}</option></select></label>}
-    {kind === "socks" && <label>{isArabic ? "لون الشراب" : "Sock color"}<select name="color" defaultValue="#f2c94c"><option value="#f2c94c">Yellow</option><option value="#e77aa8">Pink</option></select></label>}
-    {kind === "bracelet" && <label>{isArabic ? "لون البريسلت" : "Bracelet color"}<input name="color" type="color" defaultValue={color} /></label>}
-    <label>{isArabic ? "الكمية في الكاشير" : "Cashier quantity"}<input name="cashierQuantity" type="number" min="0" defaultValue="0" /></label><label>{isArabic ? "الكمية في المخزن" : "Warehouse quantity"}<input name="warehouseQuantity" type="number" min="0" defaultValue="0" /></label>
-    <textarea name="notes" aria-label={`${title} notes`} placeholder={isArabic ? "ملاحظات" : "Notes"} />
+    {kind === "socks" && <label>{isArabic ? "المقاس" : "Size"}<select name="size" defaultValue={stock?.size || "M"}><option value="M">M</option><option value="L">L</option></select></label>}
+    {kind === "bracelet" && <><label>{isArabic ? "استخدام البريسلت" : "Bracelet use"}<select name="usageType" defaultValue={stock?.usageType || "KID"}>{[["KID","Kid"],["TODDLER","Toddler"],["S_N","S.N"],["VISITOR","Visitor"],["TRIP","Trip"],["BIRTHDAY","Birthday"]].map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label><label>{isArabic ? "خامة البريسلت" : "Bracelet material"}<select name="material" defaultValue={stock?.material || "SATAN"}><option value="SATAN">Satan</option><option value="PAPER">Paper</option><option value="PLASTIC">Plastic</option></select></label></>}
+    {kind === "roll" && <label>{isArabic ? "حالة الرول" : "Roll type"}<select name="rollStyle" defaultValue={stock?.rollStyle || "PRINTED"}><option value="PRINTED">{isArabic ? "مطبوع" : "Printed"}</option><option value="PLAIN">{isArabic ? "سادة" : "Plain"}</option></select></label>}
+    {kind === "socks" && <label>{isArabic ? "لون الشراب" : "Sock color"}<select name="color" defaultValue={stock?.color || "#f2c94c"}><option value="#f2c94c">Yellow</option><option value="#e77aa8">Pink</option></select></label>}
+    {kind === "bracelet" && <label>{isArabic ? "لون البريسلت" : "Bracelet color"}<input name="color" type="color" defaultValue={stock?.color || color} /></label>}
+    <label>{isArabic ? "الكمية في الكاشير" : "Cashier quantity"}<input name="cashierQuantity" type="number" min="0" defaultValue={stock?.cashierQuantity ?? 0} /></label><label>{isArabic ? "الكمية في المخزن" : "Warehouse quantity"}<input name="warehouseQuantity" type="number" min="0" defaultValue={stock?.warehouseQuantity ?? 0} /></label>
+    <textarea name="notes" defaultValue={stock?.notes || ""} aria-label={`${title} notes`} placeholder={isArabic ? "ملاحظات" : "Notes"} />
   </FormCard>;
 }
 
-function StockList({ items, isArabic }) {
+function StockList({ items, isArabic, busy, edit, issue, remove }) {
   const label = (item) => item.stockCategory === "BRACELET" ? `${item.usageType || item.wristbandType}${item.material ? ` · ${item.material}` : ""}` : item.stockCategory === "SOCKS" ? `${item.size || "—"}${item.color ? ` · ${item.color}` : ""}` : `${item.stockCategory === "CASH_ROLL" ? (isArabic ? "رول كاش" : "Cash roll") : (isArabic ? "رول فيزا" : "Visa roll")} · ${item.rollStyle === "PLAIN" ? (isArabic ? "سادة" : "Plain") : (isArabic ? "مطبوع" : "Printed")}`;
   const quantities = (item) => {
     const cashier = Number(item.cashierQuantity || 0);
     const warehouse = Number(item.warehouseQuantity || 0);
     return cashier + warehouse > 0 || Number(item.availableStock || 0) === 0
       ? { cashier, warehouse }
-      : { cashier: 0, warehouse: Math.max(0, Number(item.availableStock || 0) - Number(item.allocated || 0) - Number(item.issued || 0)) };
+      : { cashier: 0, warehouse: Math.max(0, Number(item.availableStock || 0)) };
   };
-  return <section className="panel ops-setup-current"><h2>{isArabic ? "الستوك الدائم" : "Global stock"}</h2>{items.length ? <div className="ops-stock-list">{items.map((item) => { const quantity = quantities(item); return <article key={item.id}><span className="ops-stock-swatch" style={{ background: item.color || "#e9dfd0" }} /><div><b>{label(item)}</b><small>{item.stockCategory}</small></div><strong>{isArabic ? "الكاشير" : "Cashier"}: {quantity.cashier}</strong><strong>{isArabic ? "المخزن" : "Warehouse"}: {quantity.warehouse}</strong></article>; })}</div> : <p className="muted">—</p>}</section>;
+  return <section className="panel ops-setup-current"><h2>{isArabic ? "الستوك الدائم" : "Global stock"}</h2>{items.length ? <div className="ops-stock-list">{items.map((item) => { const quantity = quantities(item); const total = quantity.cashier + quantity.warehouse; const available = Math.max(0, total - Number(item.allocated || 0) - Number(item.issued || 0)); return <article key={item.id}><span className="ops-stock-swatch" style={{ background: item.color || "#e9dfd0" }} /><div><b>{label(item)}</b><small>{item.stockCategory}</small></div><strong>{isArabic ? "الكاشير" : "Cashier"}: {quantity.cashier}</strong><strong>{isArabic ? "المخزن" : "Warehouse"}: {quantity.warehouse}</strong><small className="ops-stock-balance">{isArabic ? "متاح" : "Available"}: {available} · {isArabic ? "محجوز" : "Reserved"}: {Number(item.allocated || 0)} · {isArabic ? "مصروف" : "Issued"}: {Number(item.issued || 0)}</small><div className="ops-stock-actions"><button type="button" disabled={busy} onClick={() => edit(item)}>{isArabic ? "تعديل" : "Edit"}</button><button type="button" disabled={busy || available + Number(item.allocated || 0) <= 0} onClick={() => issue(item)}>{isArabic ? "صرف" : "Issue"}</button><button type="button" className="danger" disabled={busy || Number(item.allocated || 0) > 0 || Number(item.issued || 0) > 0} onClick={() => remove(item)}>{isArabic ? "حذف" : "Delete"}</button></div></article>; })}</div> : <p className="muted">—</p>}</section>;
 }
 
 function RosterNameRow({ employee, disabled, save, isArabic }) {

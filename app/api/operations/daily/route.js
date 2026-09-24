@@ -4,7 +4,7 @@ import { authorizeApi } from "@/lib/api-auth";
 import { writeAudit } from "@/lib/audit";
 import { getSetting } from "@/lib/settings";
 import { buildExpectedTeam, mergeExpectedActual, canAssign, overlaps, generateRotation, normalizeRotationRules, coverageFor, buildReadiness, needsAttention, closeDayValidation } from "@/lib/operations/live-daily";
-import { normalizeWeekdays, offerAppliesOnDate, selectBraceletStock, stockAvailable, stockKey } from "@/lib/operations/planning";
+import { normalizeWeekdays, offerAppliesOnDate, selectBraceletStock, stockAvailable, stockCanDelete, stockIssueUpdate, stockKey } from "@/lib/operations/planning";
 import { applyCashierFallbacks } from "@/lib/operations/cashiers";
 
 const validDate = (value) => /^\d{4}-\d{2}-\d{2}$/.test(String(value || ""));
@@ -37,6 +37,36 @@ function offerValues(body, userId) {
 }
 
 function bool(value) { return value === true || value === "true" || value === "on" || value === "YES"; }
+function stockValues(body) {
+  const number = (key) => Math.max(0, Number(body[key] || 0));
+  const stockCategory = String(body.stockCategory || "BRACELET").trim().toUpperCase();
+  const usageType = String(body.usageType || body.wristbandType || "").trim().toUpperCase() || null;
+  const size = String(body.size || "").trim().toUpperCase() || null;
+  const rollStyle = String(body.rollStyle || "").trim().toUpperCase() || null;
+  const material = String(body.material || "").trim().toUpperCase() || null;
+  const color = String(body.color || "").trim() || null;
+  if (stockCategory === "BRACELET" && !usageType) throw new Error("Bracelet usage is required");
+  if (stockCategory === "SOCKS" && !size) throw new Error("Sock size is required");
+  if (["CASH_ROLL", "VISA_ROLL"].includes(stockCategory) && !rollStyle) throw new Error("Roll style is required");
+  const cashierQuantity = number("cashierQuantity");
+  const warehouseQuantity = number("warehouseQuantity");
+  return {
+    wristbandType: stockKey({ stockCategory, usageType, size, rollStyle, color, material }),
+    values: {
+      stockCategory,
+      unit: String(body.unit || "ITEM").trim().toUpperCase(),
+      color,
+      usageType,
+      material,
+      size,
+      rollStyle,
+      cashierQuantity,
+      warehouseQuantity,
+      availableStock: cashierQuantity + warehouseQuantity,
+      notes: String(body.notes || "").trim() || null,
+    },
+  };
+}
 const emptyBracelet = () => ({ braceletType: null, braceletColor: null, braceletMaterial: null });
 const braceletFields = (item) => item ? ({ braceletType: item.wristbandType, braceletColor: item.color || null, braceletMaterial: item.material || null }) : emptyBracelet();
 
@@ -232,19 +262,8 @@ export async function POST(request) {
       return NextResponse.json({ success: true, record });
     }
     if (body.action === "setWristband" || body.action === "setStock") {
-      const stockCategory = String(body.stockCategory || "BRACELET");
-      const usageType = String(body.usageType || body.wristbandType || "").trim() || null;
-      const size = String(body.size || "").trim() || null;
-      const rollStyle = String(body.rollStyle || "").trim() || null;
-      const material = String(body.material || "").trim() || null;
-      const color = String(body.color || "").trim() || null;
-      if (stockCategory === "BRACELET" && !usageType) throw new Error("Bracelet usage is required");
-      if (stockCategory === "SOCKS" && !size) throw new Error("Sock size is required");
-      if (["CASH_ROLL", "VISA_ROLL"].includes(stockCategory) && !rollStyle) throw new Error("Roll style is required");
-      const cashierQuantity = number("cashierQuantity");
-      const warehouseQuantity = number("warehouseQuantity");
-      const wristbandType = stockKey({ stockCategory, usageType, size, rollStyle, color, material });
-      const values = { stockCategory, unit: String(body.unit || "ITEM"), color, usageType, material, size, rollStyle, cashierQuantity, warehouseQuantity, availableStock: cashierQuantity + warehouseQuantity, notes: String(body.notes || "").trim() || null };
+      const { wristbandType, values } = stockValues(body);
+      const { stockCategory, usageType } = values;
       const record = await prisma.$transaction(async (tx) => {
         const saved = await tx.opsWristbandStock.upsert({ where: { branch_workDate_wristbandType: { branch, workDate: "ALL", wristbandType } }, update: { ...values, updatedBy: user.id }, create: { branch, workDate: "ALL", wristbandType, ...values, allocated: 0, issued: 0, createdBy: user.id, updatedBy: user.id } });
         if (stockCategory === "BRACELET" && ["TRIP", "BIRTHDAY"].includes(usageType)) await assignPendingBracelets(tx, { branch, usageType });
@@ -265,6 +284,43 @@ export async function POST(request) {
 export async function PATCH(request) {
   const { user, error } = await authorizeApi("OPS_DAILY_MANAGE"); if (error) return error; const body = await request.json();
   try {
+    if (body.action === "updateStock") {
+      const branch = String(body.branch || "MOT");
+      const current = await prisma.opsWristbandStock.findFirst({ where: { id: String(body.stockId || ""), branch, workDate: "ALL" } });
+      if (!current) throw new Error("Stock row not found");
+      const { wristbandType, values } = stockValues(body);
+      const committed = Number(current.allocated || 0) + Number(current.issued || 0);
+      if (current.wristbandType !== wristbandType && committed > 0) throw new Error("Stock with reservation or issue history cannot change category, type or color");
+      if (values.availableStock < committed) throw new Error("Cashier and warehouse stock cannot be lower than reserved and issued quantities");
+      const conflict = await prisma.opsWristbandStock.findFirst({ where: { branch, workDate: "ALL", wristbandType, id: { not: current.id } } });
+      if (conflict) throw new Error("Another stock row already uses this category, type and color");
+      const record = await prisma.$transaction(async (tx) => {
+        const saved = await tx.opsWristbandStock.update({ where: { id: current.id }, data: { wristbandType, ...values, updatedBy: user.id } });
+        if (values.stockCategory === "BRACELET" && ["TRIP", "BIRTHDAY"].includes(values.usageType)) await assignPendingBracelets(tx, { branch, usageType: values.usageType });
+        return tx.opsWristbandStock.findUnique({ where: { id: saved.id } });
+      });
+      await writeAudit({ action: "OPS_STOCK_UPDATED", user, summary: `Updated stock ${record.wristbandType}`, metadata: { id: record.id, branch, available: stockAvailable(record) } });
+      return NextResponse.json({ success: true, record });
+    }
+    if (body.action === "issueStock") {
+      const branch = String(body.branch || "MOT");
+      const current = await prisma.opsWristbandStock.findFirst({ where: { id: String(body.stockId || ""), branch, workDate: "ALL" } });
+      if (!current) throw new Error("Stock row not found");
+      const quantity = Math.max(0, Number(body.quantity || 0));
+      const update = stockIssueUpdate(current, quantity);
+      const record = await prisma.opsWristbandStock.update({ where: { id: current.id }, data: { allocated: update.allocated, issued: update.issued, updatedBy: user.id } });
+      await writeAudit({ action: "OPS_STOCK_ISSUED", user, summary: `Issued ${quantity} from ${record.wristbandType}`, metadata: { id: record.id, branch, quantity, fromReservation: update.fromReservation, unreserved: update.unreserved, available: stockAvailable(record) } });
+      return NextResponse.json({ success: true, record });
+    }
+    if (body.action === "deleteStock") {
+      const branch = String(body.branch || "MOT");
+      const current = await prisma.opsWristbandStock.findFirst({ where: { id: String(body.stockId || ""), branch, workDate: "ALL" } });
+      if (!current) throw new Error("Stock row not found");
+      if (!stockCanDelete(current)) throw new Error("Stock with reservations or issue history cannot be deleted");
+      await prisma.opsWristbandStock.delete({ where: { id: current.id } });
+      await writeAudit({ action: "OPS_STOCK_DELETED", user, summary: `Deleted stock ${current.wristbandType}`, metadata: { id: current.id, branch } });
+      return NextResponse.json({ success: true });
+    }
     if (body.action === "updateTrip") {
       const current = await prisma.opsDailyTrip.findFirst({ where: { id: String(body.tripId || ""), branch: String(body.branch || "MOT") } });
       if (!current) throw new Error("Trip not found");

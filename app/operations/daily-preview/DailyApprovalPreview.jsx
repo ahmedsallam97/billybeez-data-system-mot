@@ -24,6 +24,22 @@ const sectionLabels = {
   notes: "Operational notes",
   footer: "Footer",
 };
+const fallbackScheduleColors = {
+  Annual: "#b9dcc0", Rep: "#eedb85", OFF: "#e9b9c7", Unpaid: "#efbd87",
+  Mission: "#a8d8e7", M: "#a8d8e7", Holiday: "#c99aae", H: "#c99aae",
+  ANP: "#edabb2", AWP: "#b76a77", SL: "#edc3cb",
+};
+function scheduleColor(code, configured = {}) {
+  const alias = { M: "Mission", H: "Holiday" }[String(code)] || code;
+  const value = configured?.[code]?.color || configured?.[alias]?.color || configured?.[String(code).toUpperCase()]?.color;
+  return value || fallbackScheduleColors[code] || fallbackScheduleColors[String(code).toUpperCase()] || "#e8e0ed";
+}
+function contrastColor(hex) {
+  const value = String(hex || "").replace("#", "");
+  if (!/^[0-9a-f]{6}$/i.test(value)) return "#20113d";
+  const [r, g, b] = [0, 2, 4].map((index) => parseInt(value.slice(index, index + 2), 16));
+  return (r * 299 + g * 587 + b * 114) / 1000 < 145 ? "#ffffff" : "#20113d";
+}
 const fallback = {
   logoUrl: "/bb-logo-fast.png",
   branchName: "MOT Branch",
@@ -134,7 +150,7 @@ async function readApiJson(response, fallbackMessage) {
   if (!response.ok) throw new Error(body.error || fallbackMessage);
   return body;
 }
-async function posterPngBlob({ data, config, weekday, grouped }) {
+async function posterPngBlob({ data, config, weekday, grouped, scheduleColors }) {
   const width = 1500;
   const margin = 28;
   const contentWidth = width - margin * 2;
@@ -146,10 +162,11 @@ async function posterPngBlob({ data, config, weekday, grouped }) {
   const cardLinesByCard = Object.fromEntries(visibleCards.map((card) => [card, card === "offers"
     ? (data.offers || []).map((offer) => `${offer.title}${offer.priceBefore != null ? ` · ${offer.priceBefore}→${offer.priceAfter ?? "—"} EGP` : offer.priceAfter != null ? ` · ${offer.priceAfter} EGP` : ""}`)
     : previewCardLines(card, data)]));
-  const maxCardLines = Math.max(1, ...Object.values(cardLinesByCard).map((lines) => lines.length));
-  const cardInnerHeight = Math.max(132, 58 + maxCardLines * 21);
+  const compactCards = visibleCards.filter((card) => ["trips", "birthdays"].includes(card));
+  const cardRows = [...(compactCards.length ? [compactCards] : []), ...visibleCards.filter((card) => !["trips", "birthdays"].includes(card)).map((card) => [card])];
+  const cardRowHeights = cardRows.map((row) => Math.max(132, 58 + Math.max(1, ...row.map((card) => cardLinesByCard[card]?.length || 0)) * 21));
   const rosterRows = WORKING_SHIFTS.reduce((total, shift) => total + (grouped[shift]?.length ? grouped[shift].length + 2 : 0), 0);
-  const cardHeight = visibleCards.length ? cardInnerHeight + 20 : 0;
+  const cardHeight = cardRows.length ? cardRowHeights.reduce((sum, value) => sum + value, 0) + (cardRows.length - 1) * 12 + 20 : 0;
   const leavesHeight = config.visibleSections.leaves ? 52 + Math.max(1, nonWorking.length) * 34 : 0;
   const notesHeight = config.visibleSections.notes ? 82 : 0;
   const height = 150 + cardHeight + 76 + rosterRows * 42 + leavesHeight + notesHeight + 86;
@@ -169,17 +186,21 @@ async function posterPngBlob({ data, config, weekday, grouped }) {
 
   if (visibleCards.length) {
     const gap = 12;
-    const cardWidth = (contentWidth - gap * (visibleCards.length - 1)) / visibleCards.length;
-    visibleCards.forEach((card, index) => {
-      const x = margin + index * (cardWidth + gap);
-      const tone = card === "offers" ? "#d98a31" : card === "trips" ? "#3182bd" : card === "birthdays" ? "#4f8c5c" : "#2e7da5";
-      rect(x, y, cardWidth, cardInnerHeight, "#fffdf8", tone, 12);
-      rect(x, y, cardWidth, 38, tone, "none", 10);
-      text(cardLabels[card], x + cardWidth / 2, y + 26, 17, 900, "#ffffff", "middle");
-      const lines = cardLinesByCard[card] || [];
-      (lines.length ? lines : [config.cardContent?.[card] || "—"]).forEach((line, lineIndex) => text(short(line, 42), x + 14, y + 65 + lineIndex * 21, 14, 700));
+    cardRows.forEach((row, rowIndex) => {
+      const rowHeight = cardRowHeights[rowIndex];
+      const cardWidth = (contentWidth - gap * (row.length - 1)) / row.length;
+      row.forEach((card, index) => {
+        const x = margin + index * (cardWidth + gap);
+        const tone = card === "offers" ? "#d98a31" : card === "trips" ? "#3182bd" : card === "birthdays" ? "#4f8c5c" : "#2e7da5";
+        rect(x, y, cardWidth, rowHeight, "#fffdf8", tone, 12);
+        rect(x, y, cardWidth, 38, tone, "none", 10);
+        text(cardLabels[card], x + cardWidth / 2, y + 26, 17, 900, "#ffffff", "middle");
+        const lines = cardLinesByCard[card] || [];
+        (lines.length ? lines : [config.cardContent?.[card] || "—"]).forEach((line, lineIndex) => text(short(line, row.length === 1 ? 120 : 55), x + 14, y + 65 + lineIndex * 21, 14, 700));
+      });
+      y += rowHeight + gap;
     });
-    y += cardHeight;
+    y += 8;
   }
 
   const numberWidth = 46, nameWidth = 230, attendanceWidth = 118, breakWidth = 118;
@@ -214,7 +235,7 @@ async function posterPngBlob({ data, config, weekday, grouped }) {
       rect(margin, y, contentWidth, 42, "#ffffff", "#bcb5c3");
       rect(margin + numberWidth, y, nameWidth, 42, nameTone, "#bcb5c3");
       text(personIndex + 1, margin + numberWidth / 2, y + 27, 14, 900, config.text, "middle");
-      text(short(rosterName(person.employee), 25), margin + numberWidth + 10, y + 27, 15, 900);
+      text(short(rosterName(person.employee), 32), margin + numberWidth + 10, y + 27, 14, 900);
       if (role) {
         rect(rotationX, y, rotationWidth, 42, nameTone, "#bcb5c3");
         text(role.label, rotationX + rotationWidth / 2, y + 27, 15, 900, config.text, "middle");
@@ -233,7 +254,7 @@ async function posterPngBlob({ data, config, weekday, grouped }) {
 
   if (config.visibleSections.leaves) {
     y += 14; rect(margin, y, contentWidth, 38, config.primary, "none", 8); text("TODAY'S LEAVES / OFF", margin + contentWidth - 14, y + 25, 16, 900, "#ffffff", "end"); y += 38;
-    (nonWorking.length ? nonWorking : [{ group: "—", employee: { name: "No leave / off in the published schedule" } }]).forEach((item) => { rect(margin, y, contentWidth, 34, "#fff", "#d4ced8"); text(item.group, margin + 14, y + 23, 13, 900); text(rosterName(item.employee), margin + 110, y + 23, 14, 700); y += 34; });
+    (nonWorking.length ? nonWorking : [{ group: "—", employee: { name: "No leave / off in the published schedule" } }]).forEach((item) => { const badgeColor = scheduleColor(item.group, scheduleColors); rect(margin, y, contentWidth, 34, "#fff", "#d4ced8"); if (item.group !== "—") { rect(margin + 10, y + 5, 86, 24, badgeColor, "none", 5); text(item.group, margin + 53, y + 22, 12, 900, contrastColor(badgeColor), "middle"); } else text(item.group, margin + 14, y + 23, 13, 900); text(rosterName(item.employee), margin + 110, y + 23, 14, 700); y += 34; });
   }
   if (config.visibleSections.notes) {
     y += 14; rect(margin, y, contentWidth, 38, config.primary, "none", 8); text("OPERATIONAL NOTES", margin + contentWidth - 14, y + 25, 16, 900, "#ffffff", "end"); y += 38;
@@ -453,7 +474,7 @@ function TemplateEditor({ config, onChange, phrases, onPhrasesChange, save, savi
   );
 }
 
-function OperationsPoster({ config, weekday, data, grouped }) {
+function OperationsPoster({ config, weekday, data, grouped, scheduleColors }) {
   const style = {
     "--ops-primary": config.primary,
     "--ops-accent": config.accent,
@@ -464,7 +485,7 @@ function OperationsPoster({ config, weekday, data, grouped }) {
   };
   const columnParts = [
     "36px",
-    "200px",
+    "230px",
     ...(config.visibleSections.attendance ? ["63px", "63px"] : []),
     ...(config.visibleSections.breaks ? ["63px", "63px"] : []),
     ...(config.visibleSections.rotation
@@ -605,7 +626,7 @@ function OperationsPoster({ config, weekday, data, grouped }) {
         {nonWorking.length ? (
           nonWorking.map((item) => (
             <p key={item.id}>
-              <b className={`schedule-status-${String(item.group).toLowerCase()}`}>{item.group}</b>
+              <b style={{ backgroundColor: scheduleColor(item.group, scheduleColors), color: contrastColor(scheduleColor(item.group, scheduleColors)) }}>{item.group}</b>
               <span>{rosterName(item.employee)}</span>
             </p>
           ))
@@ -679,6 +700,7 @@ export default function DailyApprovalPreview() {
   const [data, setData] = useState(null);
   const [config, setConfig] = useState(fallback);
   const [phrases, setPhrases] = useState([]);
+  const [scheduleColors, setScheduleColors] = useState({});
   const [showEditor, setShowEditor] = useState(false);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
@@ -703,13 +725,17 @@ export default function DailyApprovalPreview() {
         }
         return roster;
       }),
-      fetch("/api/settings?keys=DAILY_OPERATIONS_TEMPLATE_CONFIG,OPS_MOTIVATION_PHRASES").then(
+      fetch("/api/settings?keys=DAILY_OPERATIONS_TEMPLATE_CONFIG,OPS_MOTIVATION_PHRASES,OPS_SCHEDULE_CODE_CONFIG").then(
         async (response) => {
           const body = await readApiJson(response, "Template settings could not be loaded. Refresh and try again.");
           const row = body.settings?.find(
             (setting) => setting.key === "DAILY_OPERATIONS_TEMPLATE_CONFIG",
           );
-          return { config: mergeConfig(JSON.parse(row?.value || "{}")), phrases: JSON.parse(body.settings?.find((setting) => setting.key === "OPS_MOTIVATION_PHRASES")?.value || "[]") };
+          return {
+            config: mergeConfig(JSON.parse(row?.value || "{}")),
+            phrases: JSON.parse(body.settings?.find((setting) => setting.key === "OPS_MOTIVATION_PHRASES")?.value || "[]"),
+            scheduleColors: JSON.parse(body.settings?.find((setting) => setting.key === "OPS_SCHEDULE_CODE_CONFIG")?.value || "{}"),
+          };
         },
       ),
     ])
@@ -718,6 +744,7 @@ export default function DailyApprovalPreview() {
           setData(roster);
           setConfig(template.config);
           setPhrases(Array.isArray(template.phrases) ? template.phrases : []);
+          setScheduleColors(template.scheduleColors || {});
         }
       })
       .catch((requestError) => active && setError(requestError.message))
@@ -768,7 +795,7 @@ export default function DailyApprovalPreview() {
     const popup = window.open("about:blank", "_blank");
     try {
       if (!data?.schedule) throw new Error("Roster preview is not ready");
-      const blob = await posterPngBlob({ data, config, weekday, grouped });
+      const blob = await posterPngBlob({ data, config, weekday, grouped, scheduleColors });
       const file = new File([blob], `BillyBeez-MOT-roster-${date}.png`, { type: "image/png" });
       const message = isArabic ? `روستر Billy Beez MOT - ${date}` : `Billy Beez MOT roster - ${date}`;
       if (navigator.share && navigator.canShare?.({ files: [file] })) {
@@ -889,6 +916,7 @@ export default function DailyApprovalPreview() {
           weekday={weekday}
           data={data}
           grouped={grouped}
+          scheduleColors={scheduleColors}
         />
       )}
     </section>

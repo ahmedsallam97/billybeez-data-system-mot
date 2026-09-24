@@ -36,8 +36,14 @@ export default function OperationsSettingsClient() {
   }
   async function saveRecord(action, form) {
     setBusy(true); setMessage("");
-    try { const body = { action, ...Object.fromEntries(new FormData(form).entries()) }; body.critical = body.critical === "on"; body.requiresQualification = body.requiresQualification === "on"; body.operationsTeamLeader = body.operationsTeamLeader === "on"; await fetch("/api/operations/config", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) }).then(read); form.reset(); setMessage(isArabic ? "تم الحفظ" : "Saved"); await load(); }
-    catch (error) { setMessage(error.message); } finally { setBusy(false); }
+    try { const body = { action, ...Object.fromEntries(new FormData(form).entries()) }; body.critical = body.critical === "on"; body.requiresQualification = body.requiresQualification === "on"; body.operationsTeamLeader = body.operationsTeamLeader === "on"; await fetch("/api/operations/config", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) }).then(read); form.reset(); setMessage(isArabic ? "تم الحفظ" : "Saved"); await load(); return true; }
+    catch (error) { setMessage(error.message); return false; } finally { setBusy(false); }
+  }
+  async function runRecordAction(action, payload, confirmation) {
+    if (confirmation && !window.confirm(confirmation)) return false;
+    setBusy(true); setMessage("");
+    try { await fetch("/api/operations/config", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ action, ...payload }) }).then(read); setMessage(isArabic ? "تم الحذف" : "Deleted"); await load(); return true; }
+    catch (error) { setMessage(error.message); return false; } finally { setBusy(false); }
   }
 
   const groups = [
@@ -59,7 +65,7 @@ export default function OperationsSettingsClient() {
       {tab === "insights" && <Insights summary={summary} health={health} config={config} isArabic={isArabic} />}
       {tab === "roster" && <RosterSettings config={config} settings={settings} isArabic={isArabic} busy={busy} saveSetting={saveSetting} saveRecord={saveRecord} />}
       {tab === "template" && <TemplateSettings settings={settings} isArabic={isArabic} busy={busy} saveSetting={saveSetting} />}
-      {tab === "master" && <MasterData config={config} settings={settings} isArabic={isArabic} busy={busy} saveSetting={saveSetting} saveRecord={saveRecord} />}
+      {tab === "master" && <MasterData config={config} settings={settings} isArabic={isArabic} busy={busy} saveSetting={saveSetting} saveRecord={saveRecord} runRecordAction={runRecordAction} />}
       {tab === "rules" && <RulesSettings settings={settings} criteria={config.criteriaVersion} isArabic={isArabic} busy={busy} saveSetting={saveSetting} />}
       {tab === "safety" && <Safety health={health} isArabic={isArabic} reload={load} />}
     </div>
@@ -93,7 +99,7 @@ function PerformanceRank({ title, rows = [], isArabic, tone }) {
 function RosterSettings({ config, settings, isArabic, busy, saveSetting, saveRecord }) {
   const [cashier, setCashier] = useState(settings.OPS_CASHIER_CONFIG || { primaryEmployeeIds: [], backupEmployeeIds: [] });
   const [branch, setBranch] = useState(settings.OPS_BRANCH_CONFIG || { branchCode: "MOT", branchName: "MOT Branch", timezone: "Africa/Cairo" });
-  const [codes, setCodes] = useState(settings.OPS_SCHEDULE_CODE_CONFIG || {});
+  const [codes, setCodes] = useState({ SL: { label: "SL", color: "#edc3cb" }, ...(settings.OPS_SCHEDULE_CODE_CONFIG || {}) });
   const toggleCashier = (kind, employeeId, checked) => setCashier((current) => {
     const key = kind === "primary" ? "primaryEmployeeIds" : "backupEmployeeIds";
     const limit = kind === "primary" ? 3 : 4;
@@ -117,9 +123,50 @@ function TemplateSettings({ settings, isArabic, busy, saveSetting }) {
   return <div className="ops-settings-section"><h2>{isArabic ? "تيمبلت العمليات" : "Daily operations template"}</h2><section className="grid two"><article className="panel form-grid"><Field label={isArabic ? "رابط اللوجو" : "Logo URL"}><input value={template.logoUrl || ""} onChange={(e) => setTemplate({ ...template, logoUrl: e.target.value })} /></Field><Field label={isArabic ? "اسم الفرع" : "Branch name"}><input value={template.branchName || ""} onChange={(e) => setTemplate({ ...template, branchName: e.target.value })} /></Field><Field label={isArabic ? "اللون الأساسي" : "Primary color"}><input type="color" value={template.primary || "#301848"} onChange={(e) => setTemplate({ ...template, primary: e.target.value })} /></Field><Field label={isArabic ? "لون التمييز" : "Accent color"}><input type="color" value={template.accent || "#f8c800"} onChange={(e) => setTemplate({ ...template, accent: e.target.value })} /></Field><Field label={isArabic ? "الملاحظات الافتراضية" : "Default notes"}><textarea aria-label={isArabic ? "الملاحظات الافتراضية" : "Default notes"} value={template.operationalNotes || ""} onChange={(e) => setTemplate({ ...template, operationalNotes: e.target.value })} /></Field><button disabled={busy} onClick={() => saveSetting("DAILY_OPERATIONS_TEMPLATE_CONFIG", template)}>{isArabic ? "حفظ التيمبلت" : "Save template"}</button></article><article className="panel"><h3>{isArabic ? "الجمل التحفيزية" : "Motivational phrases"}</h3><p className="muted">{isArabic ? "جملة واحدة في كل سطر، وتتغير يوميًا." : "One phrase per line, rotated daily."}</p><textarea aria-label={isArabic ? "الجمل التحفيزية" : "Motivational phrases"} className="ops-long-textarea" value={phrases} onChange={(e) => setPhrases(e.target.value)} /><button disabled={busy} onClick={() => saveSetting("OPS_MOTIVATION_PHRASES", phrases.split("\n").map((item) => item.trim()).filter(Boolean))}>{isArabic ? "حفظ الجمل" : "Save phrases"}</button></article></section></div>;
 }
 
-function MasterData({ config, settings, isArabic, busy, saveSetting, saveRecord }) {
+function MasterData({ config, settings, isArabic, busy, saveSetting, saveRecord, runRecordAction }) {
   const [catalogues, setCatalogues] = useState(settings.OPS_PLANNING_CATALOGS || { meals: [], partyRooms: [], stockItems: [] });
-  return <div className="ops-settings-section"><h2>{isArabic ? "البيانات الأساسية" : "Planning master data"}</h2><section className="grid two"><article className="panel"><h3>{isArabic ? "الأكاديميات والمدارس" : "Academies and schools"}</h3>{config.partners.map((item) => <div className="row" key={item.id}><b>{item.name}</b><span>{item.supervisorName || "—"} · {item.supervisorPhone || "—"}</span></div>)}<form className="form-grid" onSubmit={(event) => { event.preventDefault(); saveRecord("savePartner", event.currentTarget); }}><input name="name" required placeholder={isArabic ? "اسم الأكاديمية" : "Academy name"} /><input name="supervisorName" placeholder={isArabic ? "اسم المشرف" : "Supervisor"} /><input name="supervisorPhone" placeholder={isArabic ? "رقم المشرف" : "Phone"} /><textarea name="notes" placeholder={isArabic ? "ملاحظات" : "Notes"} /><button disabled={busy}>{isArabic ? "حفظ الأكاديمية" : "Save academy"}</button></form></article><article className="panel"><h3>{isArabic ? "عملاء أعياد الميلاد" : "Birthday customers"}</h3>{config.customers.map((item) => <div className="row" key={item.id}><b>{item.customerName}</b><span>{item.phone} · {item.childName || "—"}</span></div>)}<form className="form-grid" onSubmit={(event) => { event.preventDefault(); saveRecord("saveCustomer", event.currentTarget); }}><input name="customerName" required placeholder={isArabic ? "اسم العميل" : "Customer"} /><input name="phone" required placeholder={isArabic ? "رقم الهاتف" : "Phone"} /><input name="childName" placeholder={isArabic ? "اسم الطفل" : "Child"} /><textarea name="notes" placeholder={isArabic ? "ملاحظات" : "Notes"} /><button disabled={busy}>{isArabic ? "حفظ العميل" : "Save customer"}</button></form></article></section><section className="grid three"><Catalogue title={isArabic ? "الوجبات" : "Meals"} value={catalogues.meals || []} onChange={(meals) => setCatalogues({ ...catalogues, meals })} /><Catalogue title={isArabic ? "الغرف" : "Party rooms"} value={(catalogues.partyRooms || []).map((item) => typeof item === "string" ? item : item.name)} onChange={(rooms) => setCatalogues({ ...catalogues, partyRooms: rooms.map((name) => ({ name, active: true })) })} /><Catalogue title={isArabic ? "أصناف الستوك" : "Stock items"} value={catalogues.stockItems || []} onChange={(stockItems) => setCatalogues({ ...catalogues, stockItems })} /></section><button disabled={busy} onClick={() => saveSetting("OPS_PLANNING_CATALOGS", catalogues)}>{isArabic ? "حفظ الكتالوجات" : "Save catalogues"}</button><section className="panel"><h3>{isArabic ? "الإشعارات التشغيلية" : "Operational notices"}</h3>{config.notices?.map((item) => <div className="row" key={item.id}><span><b>{item.title}</b><small>{item.effectiveFrom} — {item.effectiveTo || "∞"}</small></span><em>{item.priority}</em></div>)}<form className="form-grid" onSubmit={(event) => { event.preventDefault(); saveRecord("saveNotice", event.currentTarget); }}><input name="title" required placeholder={isArabic ? "عنوان الإشعار" : "Notice title"} /><textarea name="message" required placeholder={isArabic ? "نص الإشعار" : "Notice message"} /><select name="priority" defaultValue="INFO"><option value="INFO">Info</option><option value="WARNING">Warning</option><option value="CRITICAL">Critical</option></select><input name="effectiveFrom" type="date" required /><input name="effectiveTo" type="date" /><button>{isArabic ? "حفظ الإشعار" : "Save notice"}</button></form></section></div>;
+  const [editingPartner, setEditingPartner] = useState(null);
+  const [editingCustomer, setEditingCustomer] = useState(null);
+  const submitPartner = async (event) => {
+    event.preventDefault();
+    if (await saveRecord("savePartner", event.currentTarget)) setEditingPartner(null);
+  };
+  const submitCustomer = async (event) => {
+    event.preventDefault();
+    if (await saveRecord("saveCustomer", event.currentTarget)) setEditingCustomer(null);
+  };
+  return <div className="ops-settings-section">
+    <h2>{isArabic ? "البيانات الأساسية" : "Planning master data"}</h2>
+    <section className="grid two">
+      <article className="panel ops-master-panel">
+        <h3>{isArabic ? "الأكاديميات والمدارس" : "Academies and schools"}</h3>
+        <div className="ops-master-list">{config.partners.map((item) => <div className="ops-master-row" key={item.id}><div><b>{item.name}</b><span>{item.supervisorName || "—"} · {item.supervisorPhone || "—"}</span></div><div><button type="button" disabled={busy} onClick={() => setEditingPartner(item)}>{isArabic ? "تعديل" : "Edit"}</button><button type="button" className="danger" disabled={busy} onClick={() => runRecordAction("deletePartner", { partnerId: item.id, branch: item.branch || "MOT" }, isArabic ? `حذف ${item.name}؟ الرحلات القديمة ستظل محفوظة.` : `Delete ${item.name}? Existing trips will remain saved.`)}>{isArabic ? "حذف" : "Delete"}</button></div></div>)}</div>
+        <form key={editingPartner?.id || "new-partner"} className="form-grid" onSubmit={submitPartner}>
+          {editingPartner && <input type="hidden" name="partnerId" value={editingPartner.id} />}
+          <input name="name" required defaultValue={editingPartner?.name || ""} placeholder={isArabic ? "اسم الأكاديمية" : "Academy name"} />
+          <input name="supervisorName" defaultValue={editingPartner?.supervisorName || ""} placeholder={isArabic ? "اسم المشرف" : "Supervisor"} />
+          <input name="supervisorPhone" defaultValue={editingPartner?.supervisorPhone || ""} placeholder={isArabic ? "رقم المشرف" : "Phone"} />
+          <textarea name="notes" defaultValue={editingPartner?.notes || ""} placeholder={isArabic ? "ملاحظات" : "Notes"} />
+          <div className="ops-form-actions"><button disabled={busy}>{editingPartner ? (isArabic ? "حفظ التعديل" : "Save changes") : (isArabic ? "حفظ الأكاديمية" : "Save academy")}</button>{editingPartner && <button type="button" className="secondary" onClick={() => setEditingPartner(null)}>{isArabic ? "إلغاء" : "Cancel"}</button>}</div>
+        </form>
+      </article>
+      <article className="panel ops-master-panel">
+        <h3>{isArabic ? "عملاء أعياد الميلاد" : "Birthday customers"}</h3>
+        <div className="ops-master-list">{config.customers.map((item) => <div className="ops-master-row" key={item.id}><div><b>{item.customerName}</b><span>{item.phone} · {item.childName || "—"}</span></div><div><button type="button" disabled={busy} onClick={() => setEditingCustomer(item)}>{isArabic ? "تعديل" : "Edit"}</button><button type="button" className="danger" disabled={busy} onClick={() => runRecordAction("deleteCustomer", { customerId: item.id, branch: item.branch || "MOT" }, isArabic ? `حذف ${item.customerName}؟ الحجوزات القديمة ستظل محفوظة.` : `Delete ${item.customerName}? Existing bookings will remain saved.`)}>{isArabic ? "حذف" : "Delete"}</button></div></div>)}</div>
+        <form key={editingCustomer?.id || "new-customer"} className="form-grid" onSubmit={submitCustomer}>
+          {editingCustomer && <input type="hidden" name="customerId" value={editingCustomer.id} />}
+          <input name="customerName" required defaultValue={editingCustomer?.customerName || ""} placeholder={isArabic ? "اسم العميل" : "Customer"} />
+          <input name="phone" required defaultValue={editingCustomer?.phone || ""} placeholder={isArabic ? "رقم الهاتف" : "Phone"} />
+          <input name="childName" defaultValue={editingCustomer?.childName || ""} placeholder={isArabic ? "اسم الطفل" : "Child"} />
+          <textarea name="notes" defaultValue={editingCustomer?.notes || ""} placeholder={isArabic ? "ملاحظات" : "Notes"} />
+          <div className="ops-form-actions"><button disabled={busy}>{editingCustomer ? (isArabic ? "حفظ التعديل" : "Save changes") : (isArabic ? "حفظ العميل" : "Save customer")}</button>{editingCustomer && <button type="button" className="secondary" onClick={() => setEditingCustomer(null)}>{isArabic ? "إلغاء" : "Cancel"}</button>}</div>
+        </form>
+      </article>
+    </section>
+    <section className="grid three"><Catalogue title={isArabic ? "الوجبات" : "Meals"} value={catalogues.meals || []} onChange={(meals) => setCatalogues({ ...catalogues, meals })} /><Catalogue title={isArabic ? "الغرف" : "Party rooms"} value={(catalogues.partyRooms || []).map((item) => typeof item === "string" ? item : item.name)} onChange={(rooms) => setCatalogues({ ...catalogues, partyRooms: rooms.map((name) => ({ name, active: true })) })} /><Catalogue title={isArabic ? "أصناف الستوك" : "Stock items"} value={catalogues.stockItems || []} onChange={(stockItems) => setCatalogues({ ...catalogues, stockItems })} /></section>
+    <button disabled={busy} onClick={() => saveSetting("OPS_PLANNING_CATALOGS", catalogues)}>{isArabic ? "حفظ الكتالوجات" : "Save catalogues"}</button>
+    <section className="panel"><h3>{isArabic ? "الإشعارات التشغيلية" : "Operational notices"}</h3>{config.notices?.map((item) => <div className="row" key={item.id}><span><b>{item.title}</b><small>{item.effectiveFrom} — {item.effectiveTo || "∞"}</small></span><em>{item.priority}</em></div>)}<form className="form-grid" onSubmit={(event) => { event.preventDefault(); saveRecord("saveNotice", event.currentTarget); }}><input name="title" required placeholder={isArabic ? "عنوان الإشعار" : "Notice title"} /><textarea name="message" required placeholder={isArabic ? "نص الإشعار" : "Notice message"} /><select name="priority" defaultValue="INFO"><option value="INFO">Info</option><option value="WARNING">Warning</option><option value="CRITICAL">Critical</option></select><input name="effectiveFrom" type="date" required /><input name="effectiveTo" type="date" /><button>{isArabic ? "حفظ الإشعار" : "Save notice"}</button></form></section>
+  </div>;
 }
 function Catalogue({ title, value, onChange }) { return <article className="panel"><h3>{title}</h3><textarea aria-label={title} className="ops-long-textarea" value={value.join("\n")} onChange={(event) => onChange(event.target.value.split("\n").map((item) => item.trim()).filter(Boolean))} /></article>; }
 

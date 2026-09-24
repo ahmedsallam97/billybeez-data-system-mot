@@ -1,6 +1,6 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
-const { normalizeWeekdays, offerAppliesOnDate, stockAvailable, selectBraceletStock, stockKey } = require("../lib/operations/planning");
+const { normalizeWeekdays, offerAppliesOnDate, stockAvailable, stockIssueUpdate, stockCanDelete, selectBraceletStock, stockKey } = require("../lib/operations/planning");
 
 test("offers can run on selected weekdays without requiring a date range", () => {
   const offer = { active: true, effectiveFrom: "2000-01-01", effectiveTo: "2999-12-31", weekdaysJson: JSON.stringify([0, 1, 2, 3]) };
@@ -39,4 +39,25 @@ test("bracelet stock keys allow multiple colors for the same trip or birthday us
     stockKey({ stockCategory: "BRACELET", usageType: "TRIP", color: "#ffcc00" }),
     stockKey({ stockCategory: "BRACELET", usageType: "TRIP", color: "#33aa66" }),
   );
+});
+
+test("issuing reserved stock moves allocation to issued without reducing availability twice", () => {
+  const before = { cashierQuantity: 20, warehouseQuantity: 10, allocated: 8, issued: 2 };
+  assert.equal(stockAvailable(before), 20);
+  const update = stockIssueUpdate(before, 5);
+  assert.deepEqual(update, { allocated: 3, issued: 7, fromReservation: 5, unreserved: 0 });
+  assert.equal(stockAvailable({ ...before, ...update }), 20);
+});
+
+test("unreserved stock can be issued only up to the available quantity", () => {
+  const before = { cashierQuantity: 10, warehouseQuantity: 0, allocated: 2, issued: 3 };
+  assert.deepEqual(stockIssueUpdate(before, 4), { allocated: 0, issued: 7, fromReservation: 2, unreserved: 2 });
+  assert.throws(() => stockIssueUpdate(before, 8), /Not enough available stock/);
+  assert.throws(() => stockIssueUpdate(before, 0), /greater than zero/);
+});
+
+test("stock rows with reservations or issue history cannot be deleted", () => {
+  assert.equal(stockCanDelete({ allocated: 0, issued: 0 }), true);
+  assert.equal(stockCanDelete({ allocated: 1, issued: 0 }), false);
+  assert.equal(stockCanDelete({ allocated: 0, issued: 1 }), false);
 });

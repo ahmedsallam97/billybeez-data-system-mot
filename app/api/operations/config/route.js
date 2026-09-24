@@ -55,12 +55,32 @@ export async function POST(request) {
       const data = { shiftCode, startTime: String(body.startTime || "") || null, endTime: String(body.endTime || "") || null, minEmployees: Math.max(0, Number(body.minEmployees || 0)), effectiveFrom, effectiveTo: String(body.effectiveTo || "") || null };
       record = current ? await prisma.opsPositionStaffingRequirement.update({ where: { id: current.id }, data }) : await prisma.opsPositionStaffingRequirement.create({ data: { ...data, operationalPositionId: position.id } });
     } else if (body.action === "savePartner") {
+      const branch = String(body.branch || "MOT");
       const name = String(body.name || "").trim(); if (!name) throw new Error("Academy name is required");
-      record = await prisma.opsTripPartner.upsert({ where: { branch_name: { branch: "MOT", name } }, update: { supervisorName: String(body.supervisorName || "") || null, supervisorPhone: String(body.supervisorPhone || "") || null, notes: String(body.notes || "") || null, updatedBy: user.id }, create: { branch: "MOT", name, supervisorName: String(body.supervisorName || "") || null, supervisorPhone: String(body.supervisorPhone || "") || null, notes: String(body.notes || "") || null, createdBy: user.id, updatedBy: user.id } });
+      const values = { name, supervisorName: String(body.supervisorName || "").trim() || null, supervisorPhone: String(body.supervisorPhone || "").trim() || null, notes: String(body.notes || "").trim() || null, updatedBy: user.id };
+      if (body.partnerId) {
+        const current = await prisma.opsTripPartner.findFirst({ where: { id: String(body.partnerId), branch } });
+        if (!current) throw new Error("Academy not found");
+        record = await prisma.opsTripPartner.update({ where: { id: current.id }, data: values });
+      } else record = await prisma.opsTripPartner.upsert({ where: { branch_name: { branch, name } }, update: values, create: { branch, ...values, createdBy: user.id } });
+    } else if (body.action === "deletePartner") {
+      const current = await prisma.opsTripPartner.findFirst({ where: { id: String(body.partnerId || ""), branch: String(body.branch || "MOT") } });
+      if (!current) throw new Error("Academy not found");
+      record = await prisma.opsTripPartner.delete({ where: { id: current.id } });
     } else if (body.action === "saveCustomer") {
+      const branch = String(body.branch || "MOT");
       const phone = String(body.phone || "").trim(); const customerName = String(body.customerName || "").trim();
       if (!phone || !customerName) throw new Error("Customer name and phone are required");
-      record = await prisma.opsBirthdayCustomer.upsert({ where: { branch_phone: { branch: "MOT", phone } }, update: { customerName, childName: String(body.childName || "") || null, notes: String(body.notes || "") || null, updatedBy: user.id }, create: { branch: "MOT", phone, customerName, childName: String(body.childName || "") || null, notes: String(body.notes || "") || null, createdBy: user.id, updatedBy: user.id } });
+      const values = { phone, customerName, childName: String(body.childName || "").trim() || null, notes: String(body.notes || "").trim() || null, updatedBy: user.id };
+      if (body.customerId) {
+        const current = await prisma.opsBirthdayCustomer.findFirst({ where: { id: String(body.customerId), branch } });
+        if (!current) throw new Error("Customer not found");
+        record = await prisma.opsBirthdayCustomer.update({ where: { id: current.id }, data: values });
+      } else record = await prisma.opsBirthdayCustomer.upsert({ where: { branch_phone: { branch, phone } }, update: values, create: { branch, ...values, createdBy: user.id } });
+    } else if (body.action === "deleteCustomer") {
+      const current = await prisma.opsBirthdayCustomer.findFirst({ where: { id: String(body.customerId || ""), branch: String(body.branch || "MOT") } });
+      if (!current) throw new Error("Customer not found");
+      record = await prisma.opsBirthdayCustomer.delete({ where: { id: current.id } });
     } else if (body.action === "saveOperationalName") {
       record = await prisma.employee.update({ where: { id: String(body.employeeId || "") }, data: { operationalName: String(body.operationalName || "").trim() || null, gender: ["MALE", "FEMALE"].includes(body.gender) ? body.gender : null, operationsTeamLeader: body.operationsTeamLeader === true || body.operationsTeamLeader === "on" } });
     } else if (body.action === "saveNotice") {

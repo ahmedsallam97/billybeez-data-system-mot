@@ -234,7 +234,7 @@ Authentication uses bcrypt-hashed database passwords and an HMAC-signed HTTP-onl
 ### Daily operations content
 
 - Trips, birthdays, offers, and stock each have independent workspaces.
-- Trip partners and birthday customers are reusable records so recurring organizations/customers are not re-entered every time.
+- Trip partners and birthday customers are reusable records with create, edit, and delete controls so recurring organizations/customers are not re-entered every time.
 - Trips capture organization, supervisor/contact, schedule, meal types and counts, and related details.
 - Birthdays capture customer/child/contact, date/time, meal counts, and party-room duration.
 - Offers may be permanent or date-ranged and may show before/after pricing.
@@ -242,7 +242,7 @@ Authentication uses bcrypt-hashed database passwords and an HMAC-signed HTTP-onl
 - Wristband material/color and inventory drive roster display; do not hardcode live stock.
 - Future trips and birthdays reserve wristbands by expected headcount. Editing headcount adjusts the reservation and cancellation releases it.
 - The current stock design also accounts for sock sizes/colors and selectable wristband colors/materials.
-- Offers and wristband sections use full width when there are no trip/birthday cards. Empty trip/birthday cards are hidden.
+- Offers and wristband sections always use full width; trip and birthday cards share the compact first row when present. Empty trip/birthday cards are hidden.
 - Twenty editable motivational phrases rotate by day and replace the old static slogan.
 - Leave labels use the same schedule color vocabulary as the monthly schedule.
 
@@ -281,7 +281,7 @@ Authentication uses bcrypt-hashed database passwords and an HMAC-signed HTTP-onl
 - Daily evaluation defaults plus per-row and save-all actions.
 - Reusable trip partners and birthday customers.
 - Offer before/after pricing and permanent/ranged scheduling.
-- Separated inventory categories, event-linked bracelet reservations, and settings-driven daily content.
+- Separated inventory categories, event-linked bracelet reservations, audited issue/edit/delete actions, and settings-driven daily content.
 - Management settings/insights page at `/settings`.
 - Dashboard top performers, bottom performers, and actionable operational insights.
 - Employee of the Month artwork and Hall of Fame views.
@@ -339,6 +339,7 @@ No currently reproduced runtime-blocking roster API error remains in the committ
 - Cashier assignments are settings/data driven; hardcoded employee identifiers were removed from source.
 - Browser schedule exports now provide a generated PDF download and a Cashier-inclusive XLSX; browser printing remains a separate action.
 - Bracelet availability means cashier plus warehouse stock minus allocated and issued quantities. Trip/birthday lifecycle actions maintain allocations.
+- Issuing reserved stock moves it from allocated to issued without subtracting availability twice. Stock with reservations or issue history cannot change identity or be deleted, and saved totals cannot fall below committed quantities.
 - The local duplicate active `WF Weekend` offers were consolidated to one recurring Thursday/Friday/Saturday offer; this is local operational data, not a hardcoded source default.
 - Generated evidence containing employee information is local-only and ignored by Git.
 

@@ -4,7 +4,7 @@
 
 This file is the continuity document for a new developer or Codex session with no access to the conversation that produced the current branch. Read it before changing code or data.
 
-The active branch is `ops-migration-local`. It is published to `origin/ops-migration-local`. The current implementation commit is `2072b98` (`feat: complete operations roster and planning workflows`). The branch was created from `origin/next-level-upgrade` at `a34f409`.
+The active branch is `ops-migration-local`. It is published to `origin/ops-migration-local`. The current implementation commit is `dba9123` (`feat: finish inventory reservations and roster exports`). The branch was created from `origin/next-level-upgrade` at `a34f409`.
 
 The local SQLite database, employee files, backups, generated screenshots, generated PDFs, local migration helpers, logs, and environment files are deliberately not in Git. Git contains application code and schema only. Never infer that cloning this branch recreates the current local operational data.
 
@@ -27,7 +27,7 @@ The active application is the Next.js application under `app/`. Root-level stati
 As of 2026-09-24:
 
 - the code is on `ops-migration-local` and is pushed to GitHub;
-- `npm test` passes all 59 tests;
+- `npm test` passes all 60 tests;
 - `npm run build` succeeds and builds 49 pages/routes;
 - `npm run lint` (the repository UI audit) passes;
 - the development server is configured for `http://127.0.0.1:3008`;
@@ -38,8 +38,8 @@ As of 2026-09-24:
 - Employee 360 and the current Live Daily Operations workflows are implemented and runtime-smoke-tested;
 - the roster automatically creates a rules-based rotation when a published day has no plan;
 - cashier fallback, Team Leader exclusion, per-shift eight-hour headings, merged role bands, and non-overlapping rotation assignment are active;
-- trips and birthdays support create/edit/delete, reusable contacts, meal counts, and stock-driven bracelet color/material display;
-- schedule import/export includes both Operations and Cashier departments, with browser Print/PDF plus distinct cancel/delete draft actions;
+- trips and birthdays support create/edit/delete, reusable contacts, meal counts, stock-driven bracelet color/material display, and reservation/release of bracelet quantities;
+- schedule import/export includes both Operations and Cashier departments, with direct downloadable PDF, XLSX, browser print, and distinct cancel/delete draft actions;
 - `/settings` contains both the Operations settings/insights center and the previous management settings experience;
 - Guest Feedback, Guidance/Penalties, and Incidents remain intentional placeholders;
 - no pull request was created as part of this handoff.
@@ -48,12 +48,18 @@ The current local database also contains 23 schedules and 9,087 schedule assignm
 
 ## Important recent commits
 
+- `dba9123` — `feat: finish inventory reservations and roster exports`
+  - reserves bracelet inventory for trip/birthday headcount, adjusts reservations on edit, and releases them on cancellation;
+  - assigns eligible bracelet stock to future pending events when stock is entered after the event;
+  - adds a direct downloadable monthly-schedule PDF and includes Cashier rows and department data in XLSX export;
+  - removes duplicate active local `WF Weekend` offers while retaining one configured recurring offer;
+  - validated by 60 tests, UI audit, production build, Prisma validation, authenticated export checks, and rendered PDF inspection.
 - `2072b98` — `feat: complete operations roster and planning workflows`
   - adds automatic primary/backup cashier fallback without hardcoded employee identifiers;
   - completes rules-driven rotation generation, manual-lock preservation, position priority/staffing settings, and cashier coverage;
   - adds trip/birthday edit/delete, stock bracelet materials, sock colors, schedule Print/PDF, and management settings consolidation;
   - adds direct file sharing where the browser supports Web Share, with safe clipboard/download fallback for WhatsApp;
-  - validated by 59 tests, UI audit, production build, and live browser smoke testing.
+  - validated by 59 tests, UI audit, production build, and live browser smoke testing at that commit.
 - `412c7cf` — `feat: simplify operations planning and stock`
   - establishes the current operations sidebar, separate planning workspaces, schedule colors, daily defaults, and roster presentation.
 - `40954ba` — `feat: complete Employee 360 and operations workflows`
@@ -194,7 +200,7 @@ Authentication uses bcrypt-hashed database passwords and an HMAC-signed HTTP-onl
 ### Scheduling, roster, and rotations
 
 - Monthly schedules use DRAFT, PUBLISHED, and SUPERSEDED versions.
-- Import and XLSX export are part of the scheduling workflow.
+- Import, XLSX export, and direct downloadable PDF export are part of the scheduling workflow.
 - Operations and Cashier schedule groups are separate and come from employee department/configuration.
 - The daily roster is sourced from the published monthly schedule.
 - Standard shifts are:
@@ -234,6 +240,7 @@ Authentication uses bcrypt-hashed database passwords and an HMAC-signed HTTP-onl
 - Offers may be permanent or date-ranged and may show before/after pricing.
 - Stock categories are separate: socks, wristbands, cash rolls, and Visa rolls.
 - Wristband material/color and inventory drive roster display; do not hardcode live stock.
+- Future trips and birthdays reserve wristbands by expected headcount. Editing headcount adjusts the reservation and cancellation releases it.
 - The current stock design also accounts for sock sizes/colors and selectable wristband colors/materials.
 - Offers and wristband sections use full width when there are no trip/birthday cards. Empty trip/birthday cards are hidden.
 - Twenty editable motivational phrases rotate by day and replace the old static slogan.
@@ -274,7 +281,7 @@ Authentication uses bcrypt-hashed database passwords and an HMAC-signed HTTP-onl
 - Daily evaluation defaults plus per-row and save-all actions.
 - Reusable trip partners and birthday customers.
 - Offer before/after pricing and permanent/ranged scheduling.
-- Separated inventory categories and settings-driven daily content.
+- Separated inventory categories, event-linked bracelet reservations, and settings-driven daily content.
 - Management settings/insights page at `/settings`.
 - Dashboard top performers, bottom performers, and actionable operational insights.
 - Employee of the Month artwork and Hall of Fame views.
@@ -330,6 +337,9 @@ No currently reproduced runtime-blocking roster API error remains in the committ
 - Employee names default to English across the site; the roster can use manager-configured two-name labels.
 - The roster is a dedicated sidebar page and uses a fixed compact navigation pattern intended to preserve content width.
 - Cashier assignments are settings/data driven; hardcoded employee identifiers were removed from source.
+- Browser schedule exports now provide a generated PDF download and a Cashier-inclusive XLSX; browser printing remains a separate action.
+- Bracelet availability means cashier plus warehouse stock minus allocated and issued quantities. Trip/birthday lifecycle actions maintain allocations.
+- The local duplicate active `WF Weekend` offers were consolidated to one recurring Thursday/Friday/Saturday offer; this is local operational data, not a hardcoded source default.
 - Generated evidence containing employee information is local-only and ignored by Git.
 
 ## Local-only context not represented by Git data
@@ -337,8 +347,8 @@ No currently reproduced runtime-blocking roster API error remains in the committ
 - Latest verified local counts: 16 total employees, 13 active, 3 inactive, 8 active HRIS, 5 active Part-Time.
 - SQLite integrity was verified as `ok` before the Employee 360 schema changes and again during closure work.
 - Pre-change backup: `backups/manual-2026-09-14T02-24-42-035Z.db`.
-- Latest verified backup: `backups/manual-2026-09-24T08-52-16-668Z.db`.
-- Full confidential non-Git restore package: `D:\Projects\billybeez-system-backups\BillyBeez-MOT-restore-2026-09-24T08-52-16Z.zip`.
+- Latest verified backup: `backups/manual-2026-09-24T10-16-44-618Z.db`.
+- Full confidential non-Git restore package: `D:\Projects\billybeez-system-backups\BillyBeez-MOT-restore-2026-09-24T10-16-44Z.zip`.
 - Read `BACKUP_INVENTORY.md` and `RESTORE_GUIDE.md` before restoring. The archive remains local and must never be uploaded to GitHub.
 - The local database contains the operational schedule/history and must not be reseeded or reset.
 - The latest local rotation plan at handoff is V1 for 2026-09-24 with 13 DATA assignments, merged cashier bands, no cashier rotations, and no duplicate employee/hour or position/hour assignment. Optional positions were correctly withheld because the published day includes leave records and `optionalOnlyWhenFullyStaffed` is enabled.
@@ -436,7 +446,7 @@ Do not deploy the current SQLite file and local `storage/` directory to an ephem
 1. Reconcile the PostgreSQL schema with the complete SQLite schema and produce reviewed migrations.
 2. Move protected employee uploads to production-grade object storage.
 3. Add browser E2E tests for critical Employee 360 and Daily Operations flows.
-4. Select the fourth backup cashier and any Team Leader through Settings; these choices were intentionally not invented. Continue entering real qualifications and inventory as operational data becomes available.
+4. Select the fourth backup cashier and any Team Leader through Settings; these choices were intentionally not invented. Enter real inventory quantities and optional qualification restrictions as operational data becomes available.
 5. Resolve or explicitly accept current operational coverage warnings using real staffing requirements; do not suppress them in code.
 6. Continue visual refinement using runtime screenshots at actual branch desktop widths and A4 print preview.
 7. Complete Guest Feedback in its later phase.
@@ -449,7 +459,7 @@ Do not deploy the current SQLite file and local `storage/` directory to an ephem
 1. Make a fresh database and employee-file backup before any additional schema or data change.
 2. Read this file, `prisma/schema.prisma`, `lib/settings.js`, `lib/role-matrix.js`, and the Operations reconciliation docs.
 3. Start the server on port 3008 and run a focused runtime smoke test of schedule, roster, attendance, daily evaluation, Employee 360, uploads, protected file access, and both print previews.
-4. Review current Settings data with the branch manager and select the fourth backup cashier, Team Leader, qualifications, and real stock quantities.
+4. Review current Settings data with the branch manager and select the fourth backup cashier, Team Leader, real stock quantities, and any qualification restrictions the branch actually uses.
 5. Verify coverage warnings against the real staffing model and adjust requirements or staffing only with operational approval.
 6. Add E2E coverage before another large UI refactor.
 7. Reconcile PostgreSQL and object storage in an isolated environment before planning deployment.
@@ -506,7 +516,7 @@ The implementation commit was reviewed for tracked secrets and forbidden artifac
 At handoff, the expected repository checks are:
 
 ```text
-npm test      # 59 passing
+npm test      # 60 passing
 npm run lint  # UI audit passing
 npm run build # production build passing
 ```

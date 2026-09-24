@@ -5,12 +5,12 @@
 - Created: 2026-09-24
 - Repository: `D:\Projects\billybeez-data-system-mot`
 - Git branch: `ops-migration-local`
-- External package: `D:\Projects\billybeez-system-backups\BillyBeez-MOT-restore-2026-09-24T08-52-16Z.zip`
-- Fresh verified database backup: `D:\Projects\billybeez-data-system-mot\backups\manual-2026-09-24T08-52-16-668Z.db`
+- External package: `D:\Projects\billybeez-system-backups\BillyBeez-MOT-restore-2026-09-24T10-16-44Z.zip`
+- Fresh verified database backup: `D:\Projects\billybeez-data-system-mot\backups\manual-2026-09-24T10-16-44-618Z.db`
 
 The external package is intentionally outside the repository and must never be committed or uploaded to GitHub. It contains credentials, operational history, employee information, and restricted employee evidence. Treat it as confidential.
 
-Final archive size: 16,136,368 bytes (50 files; 103,704,522 bytes before ZIP compression). The archive was extracted to an isolated verification folder, all manifest checksums passed, required environment-variable names were present, and the extracted database passed integrity and foreign-key checks.
+Final archive size is approximately 18.2 MB (53 files; approximately 117.6 MB before ZIP compression). The exact archive byte size is reported after the final ZIP is built. The archive was extracted to an isolated verification folder, all 52 manifest checksums passed, required environment-variable names were present, and the extracted database passed integrity and foreign-key checks.
 
 ## Required restore sources
 
@@ -48,7 +48,9 @@ All SQLite files present in the active database and backup locations at package 
 - `backups\manual-2026-09-18T08-45-22-765Z.db`
 - `backups\manual-2026-09-23T07-26-05-392Z.db`
 - `backups\manual-2026-09-23T20-58-32-170Z.db`
-- `backups\manual-2026-09-24T08-52-16-668Z.db` (fresh verified backup and package database source)
+- `backups\manual-2026-09-24T08-52-16-668Z.db`
+- `backups\manual-2026-09-24T10-01-28-111Z.db`
+- `backups\manual-2026-09-24T10-16-44-618Z.db` (fresh verified backup and package database source)
 
 ## Verification baseline
 
@@ -69,11 +71,12 @@ The package contains `manifest\SHA256SUMS.txt` and `manifest\PACKAGE_CONTENTS.tx
 ## Package layout
 
 ```text
-BillyBeez-MOT-restore-2026-09-24T08-52-16Z/
+BillyBeez-MOT-restore-2026-09-24T10-16-44Z/
   RESTORE_FIRST.txt
   documentation/
     BACKUP_INVENTORY.md
     RESTORE_GUIDE.md
+    CODEX_HANDOFF.md
     .env.example
   repo-overlay/
     .env

@@ -4,7 +4,7 @@
 
 This file is the continuity document for a new developer or Codex session with no access to the conversation that produced the current branch. Read it before changing code or data.
 
-The active branch is `ops-migration-local`. It is published to `origin/ops-migration-local`. The current implementation commit is `40954ba` (`feat: complete Employee 360 and operations workflows`). The branch was created from `origin/next-level-upgrade` at `a34f409`.
+The active branch is `ops-migration-local`. It is published to `origin/ops-migration-local`. The current implementation commit is `2072b98` (`feat: complete operations roster and planning workflows`). The branch was created from `origin/next-level-upgrade` at `a34f409`.
 
 The local SQLite database, employee files, backups, generated screenshots, generated PDFs, local migration helpers, logs, and environment files are deliberately not in Git. Git contains application code and schema only. Never infer that cloning this branch recreates the current local operational data.
 
@@ -24,10 +24,10 @@ The active application is the Next.js application under `app/`. Root-level stati
 
 ## Current state
 
-As of 2026-09-17:
+As of 2026-09-24:
 
 - the code is on `ops-migration-local` and is pushed to GitHub;
-- `npm test` passes all 52 tests;
+- `npm test` passes all 59 tests;
 - `npm run build` succeeds and builds 49 pages/routes;
 - `npm run lint` (the repository UI audit) passes;
 - the development server is configured for `http://127.0.0.1:3008`;
@@ -35,7 +35,12 @@ As of 2026-09-17:
 - the local employee population remains 16 total, 13 active, and 3 inactive;
 - the 13 active operational employees consist of 8 HRIS and 5 Part-Time records;
 - inactive employees were preserved and were not deleted, merged, or normalized away;
-- Employee 360 and the current Live Daily Operations foundation are implemented;
+- Employee 360 and the current Live Daily Operations workflows are implemented and runtime-smoke-tested;
+- the roster automatically creates a rules-based rotation when a published day has no plan;
+- cashier fallback, Team Leader exclusion, per-shift eight-hour headings, merged role bands, and non-overlapping rotation assignment are active;
+- trips and birthdays support create/edit/delete, reusable contacts, meal counts, and stock-driven bracelet color/material display;
+- schedule import/export includes both Operations and Cashier departments, with browser Print/PDF plus distinct cancel/delete draft actions;
+- `/settings` contains both the Operations settings/insights center and the previous management settings experience;
 - Guest Feedback, Guidance/Penalties, and Incidents remain intentional placeholders;
 - no pull request was created as part of this handoff.
 
@@ -43,6 +48,14 @@ The current local database also contains 23 schedules and 9,087 schedule assignm
 
 ## Important recent commits
 
+- `2072b98` — `feat: complete operations roster and planning workflows`
+  - adds automatic primary/backup cashier fallback without hardcoded employee identifiers;
+  - completes rules-driven rotation generation, manual-lock preservation, position priority/staffing settings, and cashier coverage;
+  - adds trip/birthday edit/delete, stock bracelet materials, sock colors, schedule Print/PDF, and management settings consolidation;
+  - adds direct file sharing where the browser supports Web Share, with safe clipboard/download fallback for WhatsApp;
+  - validated by 59 tests, UI audit, production build, and live browser smoke testing.
+- `412c7cf` — `feat: simplify operations planning and stock`
+  - establishes the current operations sidebar, separate planning workspaces, schedule colors, daily defaults, and roster presentation.
 - `40954ba` — `feat: complete Employee 360 and operations workflows`
   - consolidates the safe Employee 360, Operations, schema, API, UI, tests, and documentation changes;
   - excludes generated employee screenshots/PDFs and a local migration helper containing employee identifiers;
@@ -324,11 +337,11 @@ No currently reproduced runtime-blocking roster API error remains in the committ
 - Latest verified local counts: 16 total employees, 13 active, 3 inactive, 8 active HRIS, 5 active Part-Time.
 - SQLite integrity was verified as `ok` before the Employee 360 schema changes and again during closure work.
 - Pre-change backup: `backups/manual-2026-09-14T02-24-42-035Z.db`.
-- Latest verified backup: `backups/manual-2026-09-18T08-45-22-765Z.db`.
-- Full confidential non-Git restore package: `D:\Projects\billybeez-system-backups\BillyBeez-MOT-restore-2026-09-18T08-45-22Z.zip`.
+- Latest verified backup: `backups/manual-2026-09-24T08-52-16-668Z.db`.
+- Full confidential non-Git restore package: `D:\Projects\billybeez-system-backups\BillyBeez-MOT-restore-2026-09-24T08-52-16Z.zip`.
 - Read `BACKUP_INVENTORY.md` and `RESTORE_GUIDE.md` before restoring. The archive remains local and must never be uploaded to GitHub.
 - The local database contains the operational schedule/history and must not be reseeded or reset.
-- The latest local rotation plan at handoff is V5 for 2026-09-17 with 58 assignments, no cashier rotations, and no duplicate position/hour assignment. Its 32 warnings reflect real staffing coverage gaps.
+- The latest local rotation plan at handoff is V1 for 2026-09-24 with 13 DATA assignments, merged cashier bands, no cashier rotations, and no duplicate employee/hour or position/hour assignment. Optional positions were correctly withheld because the published day includes leave records and `optionalOnlyWhenFullyStaffed` is enabled.
 - A local ignored migration helper exists at `scripts/migrate-bb-oms.js`. It contains private employee reconciliation data and a source-database path. Do not commit, publish, or treat it as a supported repeatable migration. The reconciliation is already complete.
 - Local ignored admin helper scripts and development logs may contain credentials or sensitive output. Do not commit them.
 - Generated Employee 360 screenshots and a restricted employee PDF were retained locally for verification but deliberately excluded from Git.
@@ -423,7 +436,7 @@ Do not deploy the current SQLite file and local `storage/` directory to an ephem
 1. Reconcile the PostgreSQL schema with the complete SQLite schema and produce reviewed migrations.
 2. Move protected employee uploads to production-grade object storage.
 3. Add browser E2E tests for critical Employee 360 and Daily Operations flows.
-4. Configure real roster two-name labels, gender display, Team Leaders, cashiers/backups, positions, qualifications, staffing requirements, motivation phrases, and inventory through Settings.
+4. Select the fourth backup cashier and any Team Leader through Settings; these choices were intentionally not invented. Continue entering real qualifications and inventory as operational data becomes available.
 5. Resolve or explicitly accept current operational coverage warnings using real staffing requirements; do not suppress them in code.
 6. Continue visual refinement using runtime screenshots at actual branch desktop widths and A4 print preview.
 7. Complete Guest Feedback in its later phase.
@@ -436,8 +449,8 @@ Do not deploy the current SQLite file and local `storage/` directory to an ephem
 1. Make a fresh database and employee-file backup before any additional schema or data change.
 2. Read this file, `prisma/schema.prisma`, `lib/settings.js`, `lib/role-matrix.js`, and the Operations reconciliation docs.
 3. Start the server on port 3008 and run a focused runtime smoke test of schedule, roster, attendance, daily evaluation, Employee 360, uploads, protected file access, and both print previews.
-4. Review current Settings data with the branch manager and enter missing Team Leader, cashier backup, gender, two-name, qualification, position, and stock configuration.
-5. Verify the 32 coverage warnings against the real staffing model and adjust requirements or staffing only with operational approval.
+4. Review current Settings data with the branch manager and select the fourth backup cashier, Team Leader, qualifications, and real stock quantities.
+5. Verify coverage warnings against the real staffing model and adjust requirements or staffing only with operational approval.
 6. Add E2E coverage before another large UI refactor.
 7. Reconcile PostgreSQL and object storage in an isolated environment before planning deployment.
 8. Update README and remove stale credential examples.
@@ -493,7 +506,7 @@ The implementation commit was reviewed for tracked secrets and forbidden artifac
 At handoff, the expected repository checks are:
 
 ```text
-npm test      # 52 passing
+npm test      # 59 passing
 npm run lint  # UI audit passing
 npm run build # production build passing
 ```

@@ -4,7 +4,7 @@ import { authorizeApi } from "@/lib/api-auth";
 import { writeAudit } from "@/lib/audit";
 import { getSetting } from "@/lib/settings";
 import { buildExpectedTeam, mergeExpectedActual, canAssign, overlaps, generateRotation, normalizeRotationRules, coverageFor, buildReadiness, needsAttention, closeDayValidation } from "@/lib/operations/live-daily";
-import { normalizeWeekdays, offerAppliesOnDate, stockAvailable, stockKey } from "@/lib/operations/planning";
+import { normalizeWeekdays, offerAppliesOnDate, selectBraceletStock, stockAvailable, stockKey } from "@/lib/operations/planning";
 import { applyCashierFallbacks } from "@/lib/operations/cashiers";
 
 const validDate = (value) => /^\d{4}-\d{2}-\d{2}$/.test(String(value || ""));
@@ -37,13 +37,60 @@ function offerValues(body, userId) {
 }
 
 function bool(value) { return value === true || value === "true" || value === "on" || value === "YES"; }
-function braceletFor(stockRows, usageType, offset = 0) {
-  const candidates = (stockRows || [])
-    .filter((item) => item.stockCategory === "BRACELET" && item.usageType === usageType && stockAvailable(item) > 0)
-    .sort((left, right) => stockAvailable(right) - stockAvailable(left) || String(left.color || "").localeCompare(String(right.color || "")));
-  if (!candidates.length) return { braceletType: null, braceletColor: null, braceletMaterial: null };
-  const item = candidates[offset % candidates.length];
-  return { braceletType: item.wristbandType, braceletColor: item.color || null, braceletMaterial: item.material || null };
+const emptyBracelet = () => ({ braceletType: null, braceletColor: null, braceletMaterial: null });
+const braceletFields = (item) => item ? ({ braceletType: item.wristbandType, braceletColor: item.color || null, braceletMaterial: item.material || null }) : emptyBracelet();
+
+async function reserveBracelets(tx, { branch, usageType, quantity, offset = 0 }) {
+  const required = Math.max(0, Number(quantity || 0));
+  const rows = await tx.opsWristbandStock.findMany({ where: { branch, workDate: "ALL", stockCategory: "BRACELET", usageType } });
+  const item = selectBraceletStock(rows, usageType, required, offset);
+  if (!item) return { ...emptyBracelet(), stockId: null, reserved: 0 };
+  if (required) {
+    const updated = await tx.opsWristbandStock.updateMany({ where: { id: item.id, allocated: item.allocated }, data: { allocated: { increment: required } } });
+    if (updated.count !== 1) throw new Error("Bracelet stock changed while saving; try again");
+  }
+  return { ...braceletFields(item), stockId: item.id, reserved: required };
+}
+
+async function updateBraceletReservation(tx, { branch, current, quantity, usageType, offset = 0 }) {
+  const nextQuantity = Math.max(0, Number(quantity || 0));
+  const previousQuantity = Math.max(0, Number(current?.expectedChildren ?? current?.expectedGuests ?? 0));
+  if (!current?.braceletType) return reserveBracelets(tx, { branch, usageType, quantity: nextQuantity, offset });
+  const stock = await tx.opsWristbandStock.findFirst({ where: { branch, workDate: "ALL", wristbandType: current.braceletType } });
+  if (!stock) return { braceletType: current.braceletType, braceletColor: current.braceletColor || null, braceletMaterial: current.braceletMaterial || null, stockId: null, reserved: 0 };
+  const delta = nextQuantity - previousQuantity;
+  if (delta > 0) {
+    if (stockAvailable(stock) < delta) throw new Error(`Not enough ${usageType.toLowerCase()} bracelet stock for the new headcount`);
+    const updated = await tx.opsWristbandStock.updateMany({ where: { id: stock.id, allocated: stock.allocated }, data: { allocated: { increment: delta } } });
+    if (updated.count !== 1) throw new Error("Bracelet stock changed while saving; try again");
+  } else if (delta < 0) {
+    await tx.opsWristbandStock.update({ where: { id: stock.id }, data: { allocated: Math.max(0, Number(stock.allocated || 0) + delta) } });
+  }
+  return { ...braceletFields(stock), stockId: stock.id, reserved: nextQuantity };
+}
+
+async function releaseBraceletReservation(tx, record) {
+  if (!record?.braceletType) return;
+  const stock = await tx.opsWristbandStock.findFirst({ where: { branch: record.branch, workDate: "ALL", wristbandType: record.braceletType } });
+  if (!stock) return;
+  const quantity = Math.max(0, Number(record.expectedChildren ?? record.expectedGuests ?? 0));
+  await tx.opsWristbandStock.update({ where: { id: stock.id }, data: { allocated: Math.max(0, Number(stock.allocated || 0) - quantity) } });
+}
+
+async function assignPendingBracelets(tx, { branch, usageType }) {
+  const today = new Intl.DateTimeFormat("en-CA", { timeZone: "Africa/Cairo", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
+  const pending = usageType === "TRIP"
+    ? await tx.opsDailyTrip.findMany({ where: { branch, workDate: { gte: today }, status: { not: "CANCELLED" }, braceletType: null }, orderBy: [{ workDate: "asc" }, { createdAt: "asc" }] })
+    : await tx.opsDailyEvent.findMany({ where: { branch, workDate: { gte: today }, eventType: "BIRTHDAY", status: { not: "CANCELLED" }, braceletType: null }, orderBy: [{ workDate: "asc" }, { createdAt: "asc" }] });
+  for (let index = 0; index < pending.length; index += 1) {
+    const booking = pending[index];
+    const quantity = usageType === "TRIP" ? booking.expectedChildren : booking.expectedGuests;
+    const reservation = await reserveBracelets(tx, { branch, usageType, quantity, offset: index });
+    if (!reservation.stockId) continue;
+    const data = { braceletType: reservation.braceletType, braceletColor: reservation.braceletColor, braceletMaterial: reservation.braceletMaterial };
+    if (usageType === "TRIP") await tx.opsDailyTrip.update({ where: { id: booking.id }, data });
+    else await tx.opsDailyEvent.update({ where: { id: booking.id }, data });
+  }
 }
 
 async function loadDaily(date, branch = "MOT") {
@@ -153,10 +200,12 @@ export async function POST(request) {
         update: { supervisorName: String(body.supervisorName || partner?.supervisorName || "").trim() || null, supervisorPhone: String(body.supervisorPhone || partner?.supervisorPhone || "").trim() || null, updatedBy: user.id },
         create: { branch, name: partnerName, supervisorName: String(body.supervisorName || "").trim() || null, supervisorPhone: String(body.supervisorPhone || "").trim() || null, createdBy: user.id, updatedBy: user.id },
       });
-      const stockRows = await prisma.opsWristbandStock.findMany({ where: { branch, workDate: "ALL" } });
       const existingCount = await prisma.opsDailyTrip.count({ where: { branch, workDate: date, status: { not: "CANCELLED" } } });
-      const bracelet = braceletFor(stockRows, "TRIP", existingCount);
-      const record = await prisma.opsDailyTrip.create({ data: { branch, workDate: date, tripPartnerId: partner.id, name: partner.name, startTime: String(body.startTime), endTime: String(body.endTime || "") || null, expectedChildren: number("expectedChildren"), supervisorName: String(body.supervisorName || partner.supervisorName || "").trim() || null, supervisorPhone: String(body.supervisorPhone || partner.supervisorPhone || "").trim() || null, mealIncluded: bool(body.mealIncluded), chickenNuggets: number("chickenNuggets"), beefBurgers: number("beefBurgers"), chickenBurgers: number("chickenBurgers"), ...bracelet, staffingRequired: number("staffingRequired"), notes: String(body.notes || "").trim() || null, createdBy: user.id, updatedBy: user.id } });
+      const expectedChildren = number("expectedChildren");
+      const record = await prisma.$transaction(async (tx) => {
+        const bracelet = await reserveBracelets(tx, { branch, usageType: "TRIP", quantity: expectedChildren, offset: existingCount });
+        return tx.opsDailyTrip.create({ data: { branch, workDate: date, tripPartnerId: partner.id, name: partner.name, startTime: String(body.startTime), endTime: String(body.endTime || "") || null, expectedChildren, supervisorName: String(body.supervisorName || partner.supervisorName || "").trim() || null, supervisorPhone: String(body.supervisorPhone || partner.supervisorPhone || "").trim() || null, mealIncluded: bool(body.mealIncluded), chickenNuggets: number("chickenNuggets"), beefBurgers: number("beefBurgers"), chickenBurgers: number("chickenBurgers"), braceletType: bracelet.braceletType, braceletColor: bracelet.braceletColor, braceletMaterial: bracelet.braceletMaterial, staffingRequired: number("staffingRequired"), notes: String(body.notes || "").trim() || null, createdBy: user.id, updatedBy: user.id } });
+      });
       await writeAudit({ action: "OPS_CREATETRIP", user, summary: `Created trip for ${partner.name}`, metadata: { id: record.id, partnerId: partner.id, branch, date } });
       return NextResponse.json({ success: true, record, partner });
     }
@@ -167,10 +216,12 @@ export async function POST(request) {
       const childName = String(body.childName || customer?.childName || "").trim();
       if (!phone || !customerName || !childName || !body.startTime) throw new Error("Customer, phone, child and start time are required");
       customer = await prisma.opsBirthdayCustomer.upsert({ where: { branch_phone: { branch, phone } }, update: { customerName, childName, updatedBy: user.id }, create: { branch, phone, customerName, childName, createdBy: user.id, updatedBy: user.id } });
-      const stockRows = await prisma.opsWristbandStock.findMany({ where: { branch, workDate: "ALL" } });
       const existingCount = await prisma.opsDailyEvent.count({ where: { branch, workDate: date, eventType: "BIRTHDAY", status: { not: "CANCELLED" } } });
-      const bracelet = braceletFor(stockRows, "BIRTHDAY", existingCount);
-      const record = await prisma.opsDailyEvent.create({ data: { branch, workDate: date, birthdayCustomerId: customer.id, name: String(body.name || `${childName} Birthday`).trim(), customerName, customerPhone: phone, childName, startTime: String(body.startTime), endTime: String(body.endTime || "") || null, eventType: "BIRTHDAY", expectedGuests: number("expectedGuests"), chickenNuggets: number("chickenNuggets"), beefBurgers: number("beefBurgers"), chickenBurgers: number("chickenBurgers"), partyRoomHours: body.partyRoomHours ? Number(body.partyRoomHours) : null, ...bracelet, location: String(body.location || "").trim() || null, staffingRequired: number("staffingRequired"), notes: String(body.notes || "").trim() || null, createdBy: user.id, updatedBy: user.id } });
+      const expectedGuests = number("expectedGuests");
+      const record = await prisma.$transaction(async (tx) => {
+        const bracelet = await reserveBracelets(tx, { branch, usageType: "BIRTHDAY", quantity: expectedGuests, offset: existingCount });
+        return tx.opsDailyEvent.create({ data: { branch, workDate: date, birthdayCustomerId: customer.id, name: String(body.name || `${childName} Birthday`).trim(), customerName, customerPhone: phone, childName, startTime: String(body.startTime), endTime: String(body.endTime || "") || null, eventType: "BIRTHDAY", expectedGuests, chickenNuggets: number("chickenNuggets"), beefBurgers: number("beefBurgers"), chickenBurgers: number("chickenBurgers"), partyRoomHours: body.partyRoomHours ? Number(body.partyRoomHours) : null, braceletType: bracelet.braceletType, braceletColor: bracelet.braceletColor, braceletMaterial: bracelet.braceletMaterial, location: String(body.location || "").trim() || null, staffingRequired: number("staffingRequired"), notes: String(body.notes || "").trim() || null, createdBy: user.id, updatedBy: user.id } });
+      });
       await writeAudit({ action: "OPS_CREATEEVENT", user, summary: `Created birthday for ${childName}`, metadata: { id: record.id, customerId: customer.id, branch, date } });
       return NextResponse.json({ success: true, record, customer });
     }
@@ -193,8 +244,12 @@ export async function POST(request) {
       const cashierQuantity = number("cashierQuantity");
       const warehouseQuantity = number("warehouseQuantity");
       const wristbandType = stockKey({ stockCategory, usageType, size, rollStyle, color, material });
-      const values = { stockCategory, unit: String(body.unit || "ITEM"), color, usageType, material, size, rollStyle, cashierQuantity, warehouseQuantity, availableStock: cashierQuantity + warehouseQuantity, allocated: 0, issued: 0, notes: String(body.notes || "").trim() || null };
-      const record = await prisma.opsWristbandStock.upsert({ where: { branch_workDate_wristbandType: { branch, workDate: "ALL", wristbandType } }, update: { ...values, updatedBy: user.id }, create: { branch, workDate: "ALL", wristbandType, ...values, createdBy: user.id, updatedBy: user.id } });
+      const values = { stockCategory, unit: String(body.unit || "ITEM"), color, usageType, material, size, rollStyle, cashierQuantity, warehouseQuantity, availableStock: cashierQuantity + warehouseQuantity, notes: String(body.notes || "").trim() || null };
+      const record = await prisma.$transaction(async (tx) => {
+        const saved = await tx.opsWristbandStock.upsert({ where: { branch_workDate_wristbandType: { branch, workDate: "ALL", wristbandType } }, update: { ...values, updatedBy: user.id }, create: { branch, workDate: "ALL", wristbandType, ...values, allocated: 0, issued: 0, createdBy: user.id, updatedBy: user.id } });
+        if (stockCategory === "BRACELET" && ["TRIP", "BIRTHDAY"].includes(usageType)) await assignPendingBracelets(tx, { branch, usageType });
+        return tx.opsWristbandStock.findUnique({ where: { id: saved.id } });
+      });
       await writeAudit({ action: "OPS_SETSTOCK", user, summary: `Updated stock ${record.usageType || record.size || record.rollStyle || record.wristbandType}`, metadata: { id: record.id, branch, available: stockAvailable(record), category: stockCategory } });
       return NextResponse.json({ success: true, record });
     }
@@ -213,24 +268,42 @@ export async function PATCH(request) {
     if (body.action === "updateTrip") {
       const current = await prisma.opsDailyTrip.findFirst({ where: { id: String(body.tripId || ""), branch: String(body.branch || "MOT") } });
       if (!current) throw new Error("Trip not found");
-      const record = await prisma.opsDailyTrip.update({ where: { id: current.id }, data: { name: String(body.name || current.name).trim(), startTime: String(body.startTime || current.startTime || "") || null, endTime: String(body.endTime || "") || null, expectedChildren: Math.max(0, Number(body.expectedChildren || 0)), supervisorName: String(body.supervisorName || "").trim() || null, supervisorPhone: String(body.supervisorPhone || "").trim() || null, mealIncluded: bool(body.mealIncluded), chickenNuggets: Math.max(0, Number(body.chickenNuggets || 0)), beefBurgers: Math.max(0, Number(body.beefBurgers || 0)), chickenBurgers: Math.max(0, Number(body.chickenBurgers || 0)), staffingRequired: Math.max(0, Number(body.staffingRequired || 0)), notes: String(body.notes || "").trim() || null, updatedBy: user.id } });
+      const expectedChildren = Math.max(0, Number(body.expectedChildren || 0));
+      const record = await prisma.$transaction(async (tx) => {
+        const bracelet = await updateBraceletReservation(tx, { branch: current.branch, current, quantity: expectedChildren, usageType: "TRIP" });
+        return tx.opsDailyTrip.update({ where: { id: current.id }, data: { name: String(body.name || current.name).trim(), startTime: String(body.startTime || current.startTime || "") || null, endTime: String(body.endTime || "") || null, expectedChildren, supervisorName: String(body.supervisorName || "").trim() || null, supervisorPhone: String(body.supervisorPhone || "").trim() || null, mealIncluded: bool(body.mealIncluded), chickenNuggets: Math.max(0, Number(body.chickenNuggets || 0)), beefBurgers: Math.max(0, Number(body.beefBurgers || 0)), chickenBurgers: Math.max(0, Number(body.chickenBurgers || 0)), braceletType: bracelet.braceletType, braceletColor: bracelet.braceletColor, braceletMaterial: bracelet.braceletMaterial, staffingRequired: Math.max(0, Number(body.staffingRequired || 0)), notes: String(body.notes || "").trim() || null, updatedBy: user.id } });
+      });
       await writeAudit({ action: "OPS_UPDATETRIP", user, summary: `Updated trip ${record.name}`, metadata: { id: record.id, branch: record.branch } });
       return NextResponse.json({ success: true, record });
     }
     if (body.action === "deleteTrip") {
-      const record = await prisma.opsDailyTrip.update({ where: { id: String(body.tripId || "") }, data: { status: "CANCELLED", updatedBy: user.id } });
+      const current = await prisma.opsDailyTrip.findUnique({ where: { id: String(body.tripId || "") } });
+      if (!current) throw new Error("Trip not found");
+      const record = await prisma.$transaction(async (tx) => {
+        if (current.status !== "CANCELLED") await releaseBraceletReservation(tx, current);
+        return tx.opsDailyTrip.update({ where: { id: current.id }, data: { status: "CANCELLED", updatedBy: user.id } });
+      });
       await writeAudit({ action: "OPS_DELETETRIP", user, summary: `Cancelled trip ${record.name}`, metadata: { id: record.id, branch: record.branch } });
       return NextResponse.json({ success: true, record });
     }
     if (body.action === "updateEvent") {
       const current = await prisma.opsDailyEvent.findFirst({ where: { id: String(body.eventId || ""), branch: String(body.branch || "MOT") } });
       if (!current) throw new Error("Birthday not found");
-      const record = await prisma.opsDailyEvent.update({ where: { id: current.id }, data: { name: String(body.name || current.name).trim(), customerName: String(body.customerName || current.customerName || "").trim() || null, customerPhone: String(body.customerPhone || current.customerPhone || "").trim() || null, childName: String(body.childName || current.childName || "").trim() || null, startTime: String(body.startTime || current.startTime || "") || null, endTime: String(body.endTime || "") || null, expectedGuests: Math.max(0, Number(body.expectedGuests || 0)), chickenNuggets: Math.max(0, Number(body.chickenNuggets || 0)), beefBurgers: Math.max(0, Number(body.beefBurgers || 0)), chickenBurgers: Math.max(0, Number(body.chickenBurgers || 0)), partyRoomHours: body.partyRoomHours ? Number(body.partyRoomHours) : null, location: String(body.location || "").trim() || null, staffingRequired: Math.max(0, Number(body.staffingRequired || 0)), notes: String(body.notes || "").trim() || null, updatedBy: user.id } });
+      const expectedGuests = Math.max(0, Number(body.expectedGuests || 0));
+      const record = await prisma.$transaction(async (tx) => {
+        const bracelet = await updateBraceletReservation(tx, { branch: current.branch, current, quantity: expectedGuests, usageType: "BIRTHDAY" });
+        return tx.opsDailyEvent.update({ where: { id: current.id }, data: { name: String(body.name || current.name).trim(), customerName: String(body.customerName || current.customerName || "").trim() || null, customerPhone: String(body.customerPhone || current.customerPhone || "").trim() || null, childName: String(body.childName || current.childName || "").trim() || null, startTime: String(body.startTime || current.startTime || "") || null, endTime: String(body.endTime || "") || null, expectedGuests, chickenNuggets: Math.max(0, Number(body.chickenNuggets || 0)), beefBurgers: Math.max(0, Number(body.beefBurgers || 0)), chickenBurgers: Math.max(0, Number(body.chickenBurgers || 0)), partyRoomHours: body.partyRoomHours ? Number(body.partyRoomHours) : null, braceletType: bracelet.braceletType, braceletColor: bracelet.braceletColor, braceletMaterial: bracelet.braceletMaterial, location: String(body.location || "").trim() || null, staffingRequired: Math.max(0, Number(body.staffingRequired || 0)), notes: String(body.notes || "").trim() || null, updatedBy: user.id } });
+      });
       await writeAudit({ action: "OPS_UPDATEEVENT", user, summary: `Updated birthday ${record.name}`, metadata: { id: record.id, branch: record.branch } });
       return NextResponse.json({ success: true, record });
     }
     if (body.action === "deleteEvent") {
-      const record = await prisma.opsDailyEvent.update({ where: { id: String(body.eventId || "") }, data: { status: "CANCELLED", updatedBy: user.id } });
+      const current = await prisma.opsDailyEvent.findUnique({ where: { id: String(body.eventId || "") } });
+      if (!current) throw new Error("Birthday not found");
+      const record = await prisma.$transaction(async (tx) => {
+        if (current.status !== "CANCELLED") await releaseBraceletReservation(tx, current);
+        return tx.opsDailyEvent.update({ where: { id: current.id }, data: { status: "CANCELLED", updatedBy: user.id } });
+      });
       await writeAudit({ action: "OPS_DELETEEVENT", user, summary: `Cancelled birthday ${record.name}`, metadata: { id: record.id, branch: record.branch } });
       return NextResponse.json({ success: true, record });
     }

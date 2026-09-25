@@ -24,7 +24,7 @@ The active application is the Next.js application under `app/`. Root-level stati
 
 ## Current state
 
-As of 2026-09-24:
+As of 2026-09-25:
 
 - the code is on `ops-migration-local` and is pushed to GitHub;
 - `npm test` passes all 60 tests;
@@ -348,8 +348,8 @@ No currently reproduced runtime-blocking roster API error remains in the committ
 - Latest verified local counts: 16 total employees, 13 active, 3 inactive, 8 active HRIS, 5 active Part-Time.
 - SQLite integrity was verified as `ok` before the Employee 360 schema changes and again during closure work.
 - Pre-change backup: `backups/manual-2026-09-14T02-24-42-035Z.db`.
-- Latest verified backup: `backups/manual-2026-09-24T10-16-44-618Z.db`.
-- Full confidential non-Git restore package: `D:\Projects\billybeez-system-backups\BillyBeez-MOT-restore-2026-09-24T10-16-44Z.zip`.
+- Latest verified backup: `backups/manual-2026-09-25T08-19-40-888Z.db`.
+- Full confidential non-Git restore package: `D:\Projects\billybeez-system-backups\BillyBeez-MOT-restore-2026-09-25T08-21-49Z.zip`.
 - Read `BACKUP_INVENTORY.md` and `RESTORE_GUIDE.md` before restoring. The archive remains local and must never be uploaded to GitHub.
 - The local database contains the operational schedule/history and must not be reseeded or reset.
 - The latest local rotation plan at handoff is V1 for 2026-09-24 with 13 DATA assignments, merged cashier bands, no cashier rotations, and no duplicate employee/hour or position/hour assignment. Optional positions were correctly withheld because the published day includes leave records and `optionalOnlyWhenFullyStaffed` is enabled.
@@ -517,9 +517,26 @@ The implementation commit was reviewed for tracked secrets and forbidden artifac
 At handoff, the expected repository checks are:
 
 ```text
-npm test      # 60 passing
+npm test      # 63 passing
 npm run lint  # UI audit passing
 npm run build # production build passing
 ```
 
 Re-run them after material changes. Runtime verification remains mandatory for visual or workflow changes.
+
+## Update — 2026-09-25 Operations completion pass
+
+The current Operations implementation now includes the following verified behavior:
+
+- Operations and Settings use the same collapsible left navigation and both start collapsed. Legacy Operations dashboard/admin routes were removed from the Operations tab registry, and the separate Business Administration selector was removed from Settings.
+- Employee 360 was redesigned as a team directory plus a structured profile hero, file controls, section sidebar, and dedicated content area. Employee document upload remains bound and verified against the selected employee ID.
+- Daily roster rendering keeps cashiers at the front of each working shift, merges cashier/team-leader rotation cells, shows eight shift-specific hourly slots, excludes empty shifts, and automatically prepares rules-based rotations when a published roster has none.
+- The daily poster places active offers in a full-width multi-column section immediately above Operational Notes. Offers display before/after price, calculated discount, applicable weekdays, and admitted-child count.
+- Operational notices render their saved title and message; CRITICAL notices render as red alerts in the web preview and exported image.
+- Bracelet stock has a persisted human-readable `colorName`, retains the color picker value, and renders a color swatch plus usage, material, color name, and remaining quantity. Existing bracelet rows were backfilled (`Light Purple`, `Red`).
+- Offer records have a persisted `childrenCount` (default 1). Existing BOGO records were set to 2 children and existing discount mismatches were recalculated from price-before/price-after values.
+- Monthly schedule rows were reduced to compact 43px cells, employee names stay on one line, the Operations/Cashier tables remain separated, and the live schedule color setting was updated to a lighter but still readable palette.
+- WhatsApp image export no longer depends on DOM canvas capture. It generates a same-origin SVG/PNG, tries the native file share, then falls back to image clipboard or a downloaded PNG and opens WhatsApp. The fallback was exercised successfully in the running browser.
+- `OpsDailyOffer.childrenCount` and `OpsWristbandStock.colorName` were added to the active SQLite schema and Prisma Client was regenerated.
+
+Runtime verification on 2026-09-25 covered the roster poster, Settings sidebar, Employee 360, offers, stock, and monthly schedule pages on port 3008. The final checks were `npm run build`, `npm test` (63/63), `npm run lint`, and a verified SQLite backup at `backups/manual-2026-09-25T08-19-40-888Z.db`.

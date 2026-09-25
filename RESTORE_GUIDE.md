@@ -7,7 +7,7 @@ This procedure restores the current Billy Beez system from two sources:
 
 The restore archive is expected at:
 
-`D:\Projects\billybeez-system-backups\BillyBeez-MOT-restore-2026-09-24T10-16-44Z.zip`
+`D:\Projects\billybeez-system-backups\BillyBeez-MOT-restore-2026-09-25T08-21-49Z.zip`
 
 Never upload the restore archive to GitHub. It contains credentials and employee/operational information.
 
@@ -52,8 +52,8 @@ Do not run the seed script. The restore archive contains the real current databa
 Choose a temporary access-controlled directory outside the repository:
 
 ```powershell
-$Archive = 'D:\Projects\billybeez-system-backups\BillyBeez-MOT-restore-2026-09-24T10-16-44Z.zip'
-$Extracted = 'D:\SecureRestore\BillyBeez-MOT-restore-2026-09-24T10-16-44Z'
+$Archive = 'D:\Projects\billybeez-system-backups\BillyBeez-MOT-restore-2026-09-25T08-21-49Z.zip'
+$Extracted = 'D:\SecureRestore\BillyBeez-MOT-restore-2026-09-25T08-21-49Z'
 New-Item -ItemType Directory -Force -Path $Extracted | Out-Null
 Expand-Archive -LiteralPath $Archive -DestinationPath $Extracted -Force
 ```
@@ -61,7 +61,7 @@ Expand-Archive -LiteralPath $Archive -DestinationPath $Extracted -Force
 Open `RESTORE_FIRST.txt` inside the extracted package. Confirm these required entries exist:
 
 ```powershell
-$Package = Join-Path $Extracted 'BillyBeez-MOT-restore-2026-09-24T10-16-44Z'
+$Package = Join-Path $Extracted 'BillyBeez-MOT-restore-2026-09-25T08-21-49Z'
 Test-Path (Join-Path $Package 'repo-overlay\.env')
 Test-Path (Join-Path $Package 'repo-overlay\prisma\dev.db')
 Test-Path (Join-Path $Package 'manifest\SHA256SUMS.txt')
@@ -184,7 +184,7 @@ Do not run `npm run db:push` during a normal full restore. The archived database
 Verify the archived recovery point header:
 
 ```powershell
-npm run db:verify-backup -- .\backups\manual-2026-09-24T10-16-44-618Z.db
+npm run db:verify-backup -- .\backups\manual-2026-09-25T08-19-40-888Z.db
 ```
 
 Run the application tests and build:
@@ -272,6 +272,6 @@ At package creation, employee storage contained 12 protected files across 11 emp
 
 ## 11. Rollback if validation fails
 
-Stop the server. Preserve the failed restored database for diagnosis, then replace `prisma\dev.db` with the verified recovery point `backups\manual-2026-09-24T10-16-44-618Z.db`. Repeat database verification before restarting.
+Stop the server. Preserve the failed restored database for diagnosis, then replace `prisma\dev.db` with the verified recovery point `backups\manual-2026-09-25T08-19-40-888Z.db`. Repeat database verification before restarting.
 
 If package checksums fail, do not restore from the damaged archive. Return to the original machine and create a new backup package from the verified active database.

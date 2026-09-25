@@ -7,7 +7,7 @@ This procedure restores the current Billy Beez system from two sources:
 
 The restore archive is expected at:
 
-`D:\Projects\billybeez-system-backups\BillyBeez-MOT-restore-2026-09-25T20-29-53Z-r1.zip`
+`D:\Projects\billybeez-system-backups\BillyBeez-MOT-restore-2026-09-25T20-53-25Z-r1.zip`
 
 Never upload the restore archive to GitHub. It contains credentials and employee/operational information.
 
@@ -52,8 +52,8 @@ Do not run the seed script. The restore archive contains the real current databa
 Choose a temporary access-controlled directory outside the repository:
 
 ```powershell
-$Archive = 'D:\Projects\billybeez-system-backups\BillyBeez-MOT-restore-2026-09-25T20-29-53Z-r1.zip'
-$Package = 'D:\SecureRestore\BillyBeez-MOT-restore-2026-09-25T20-29-53Z'
+$Archive = 'D:\Projects\billybeez-system-backups\BillyBeez-MOT-restore-2026-09-25T20-53-25Z-r1.zip'
+$Package = 'D:\SecureRestore\BillyBeez-MOT-restore-2026-09-25T20-53-25Z'
 New-Item -ItemType Directory -Force -Path $Package | Out-Null
 Expand-Archive -LiteralPath $Archive -DestinationPath $Package -Force
 ```
@@ -193,7 +193,7 @@ Do not run `npm run db:pg:push` against production until the database and data m
 Verify the archived recovery point header:
 
 ```powershell
-npm run db:verify-backup -- .\backups\manual-2026-09-25T20-27-43-725Z.db
+npm run db:verify-backup -- .\backups\manual-2026-09-25T20-52-22-357Z.db
 ```
 
 Run the application tests and build:
@@ -282,6 +282,6 @@ At package creation, employee storage contained 12 protected files across 12 emp
 
 ## 11. Rollback if validation fails
 
-Stop the server. Preserve the failed restored database for diagnosis, then replace `prisma\dev.db` with the verified recovery point `backups\manual-2026-09-25T20-27-43-725Z.db`. Repeat database verification before restarting.
+Stop the server. Preserve the failed restored database for diagnosis, then replace `prisma\dev.db` with the verified recovery point `backups\manual-2026-09-25T20-52-22-357Z.db`. Repeat database verification before restarting.
 
 If package checksums fail, do not restore from the damaged archive. Return to the original machine and create a new backup package from the verified active database.

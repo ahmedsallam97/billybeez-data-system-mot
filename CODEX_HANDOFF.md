@@ -4,7 +4,7 @@
 
 This file is the continuity document for a new developer or Codex session with no access to the conversation that produced the current branch. Read it before changing code or data.
 
-The active branch is `ops-migration-local`. The current implementation commit is `efe806f` (`fix: finish roster poster and settings cleanup`) and is ready to publish to `origin/ops-migration-local` with this handoff update. The branch was created from `origin/next-level-upgrade` at `a34f409`.
+The active branch is `ops-migration-local`. The current implementation commit is `61a7222` (`feat: finish Arabic employee files and incident closure`) and is ready to publish to `origin/ops-migration-local` with this handoff update. The branch was created from `origin/next-level-upgrade` at `a34f409`.
 
 The local SQLite database, employee files, backups, generated screenshots, generated PDFs, local migration helpers, logs, and environment files are deliberately not in Git. Git contains application code and schema only. Never infer that cloning this branch recreates the current local operational data.
 
@@ -27,7 +27,7 @@ The active application is the Next.js application under `app/`. Root-level stati
 As of 2026-09-25:
 
 - the code is on `ops-migration-local` and is pushed to GitHub;
-- `npm test` passes all 64 tests;
+- `npm test` passes all 68 tests;
 - `npm run build` succeeds and builds 49 pages/routes;
 - `npm run lint` (the repository UI audit) passes;
 - the development server is configured for `http://127.0.0.1:3008`;
@@ -41,13 +41,22 @@ As of 2026-09-25:
 - trips and birthdays support create/edit/delete, reusable contacts, meal counts, stock-driven bracelet color/material display, and reservation/release of bracelet quantities;
 - schedule import/export includes both Operations and Cashier departments, with direct downloadable PDF, XLSX, browser print, and distinct cancel/delete draft actions;
 - `/settings` is the Operations settings/insights center; the previous management-settings selector is not exposed there;
-- Guest Feedback, Guidance/Penalties, and Incidents are persisted Employee 360 workflows with timeline and Complete Employee File integration;
+- Guest Feedback, Guidance/Penalties, and Incidents are persisted Employee 360 workflows with timeline, incident status/follow-up updates, and Complete Employee File integration;
+- Complete Employee File supports English or Arabic server-generated PDFs with embedded Tajawal fonts and merges active PDF, JPG, and PNG attachments;
 - no pull request was created as part of this handoff.
 
 The current local database also contains 23 schedules and 9,087 schedule assignments. These figures describe the local database and are not seed data committed to Git.
 
 ## Important recent commits
 
+- `61a7222` — `feat: finish Arabic employee files and incident closure`
+  - adds a full Arabic server-generated Complete Employee File with embedded fonts and protected attachment merging;
+  - adds incident status/follow-up updates and closure auditing;
+  - removes published seed passwords, requires explicit `SEED_*_PASSWORD` values, and expands authenticated browser regression coverage.
+- `006a2a8` — `feat: complete employee records and deployment readiness`
+  - adds incidents, protected merged employee PDFs, local/S3 storage abstraction, PostgreSQL schema parity, and authenticated Playwright coverage.
+- `244426e` — `docs: refresh current restore package`
+  - records the latest verified confidential non-Git restore package that preceded `61a7222`.
 - `efe806f` — `fix: finish roster poster and settings cleanup`
   - removes obsolete fixed roster hours and filler-row configuration;
   - hides empty trip/birthday cards in every poster path and renders all catalog-driven meal quantities;
@@ -104,7 +113,7 @@ The earlier local implementation history was consolidated before its first push 
 - bcrypt password hashing
 - HMAC-signed, HTTP-only authentication cookies
 - server-side permission checks through a configurable role matrix
-- local protected file storage for the current employee photo/document implementation
+- local protected file storage by default, with an S3-compatible provider for deployment
 - Node's built-in test runner
 - custom repository UI audit in `scripts/ui-audit.js`
 
@@ -207,8 +216,8 @@ Authentication uses bcrypt-hashed database passwords and an HMAC-signed HTTP-onl
 - The Complete Employee File is year-based and supports current-year-to-date data.
 - Complete Employee File modes are Standard, Management, Full Restricted, and Custom sections.
 - English and Arabic are separate full-language views; do not mix labels in a single exported copy.
-- Browser print is the supported Save-as-PDF path.
-- Attachment merging is explicitly deferred. Never claim original attachments are embedded in the PDF.
+- Browser print remains available for visual previews. The protected server export creates a real PDF in English or Arabic.
+- The server export embeds active PDF, JPG, and PNG attachments. Unsupported or unreadable attachments are listed inside the result.
 - Employee AI output is advisory, generated from recorded data for the selected employee/year, and must never make an automatic HR decision.
 
 ### Scheduling, roster, and rotations
@@ -302,19 +311,19 @@ Authentication uses bcrypt-hashed database passwords and an HMAC-signed HTTP-onl
 
 ## Features partially completed or intentionally deferred
 
-- A separate Incidents workflow is intentionally absent until its exact business rules are approved; Guidance/Penalties is implemented.
+- Incidents can be recorded, investigated, updated, and closed with follow-up text and audit history. Add further investigation fields only from approved requirements.
 - Complete Employee File download now creates a protected server-side PDF and embeds active PDF, JPG, and PNG attachments; unsupported or unavailable attachments are listed in the PDF.
 - Employee file storage uses a provider adapter. Local filesystem remains the workstation default; S3-compatible storage is available through environment configuration.
 - PostgreSQL schema parity is automated and validated, while a real isolated PostgreSQL migration rehearsal remains outstanding.
-- The project lacks a full automated browser end-to-end suite.
+- The project has authenticated read-path browser coverage; destructive/transactional workflows still need isolated fixture coverage.
 - Roster gender and Team Leader fields are configurable, but historical/local records may still be null until a manager configures them. Name-based gender inference exists only as a presentation fallback.
 - Some operational staffing requirements can exceed the available scheduled team. Treat resulting coverage warnings as an operational capacity/configuration gap, not as a duplicate-assignment bug.
 - The settings and Daily Operations interfaces have been heavily revised but still need continued real-user visual review at common desktop widths and print sizes.
 
 ## Known bugs and limitations
 
-- `README.md` is stale in several places: it still references an older branch/port flow and includes development seed credential examples. Do not treat those credentials as production-safe. Update or remove that section and rotate any reused credentials.
-- `prisma/schema.postgres.prisma` is not aligned with the active SQLite schema.
+- README setup, branch, current feature, and seed guidance were refreshed at `61a7222`; keep it current as deployment choices change.
+- `prisma/schema.postgres.prisma` is generated in parity with the active SQLite schema, but a real data migration rehearsal remains outstanding.
 - There is no committed deployment pipeline or production infrastructure definition.
 - SQLite and local upload storage are single-host state. They require persistent volumes, backup discipline, and single-writer considerations.
 - Generated screenshots and PDFs are not versioned because they can reveal employee information.
@@ -331,9 +340,8 @@ No currently reproduced runtime-blocking roster API error remains in the committ
 - Break up the large `DailyWorkspace.jsx` and `DailyApprovalPreview.jsx` components.
 - Replace alert-based client feedback with consistent form validation and notifications.
 - Add explicit schema migrations instead of relying only on `prisma db push` for production evolution.
-- Refresh README setup, port, branch, credential, and deployment documentation.
 - Add retention/cleanup rules for soft-removed employee files and replaced photos.
-- Add localization coverage tests for full Arabic and full English exports.
+- Expand the current Arabic/English PDF coverage with text-extraction and visual regression checks when the PDF toolchain supports them reliably.
 - Add a formal data retention/privacy policy for employee documents and generated reports.
 
 ## Recent implementation decisions
@@ -361,8 +369,8 @@ No currently reproduced runtime-blocking roster API error remains in the committ
 - Latest verified local counts: 16 total employees, 13 active, 3 inactive, 8 active HRIS, 5 active Part-Time.
 - SQLite integrity was verified as `ok` before the Employee 360 schema changes and again during closure work.
 - Pre-change backup: `backups/manual-2026-09-14T02-24-42-035Z.db`.
-- Latest verified backup: `backups/manual-2026-09-25T20-27-43-725Z.db`.
-- Full confidential non-Git restore package: `D:\Projects\billybeez-system-backups\BillyBeez-MOT-restore-2026-09-25T20-29-53Z-r1.zip`.
+- Latest verified backup: `backups/manual-2026-09-25T20-52-22-357Z.db`.
+- Full confidential non-Git restore package: `D:\Projects\billybeez-system-backups\BillyBeez-MOT-restore-2026-09-25T20-53-25Z-r1.zip`.
 - Read `BACKUP_INVENTORY.md` and `RESTORE_GUIDE.md` before restoring. The archive remains local and must never be uploaded to GitHub.
 - The local database contains the operational schedule/history and must not be reseeded or reset.
 - The latest local rotation plan at handoff is V1 for 2026-09-24 with 13 DATA assignments, merged cashier bands, no cashier rotations, and no duplicate employee/hour or position/hour assignment. Optional positions were correctly withheld because the published day includes leave records and `optionalOnlyWhenFullyStaffed` is enabled.
@@ -382,6 +390,7 @@ Create a local `.env` from `.env.example`, then add the required variables. Neve
 - `EMPLOYEE_FILE_STORAGE_PROVIDER` — `local` by default or `s3` for protected object storage.
 - `EMPLOYEE_FILE_STORAGE_ROOT` — optional local storage root override.
 - `EMPLOYEE_FILE_S3_BUCKET`, `EMPLOYEE_FILE_S3_REGION`, `EMPLOYEE_FILE_S3_ENDPOINT`, `EMPLOYEE_FILE_S3_PREFIX`, `EMPLOYEE_FILE_S3_ACCESS_KEY_ID`, `EMPLOYEE_FILE_S3_SECRET_ACCESS_KEY`, `EMPLOYEE_FILE_S3_FORCE_PATH_STYLE`, `EMPLOYEE_FILE_S3_SSE` — S3-compatible provider settings; never commit values.
+- `SEED_ADMIN_PASSWORD`, `SEED_MANAGER_PASSWORD`, `SEED_DATA_PASSWORD`, `SEED_CASHIER_PASSWORD`, `SEED_KITCHEN_PASSWORD`, `SEED_EMPLOYEE_PASSWORD` — required only when deliberately seeding a new disposable database; each must be at least 12 characters and must never be committed with a real value.
 
 Do not put secret values, API keys, passwords, access tokens, or production database URLs in documentation, scripts, commits, screenshots, or issue text.
 
@@ -402,6 +411,8 @@ Validation commands:
 npm test
 npm run lint
 npm run build
+npm run test:e2e
+npm run db:pg:validate
 ```
 
 Production-style local start uses `npm run start` on port 3000 after `npm run build`. Review the Windows-specific environment syntax in that script before using it on Linux or in a deployment platform.
@@ -468,8 +479,6 @@ Do not deploy the current SQLite file and local `storage/` directory to an ephem
 6. Continue visual refinement using runtime screenshots at actual branch desktop widths and A4 print preview.
 7. Add isolated create/update browser E2E coverage for Guest Feedback, Guidance/Penalties, and Incidents.
 8. Define any additional incident investigation/closure fields only from approved branch requirements; the distinct Incidents workflow is now present.
-9. Add Arabic font embedding to the server-generated Complete Employee File PDF if an Arabic merged export is required; the browser print preview remains bilingual.
-10. Refresh README and remove or replace stale development credential guidance.
 
 ## Recommended next steps in priority order
 
@@ -480,8 +489,7 @@ Do not deploy the current SQLite file and local `storage/` directory to an ephem
 5. Verify coverage warnings against the real staffing model and adjust requirements or staffing only with operational approval.
 6. Extend the authenticated E2E suite before another large UI refactor.
 7. Rehearse PostgreSQL and the configured object-storage target in an isolated environment before planning deployment.
-8. Update README and remove stale credential examples.
-9. Extend Guest Feedback, Guidance/Penalties, and Incidents only from approved operational requirements.
+8. Extend Guest Feedback, Guidance/Penalties, and Incidents only from approved operational requirements.
 
 ## Files to review first
 
@@ -557,4 +565,4 @@ The current Operations implementation now includes the following verified behavi
 
 The same completion pass also wired the previously saved rules into runtime behavior: attendance calculates lateness and early leave from the configured grace periods, evaluation closure enforces required review, leave approval enforces negative-balance and coverage rules, stock alerts use the configured threshold, schedule import can create a new draft when none exists, and the roster selects one front cashier per working shift while honoring mandatory rotation priorities. Trip and birthday meals now use the configurable meal catalog. Employee 360 now includes persisted Guest Feedback and Guidance/Penalties records with the corresponding API and database models.
 
-Runtime verification on 2026-09-25 covered the roster poster, Settings, Employee 360, offers, stock, monthly schedule, Incidents, and protected Complete Employee File export. The final checks were `npm run build`, `npm test` (67/67), `npm run lint`, authenticated Playwright (2/2), PostgreSQL schema validation, and a verified SQLite backup at `backups/manual-2026-09-25T20-27-43-725Z.db`. The confidential non-Git restore package is `D:\Projects\billybeez-system-backups\BillyBeez-MOT-restore-2026-09-25T20-29-53Z-r1.zip`.
+Runtime verification on 2026-09-25 covered the roster poster, Settings, every core Operations tab, Employee 360, offers, stock, monthly schedule, Incidents, and protected English/Arabic Complete Employee File export. The final checks were `npm run build`, `npm test` (68/68), `npm run lint`, authenticated Playwright (2/2), PostgreSQL schema validation, and a verified SQLite backup at `backups/manual-2026-09-25T20-52-22-357Z.db`. The complete confidential non-Git restore package is `D:\Projects\billybeez-system-backups\BillyBeez-MOT-restore-2026-09-25T20-53-25Z-r1.zip`.

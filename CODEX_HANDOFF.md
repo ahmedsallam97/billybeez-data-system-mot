@@ -4,7 +4,7 @@
 
 This file is the continuity document for a new developer or Codex session with no access to the conversation that produced the current branch. Read it before changing code or data.
 
-The active branch is `ops-migration-local`. The current implementation commit is `741b5e0` (`feat: complete operations rules and employee records`) and is ready to publish to `origin/ops-migration-local` with this handoff update. The branch was created from `origin/next-level-upgrade` at `a34f409`.
+The active branch is `ops-migration-local`. The current implementation commit is `efe806f` (`fix: finish roster poster and settings cleanup`) and is ready to publish to `origin/ops-migration-local` with this handoff update. The branch was created from `origin/next-level-upgrade` at `a34f409`.
 
 The local SQLite database, employee files, backups, generated screenshots, generated PDFs, local migration helpers, logs, and environment files are deliberately not in Git. Git contains application code and schema only. Never infer that cloning this branch recreates the current local operational data.
 
@@ -48,6 +48,11 @@ The current local database also contains 23 schedules and 9,087 schedule assignm
 
 ## Important recent commits
 
+- `efe806f` — `fix: finish roster poster and settings cleanup`
+  - removes obsolete fixed roster hours and filler-row configuration;
+  - hides empty trip/birthday cards in every poster path and renders all catalog-driven meal quantities;
+  - prevents one employee being selected as both primary and backup cashier;
+  - verifies the returned employee ID when uploading recognition photos and removes the obsolete management heading from Settings.
 - `741b5e0` — `feat: complete operations rules and employee records`
   - enforces configured attendance, evaluation, leave coverage, stock alert, cashier, and rotation behavior;
   - adds dynamic trip/birthday meal quantities, import-created schedule drafts, editable operational notices, and configurable recognition/poster copy;

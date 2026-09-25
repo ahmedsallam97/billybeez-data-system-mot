@@ -5,12 +5,12 @@
 - Created: 2026-09-25
 - Repository: `D:\Projects\billybeez-data-system-mot`
 - Git branch: `ops-migration-local`
-- External package: `D:\Projects\billybeez-system-backups\BillyBeez-MOT-restore-2026-09-25T08-21-49Z.zip`
-- Fresh verified database backup: `D:\Projects\billybeez-data-system-mot\backups\manual-2026-09-25T08-19-40-888Z.db`
+- External package: `D:\Projects\billybeez-system-backups\BillyBeez-MOT-restore-2026-09-25T14-27-00Z.zip`
+- Fresh verified database backup: `D:\Projects\billybeez-data-system-mot\backups\manual-2026-09-25T14-20-18-567Z.db`
 
 The external package is intentionally outside the repository and must never be committed or uploaded to GitHub. It contains credentials, operational history, employee information, and restricted employee evidence. Treat it as confidential.
 
-Final archive size is 19,132,132 bytes (54 files; 118.9 MiB before ZIP compression). The archive was extracted to an isolated verification folder, all 52 manifest checksums passed, required environment-variable names were present, and the extracted database passed integrity and foreign-key checks.
+The package folder contains 57 files (about 132.3 MiB before ZIP compression). All 55 payload checksums passed, required environment-variable names were present without exposing their values, the packaged database matched the fresh verified backup byte-for-byte, and the packaged database passed SQLite integrity and foreign-key checks. The exact final ZIP size is reported in the completion report.
 
 ## Required restore sources
 
@@ -18,7 +18,7 @@ Final archive size is 19,132,132 bytes (54 files; 118.9 MiB before ZIP compressi
 | --- | --- | --- | --- | --- |
 | `D:\Projects\billybeez-data-system-mot\prisma\dev.db` | Active SQLite database used by the application | Yes: users, employee, POS, and operational data | Yes | `<repo>\prisma\dev.db` |
 | `D:\Projects\billybeez-data-system-mot\backups\*.db` | Historical and fresh SQLite recovery points | Yes: complete database snapshots | Yes, all database files present at package time | `<repo>\backups\` |
-| `D:\Projects\billybeez-data-system-mot\storage\employee-files\` | Protected employee photo/document binary storage | Yes: employee photos/documents | Yes: all 12 files in 11 employee folders | `<repo>\storage\employee-files\` |
+| `D:\Projects\billybeez-data-system-mot\storage\employee-files\` | Protected employee photo/document binary storage | Yes: employee photos/documents | Yes: all 12 files in 12 employee folders | `<repo>\storage\employee-files\` |
 | `D:\Projects\billybeez-data-system-mot\.env` | Local database URL, cookie configuration, and session secret | Yes: contains a secret value | Yes | `<repo>\.env` |
 | `D:\Projects\billybeez-data-system-mot\check-admin.js` | Local administrator diagnostic helper | Yes: may contain a local credential | Yes | `<repo>\check-admin.js` |
 | `D:\Projects\billybeez-data-system-mot\reset-admin.js` | Local administrator reset helper | Yes: may contain a local credential | Yes | `<repo>\reset-admin.js` |
@@ -43,14 +43,17 @@ All SQLite files present in the active database and backup locations at package 
 - `backups\manual-2026-09-16T23-06-39-677Z.db`
 - `backups\manual-2026-09-17T06-06-33-968Z.db`
 - `backups\manual-2026-09-17T21-05-15-982Z.db`
-- `backups\pre-leave-time-20260913-020722.db`
 - `backups\manual-2026-09-18T08-31-31-249Z.db`
 - `backups\manual-2026-09-18T08-45-22-765Z.db`
 - `backups\manual-2026-09-23T07-26-05-392Z.db`
 - `backups\manual-2026-09-23T20-58-32-170Z.db`
 - `backups\manual-2026-09-24T08-52-16-668Z.db`
 - `backups\manual-2026-09-24T10-01-28-111Z.db`
-- `backups\manual-2026-09-25T08-19-40-888Z.db` (fresh verified backup and package database source)
+- `backups\manual-2026-09-24T10-16-44-618Z.db`
+- `backups\manual-2026-09-25T08-19-40-888Z.db`
+- `backups\manual-2026-09-25T08-41-57-035Z.db`
+- `backups\manual-2026-09-25T14-20-18-567Z.db` (fresh verified backup and package database source)
+- `backups\pre-leave-time-20260913-020722.db`
 
 ## Verification baseline
 
@@ -58,7 +61,7 @@ The active database, fresh backup, and the database extracted from the final arc
 
 - SQLite `integrity_check`: `ok`
 - foreign-key errors: `0`
-- application tables: `74`
+- application tables: `76`
 - employees: `16`
 - active protected employee documents/photos in the database: `10`
 - active employees: `13`
@@ -71,7 +74,7 @@ The package contains `manifest\SHA256SUMS.txt` and `manifest\PACKAGE_CONTENTS.tx
 ## Package layout
 
 ```text
-BillyBeez-MOT-restore-2026-09-25T08-21-49Z/
+BillyBeez-MOT-restore-2026-09-25T14-27-00Z/
   RESTORE_FIRST.txt
   documentation/
     BACKUP_INVENTORY.md

@@ -4,7 +4,7 @@
 
 This file is the continuity document for a new developer or Codex session with no access to the conversation that produced the current branch. Read it before changing code or data.
 
-The active branch is `ops-migration-local`. It is published to `origin/ops-migration-local`. The current implementation commit is `dba9123` (`feat: finish inventory reservations and roster exports`). The branch was created from `origin/next-level-upgrade` at `a34f409`.
+The active branch is `ops-migration-local`. The current implementation commit is `741b5e0` (`feat: complete operations rules and employee records`) and is ready to publish to `origin/ops-migration-local` with this handoff update. The branch was created from `origin/next-level-upgrade` at `a34f409`.
 
 The local SQLite database, employee files, backups, generated screenshots, generated PDFs, local migration helpers, logs, and environment files are deliberately not in Git. Git contains application code and schema only. Never infer that cloning this branch recreates the current local operational data.
 
@@ -27,7 +27,7 @@ The active application is the Next.js application under `app/`. Root-level stati
 As of 2026-09-25:
 
 - the code is on `ops-migration-local` and is pushed to GitHub;
-- `npm test` passes all 60 tests;
+- `npm test` passes all 64 tests;
 - `npm run build` succeeds and builds 49 pages/routes;
 - `npm run lint` (the repository UI audit) passes;
 - the development server is configured for `http://127.0.0.1:3008`;
@@ -40,14 +40,23 @@ As of 2026-09-25:
 - cashier fallback, Team Leader exclusion, per-shift eight-hour headings, merged role bands, and non-overlapping rotation assignment are active;
 - trips and birthdays support create/edit/delete, reusable contacts, meal counts, stock-driven bracelet color/material display, and reservation/release of bracelet quantities;
 - schedule import/export includes both Operations and Cashier departments, with direct downloadable PDF, XLSX, browser print, and distinct cancel/delete draft actions;
-- `/settings` contains both the Operations settings/insights center and the previous management settings experience;
-- Guest Feedback, Guidance/Penalties, and Incidents remain intentional placeholders;
+- `/settings` is the Operations settings/insights center; the previous management-settings selector is not exposed there;
+- Guest Feedback and Guidance/Penalties are persisted Employee 360 workflows; a distinct Incidents module has not been invented;
 - no pull request was created as part of this handoff.
 
 The current local database also contains 23 schedules and 9,087 schedule assignments. These figures describe the local database and are not seed data committed to Git.
 
 ## Important recent commits
 
+- `741b5e0` — `feat: complete operations rules and employee records`
+  - enforces configured attendance, evaluation, leave coverage, stock alert, cashier, and rotation behavior;
+  - adds dynamic trip/birthday meal quantities, import-created schedule drafts, editable operational notices, and configurable recognition/poster copy;
+  - adds persisted Employee 360 Guest Feedback and Guidance/Penalties records and keeps sensitive personal details behind the sensitive-read permission;
+  - validated by 64 tests, UI audit, production build, Prisma schema/client checks, live browser smoke tests, and a verified fresh SQLite backup.
+- `da7cedd` — `feat: complete operations workflows and layouts`
+  - completes the latest employee, poster, offers, stock, settings, and monthly schedule layout pass.
+- `72904e4` — `feat: complete operations stock and roster polish`
+  - adds the current stock/bracelet presentation and roster behavior refinements.
 - `dba9123` — `feat: finish inventory reservations and roster exports`
   - reserves bracelet inventory for trip/birthday headcount, adjusts reservations on edit, and releases them on cancellation;
   - assigns eligible bracelet stock to future pending events when stock is entered after the event;
@@ -258,7 +267,7 @@ Authentication uses bcrypt-hashed database passwords and an HMAC-signed HTTP-onl
 ### Employee 360
 
 - Overview, Personal, Employment, Documents, Schedule & Attendance, Leaves & Balances, Performance, Training & Qualifications, Recognition, Timeline, and Files tabs.
-- Clean placeholders for Guest Feedback and Guidance & Penalties.
+- Persisted Guest Feedback and Guidance & Penalties forms, tables, API writes, audit records, timeline entries, and print/file-mode coverage.
 - Real source aggregation without duplicate history tables.
 - Protected photo/document upload, view, download, replacement, and soft removal.
 - Initials fallback and shared recognition photo source.
@@ -282,20 +291,19 @@ Authentication uses bcrypt-hashed database passwords and an HMAC-signed HTTP-onl
 - Reusable trip partners and birthday customers.
 - Offer before/after pricing and permanent/ranged scheduling.
 - Separated inventory categories, event-linked bracelet reservations, audited issue/edit/delete actions, and settings-driven daily content.
-- Management settings/insights page at `/settings`.
+- Operations settings/insights page at `/settings`, without the obsolete management-settings selector.
 - Dashboard top performers, bottom performers, and actionable operational insights.
 - Employee of the Month artwork and Hall of Fame views.
 
 ## Features partially completed or intentionally deferred
 
-- Guest Feedback is a labeled placeholder only.
-- Guidance, Penalties, and Incidents are labeled placeholders only.
+- A separate Incidents workflow is intentionally absent until its exact business rules are approved; Guidance/Penalties is implemented.
 - Complete Employee File attachment merging is not implemented.
 - Employee file storage is local filesystem storage. It needs object storage before stateless/multi-instance deployment.
 - PostgreSQL schema migration is incomplete and must be reconciled with SQLite.
 - The project lacks a full automated browser end-to-end suite.
 - Roster gender and Team Leader fields are configurable, but historical/local records may still be null until a manager configures them. Name-based gender inference exists only as a presentation fallback.
-- Some operational staffing requirements exceed the currently available scheduled team. The latest local plan reports 32 genuine coverage warnings; this is an operational capacity/configuration gap, not a duplicate-assignment bug.
+- Some operational staffing requirements can exceed the available scheduled team. Treat resulting coverage warnings as an operational capacity/configuration gap, not as a duplicate-assignment bug.
 - The settings and Daily Operations interfaces have been heavily revised but still need continued real-user visual review at common desktop widths and print sizes.
 
 ## Known bugs and limitations
@@ -348,8 +356,8 @@ No currently reproduced runtime-blocking roster API error remains in the committ
 - Latest verified local counts: 16 total employees, 13 active, 3 inactive, 8 active HRIS, 5 active Part-Time.
 - SQLite integrity was verified as `ok` before the Employee 360 schema changes and again during closure work.
 - Pre-change backup: `backups/manual-2026-09-14T02-24-42-035Z.db`.
-- Latest verified backup: `backups/manual-2026-09-25T08-19-40-888Z.db`.
-- Full confidential non-Git restore package: `D:\Projects\billybeez-system-backups\BillyBeez-MOT-restore-2026-09-25T08-21-49Z.zip`.
+- Latest verified backup: `backups/manual-2026-09-25T14-20-18-567Z.db`.
+- Full confidential non-Git restore package: `D:\Projects\billybeez-system-backups\BillyBeez-MOT-restore-2026-09-25T14-27-00Z.zip`.
 - Read `BACKUP_INVENTORY.md` and `RESTORE_GUIDE.md` before restoring. The archive remains local and must never be uploaded to GitHub.
 - The local database contains the operational schedule/history and must not be reseeded or reset.
 - The latest local rotation plan at handoff is V1 for 2026-09-24 with 13 DATA assignments, merged cashier bands, no cashier rotations, and no duplicate employee/hour or position/hour assignment. Optional positions were correctly withheld because the published day includes leave records and `optionalOnlyWhenFullyStaffed` is enabled.
@@ -450,8 +458,8 @@ Do not deploy the current SQLite file and local `storage/` directory to an ephem
 4. Select the fourth backup cashier and any Team Leader through Settings; these choices were intentionally not invented. Enter real inventory quantities and optional qualification restrictions as operational data becomes available.
 5. Resolve or explicitly accept current operational coverage warnings using real staffing requirements; do not suppress them in code.
 6. Continue visual refinement using runtime screenshots at actual branch desktop widths and A4 print preview.
-7. Complete Guest Feedback in its later phase.
-8. Complete Guidance, Penalties, and Incidents in their later phase.
+7. Add browser E2E coverage for the completed Guest Feedback and Guidance/Penalties employee workflows.
+8. Decide whether a separate Incidents workflow is needed beyond the current Guidance/Penalties records.
 9. Decide whether Complete Employee File attachment merging is required and design it honestly if approved.
 10. Refresh README and remove or replace stale development credential guidance.
 
@@ -465,7 +473,7 @@ Do not deploy the current SQLite file and local `storage/` directory to an ephem
 6. Add E2E coverage before another large UI refactor.
 7. Reconcile PostgreSQL and object storage in an isolated environment before planning deployment.
 8. Update README and remove stale credential examples.
-9. Implement deferred HR modules only when their later phase requirements are supplied; keep placeholders honest until then.
+9. Extend the completed Guest Feedback and Guidance/Penalties modules only from approved operational requirements.
 
 ## Files to review first
 
@@ -499,7 +507,7 @@ Do not deploy the current SQLite file and local `storage/` directory to an ephem
 - Do not hardcode employee names, IDs, phone numbers, national IDs, or private mapping tables in source or docs.
 - Do not replace real history with synthetic records to make a screen look populated.
 - Do not mark UI verification complete from tests/build alone; inspect the running UI and print layouts.
-- Do not implement Guest Feedback, Guidance/Penalties, or Incidents opportunistically without their approved phase requirements.
+- Guest Feedback and Guidance/Penalties are implemented. Do not invent a separate Incidents workflow or expand these records without approved operational requirements.
 
 ## Verification baseline
 
@@ -517,7 +525,7 @@ The implementation commit was reviewed for tracked secrets and forbidden artifac
 At handoff, the expected repository checks are:
 
 ```text
-npm test      # 63 passing
+npm test      # 64 passing
 npm run lint  # UI audit passing
 npm run build # production build passing
 ```
@@ -539,4 +547,6 @@ The current Operations implementation now includes the following verified behavi
 - WhatsApp image export no longer depends on DOM canvas capture. It generates a same-origin SVG/PNG, tries the native file share, then falls back to image clipboard or a downloaded PNG and opens WhatsApp. The fallback was exercised successfully in the running browser.
 - `OpsDailyOffer.childrenCount` and `OpsWristbandStock.colorName` were added to the active SQLite schema and Prisma Client was regenerated.
 
-Runtime verification on 2026-09-25 covered the roster poster, Settings sidebar, Employee 360, offers, stock, and monthly schedule pages on port 3008. The final checks were `npm run build`, `npm test` (63/63), `npm run lint`, and a verified SQLite backup at `backups/manual-2026-09-25T08-19-40-888Z.db`.
+The same completion pass also wired the previously saved rules into runtime behavior: attendance calculates lateness and early leave from the configured grace periods, evaluation closure enforces required review, leave approval enforces negative-balance and coverage rules, stock alerts use the configured threshold, schedule import can create a new draft when none exists, and the roster selects one front cashier per working shift while honoring mandatory rotation priorities. Trip and birthday meals now use the configurable meal catalog. Employee 360 now includes persisted Guest Feedback and Guidance/Penalties records with the corresponding API and database models.
+
+Runtime verification on 2026-09-25 covered the roster poster, Settings sidebar, Employee 360, offers, stock, and monthly schedule pages on port 3008. The final checks were `npm run build`, `npm test` (64/64), `npm run lint`, and a verified SQLite backup at `backups/manual-2026-09-25T14-20-18-567Z.db`. The confidential non-Git restore package is `D:\Projects\billybeez-system-backups\BillyBeez-MOT-restore-2026-09-25T14-27-00Z.zip`.

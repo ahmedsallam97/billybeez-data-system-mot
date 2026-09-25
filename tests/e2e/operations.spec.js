@@ -12,17 +12,20 @@ test("authenticated employee 360 exposes incidents and protected complete PDF", 
   expect(detailResponse.ok()).toBeTruthy();
   const detail = await detailResponse.json();
   expect(Array.isArray(detail.employee.incidents)).toBeTruthy();
-  const pdfResponse = await request.get(`/api/operations/employees/${employees[0].id}/complete-file?year=${new Date().getFullYear()}&endDate=${new Date().toISOString().slice(0, 10)}`);
+  const pdfResponse = await request.get(`/api/operations/employees/${employees[0].id}/complete-file?year=${new Date().getFullYear()}&endDate=${new Date().toISOString().slice(0, 10)}&language=ar`);
   expect(pdfResponse.ok()).toBeTruthy();
   expect(pdfResponse.headers()["content-type"]).toContain("application/pdf");
   expect((await pdfResponse.body()).subarray(0, 4).toString()).toBe("%PDF");
 });
 
-test("roster and settings pages render without JSON/session errors", async ({ page }) => {
-  await page.goto("/operations?tab=roster");
-  await expect(page.locator("body")).not.toContainText("Unexpected end of JSON input");
-  await expect(page.locator("body")).not.toContainText("Login required");
-  await page.goto("/operations/settings");
+test("core operations tabs and settings render without JSON/session errors", async ({ page }) => {
+  for (const tab of ["roster", "daily", "evaluation", "schedule", "trips", "birthdays", "offers", "stock", "time", "employees", "performance"]) {
+    await page.goto(`/operations?tab=${tab}`, { waitUntil: "domcontentloaded" });
+    await expect(page.locator("body")).not.toContainText("Unexpected end of JSON input");
+    await expect(page.locator("body")).not.toContainText("Login required");
+    await expect(page.locator("body")).not.toContainText("Roster data could not be loaded");
+  }
+  await page.goto("/settings");
   await expect(page.locator("body")).not.toContainText("Login required");
   await expect(page.locator("body")).not.toContainText("Unexpected end of JSON input");
 });

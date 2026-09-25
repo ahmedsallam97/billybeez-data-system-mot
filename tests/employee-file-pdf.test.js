@@ -11,3 +11,10 @@ test("complete employee PDF embeds protected PDF attachments", async () => {
   assert.ok(merged.getPageCount() >= 2);
   assert.match(merged.getSubject(), /1 attachment page/);
 });
+
+test("complete employee PDF embeds Arabic fonts and metadata", async () => {
+  const result = await buildCompleteEmployeeFilePdf({ employee: { name: "موظف تجريبي", jobTitle: "مشغل ألعاب", documents: [], incidents: [{ incidentDate: "2026-09-25", severity: "LOW", status: "CLOSED", incidentType: "SAFETY", title: "تجربة سلامة", description: "تمت المتابعة" }], guidanceRecords: [], guestFeedback: [] }, year: 2026, endDate: "2026-09-25", language: "ar", readAttachment: async () => Buffer.alloc(0) });
+  const pdf = await PDFDocument.load(result);
+  assert.match(pdf.getTitle(), /ملف الموظف الكامل/);
+  assert.ok(pdf.getPageCount() >= 1);
+});

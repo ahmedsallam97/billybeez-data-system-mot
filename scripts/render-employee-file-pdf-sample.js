@@ -13,14 +13,14 @@ async function sampleAttachment() {
 async function main() {
   const attachment = await sampleAttachment();
   const employee = {
-    name: "Sample Employee", hrisNumber: "SAMPLE-001", jobTitle: "Ride Operator", department: "Operations", branch: "MOT", employmentStatus: "ACTIVE",
+    name: "موظف تجريبي", hrisNumber: "SAMPLE-001", jobTitle: "مشغل ألعاب", department: "العمليات", branch: "MOT", employmentStatus: "ACTIVE",
     scheduleAssignments: [{ id: "s1" }], attendanceRecords: [{ id: "a1" }], dailyEvaluations: [{ id: "e1" }], monthlyAppraisals: [],
     guestFeedback: [{ id: "g1", feedbackDate: "2026-09-10", rating: 5, comment: "Helpful and attentive" }],
-    guidanceRecords: [], incidents: [{ id: "i1", incidentDate: "2026-09-12", severity: "LOW", status: "CLOSED", incidentType: "OPERATIONAL", title: "Sample drill", description: "Training-only verification record" }],
+    guidanceRecords: [], incidents: [{ id: "i1", incidentDate: "2026-09-12", severity: "LOW", status: "CLOSED", incidentType: "OPERATIONAL", title: "تجربة سلامة", description: "سجل تجريبي للتحقق من التصدير" }],
     trainingRecords: [{ id: "t1" }], qualifications: [{ id: "q1" }],
     documents: [{ id: "d1", status: "ACTIVE", documentType: "CERTIFICATE", displayName: "sample-certificate.pdf", mimeType: "application/pdf", sizeBytes: attachment.length, storageKey: "sample" }],
   };
-  const result = await buildCompleteEmployeeFilePdf({ employee, year: 2026, endDate: "2026-09-25", readAttachment: async () => attachment });
+  const result = await buildCompleteEmployeeFilePdf({ employee, year: 2026, endDate: "2026-09-25", language: "ar", readAttachment: async () => attachment });
   const target = path.join(process.cwd(), "output", "pdf", "employee-complete-file-merged-sample.pdf");
   await fs.mkdir(path.dirname(target), { recursive: true }); await fs.writeFile(target, result); console.log(target);
 }

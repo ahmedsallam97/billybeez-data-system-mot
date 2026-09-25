@@ -12,6 +12,7 @@ export async function GET(request, { params }) {
   const url = new URL(request.url);
   const year = Number(url.searchParams.get("year")) || new Date().getFullYear();
   const endDate = url.searchParams.get("endDate") || `${year}-12-31`;
+  const language = url.searchParams.get("language") === "ar" ? "ar" : "en";
   if (year < 2000 || year > 2200 || !/^\d{4}-\d{2}-\d{2}$/.test(endDate) || !endDate.startsWith(`${year}-`)) return NextResponse.json({ success: false, error: "Invalid employee file period" }, { status: 400 });
   const from = new Date(`${year}-01-01T00:00:00.000Z`); const to = new Date(`${endDate}T23:59:59.999Z`);
   const employee = await prisma.employee.findUnique({ where: { id }, include: {
@@ -25,8 +26,8 @@ export async function GET(request, { params }) {
   } });
   if (!employee) return NextResponse.json({ success: false, error: "Employee not found" }, { status: 404 });
   try {
-    const pdf = await buildCompleteEmployeeFilePdf({ employee, year, endDate, readAttachment: (document) => readEmployeeFile(document.storageKey) });
-    await writeAudit({ action: "OPS_EMPLOYEE_COMPLETE_FILE_EXPORTED", user, summary: `Exported complete employee file for ${employee.name}`, metadata: { employeeId: id, year, endDate, attachmentCount: employee.documents.length } });
+    const pdf = await buildCompleteEmployeeFilePdf({ employee, year, endDate, language, readAttachment: (document) => readEmployeeFile(document.storageKey) });
+    await writeAudit({ action: "OPS_EMPLOYEE_COMPLETE_FILE_EXPORTED", user, summary: `Exported complete employee file for ${employee.name}`, metadata: { employeeId: id, year, endDate, language, attachmentCount: employee.documents.length } });
     const filename = `employee-${String(employee.hrisNumber || employee.localEmployeeCode || id).replace(/[^a-zA-Z0-9_-]/g, "_")}-${year}.pdf`;
     return new NextResponse(pdf, { headers: { "content-type": "application/pdf", "content-disposition": `attachment; filename="${filename}"`, "cache-control": "private, no-store", "x-content-type-options": "nosniff" } });
   } catch (exportError) {

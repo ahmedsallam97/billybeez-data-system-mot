@@ -50,12 +50,18 @@ const products = [
 ];
 
 const users = [
-  { name: "Admin", username: "admin", password: "admin123", role: "ADMIN" },
-  { name: "Manager", username: "manager", password: "manager123", role: "MANAGER" },
-  { name: "Data", username: "data", password: "data112411", role: "DATA" },
-  { name: "Cashier", username: "cashier", password: "cashier112411", role: "CASHIER" },
-  { name: "Kitchen", username: "kitchen", password: "kitchen123", role: "KITCHEN" },
+  { name: "Admin", username: "admin", passwordEnv: "SEED_ADMIN_PASSWORD", role: "ADMIN" },
+  { name: "Manager", username: "manager", passwordEnv: "SEED_MANAGER_PASSWORD", role: "MANAGER" },
+  { name: "Data", username: "data", passwordEnv: "SEED_DATA_PASSWORD", role: "DATA" },
+  { name: "Cashier", username: "cashier", passwordEnv: "SEED_CASHIER_PASSWORD", role: "CASHIER" },
+  { name: "Kitchen", username: "kitchen", passwordEnv: "SEED_KITCHEN_PASSWORD", role: "KITCHEN" },
 ];
+
+function requiredSeedPassword(name) {
+  const value = String(process.env[name] || "");
+  if (value.length < 12) throw new Error(`${name} must be set to at least 12 characters before running db:seed`);
+  return value;
+}
 
 function uniqueNames(names) {
   return [...new Set(names.map((name) => String(name || "").trim()).filter(Boolean))];
@@ -100,6 +106,8 @@ async function existingProductIdByName(name) {
 }
 
 async function main() {
+  const seedPasswords = Object.fromEntries(users.map((user) => [user.passwordEnv, requiredSeedPassword(user.passwordEnv)]));
+  const employeeSeedPassword = requiredSeedPassword("SEED_EMPLOYEE_PASSWORD");
   ensureFallbackImage();
 
   for (const category of categories) {
@@ -225,8 +233,8 @@ async function main() {
   }
 
   for (const user of users) {
-    const password = await bcrypt.hash(user.password, 12);
-    const secureUser = { ...user, password };
+    const password = await bcrypt.hash(seedPasswords[user.passwordEnv], 12);
+    const secureUser = { name: user.name, username: user.username, role: user.role, password };
 
     await prisma.user.upsert({
       where: { username: user.username },
@@ -249,7 +257,7 @@ async function main() {
 
   for (const [index, employee] of orderedEmployees.entries()) {
     const username = String(1111 + index);
-    const password = await bcrypt.hash(username, 12);
+    const password = await bcrypt.hash(employeeSeedPassword, 12);
     await prisma.user.upsert({
       where: { username },
       create: {

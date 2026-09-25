@@ -1,4 +1,4 @@
-# Data-Kitchen-System
+# Billy Beez MOT Operations System
 
 Next.js + Prisma POS/data system for BillyBeez daily operations.
 
@@ -12,20 +12,23 @@ This branch is the stable daily-operation version. Larger upgrades should contin
 - React 19
 - Prisma 6
 - SQLite for local operation
-- PostgreSQL schema prepared for the next production level
+- PostgreSQL parity schema generated from the authoritative SQLite schema
 - bcrypt password hashing
 - Signed cookie sessions
 - Role based API permissions
-- Local product images inside `public/products`
+- Protected employee files on local storage by default, with an S3-compatible provider available
+- Authenticated Playwright browser tests for critical Operations paths
 
 ## Main Interfaces
 
 | Interface | URL | Purpose |
 | --- | --- | --- |
-| Login | `http://127.0.0.1:3000/login` | User login |
-| Data | `http://127.0.0.1:3000/data` | Add/edit orders, customer exit |
-| Kitchen | `http://127.0.0.1:3000/kitchen` | Preparation, delivery, payment, Geidea |
-| Manager | `http://127.0.0.1:3000/manager` | Orders, reports, records, settings, activity |
+| Login | `/login` | User login |
+| Operations | `/operations` | Roster, attendance, schedule, daily setup, Employee 360, and recognition |
+| Settings | `/settings` | Operations rules, templates, shifts, roles, and configuration |
+| Data | `/data` | Add/edit orders, customer exit |
+| Kitchen | `/kitchen` | Preparation, delivery, payment, Geidea |
+| Manager | `/manager` | Orders, reports, records, settings, activity |
 | Database Studio | `http://127.0.0.1:5555` | Prisma Studio database browser |
 
 `/cashier` now redirects to `/data`.
@@ -54,15 +57,7 @@ Old `RESTAURANT` values are mapped/migrated to `KITCHEN`.
 
 ## Seed Users
 
-| Role | Username | Password |
-| --- | --- | --- |
-| Admin | `admin` | `admin123` |
-| Manager | `manager` | `manager123` |
-| Data | `data` | `data112411` |
-| Cashier | `cashier` | `cashier112411` |
-| Kitchen | `kitchen` | `kitchen123` |
-
-Passwords are hashed in the Prisma database.
+Seeding is only for a new disposable database. It no longer contains published default passwords. Before running `npm run db:seed`, set every `SEED_*_PASSWORD` variable listed in `.env.example` to a unique value of at least 12 characters. Never run the seed command during a full restore of the current system.
 
 ## Run Locally
 
@@ -78,7 +73,7 @@ Sync the local SQLite database:
 npm run db:push
 ```
 
-Seed users, employees, products, and settings:
+Seed a new disposable database only after supplying the required seed passwords:
 
 ```bash
 npm run db:seed
@@ -145,13 +140,16 @@ Run workflow tests:
 
 ```bash
 npm test
+npm run test:e2e
 ```
 
-Validate PostgreSQL schema:
+Synchronize and validate the PostgreSQL parity schema:
 
 ```bash
-$env:POSTGRES_DATABASE_URL="postgresql://user:pass@localhost:5432/billybeez"
+npm run db:pg:sync-schema
+$env:POSTGRES_DATABASE_URL="postgresql://user:password@localhost:5432/isolated_billybeez_validation"
 npm run db:pg:validate
+Remove-Item Env:POSTGRES_DATABASE_URL
 ```
 
 ## Backup And Restore
@@ -180,32 +178,14 @@ Verify a backup:
 npm run db:verify-backup
 ```
 
-For USB transfer, create a ZIP that excludes:
-
-- `node_modules`
-- `.next`
-- `.git`
-- `tmp`
-- `backups`
-
-and include the latest database backup as:
-
-```text
-prisma/dev.db
-```
-
-Latest stable USB backup:
-
-```text
-C:\Users\asall\Documents\Codex\2026-06-17\https-chatgpt-com-c-6a2f0385-ba30\work\billybeez-data-system-mot\backups\Data-Kitchen-System-20260711-025358.zip
-```
+For a complete machine restore, GitHub alone is not sufficient because `.env`, SQLite databases, protected employee files, and private recovery helpers are deliberately ignored. Follow `BACKUP_INVENTORY.md` and `RESTORE_GUIDE.md` and use the current confidential non-Git restore package documented there.
 
 ## GitHub
 
 Current working branch:
 
 ```text
-Data-Kitchen-System
+ops-migration-local
 ```
 
 Repository:
@@ -216,11 +196,11 @@ https://github.com/ahmedsallam97/billybeez-data-system-mot
 
 Latest update scope:
 
-- Modern manager reports dashboard
-- Month-to-date default reports calendar
-- Payment donut chart with amount/count/percentage cards
-- Configurable report KPI card colors and icon URLs from manager settings
-- Stable branch prepared for future next-level upgrade work
+- Daily roster, rotations, attendance, evaluation, trips, birthdays, offers, stock, and schedule workflows
+- Employee 360 with protected documents, feedback, guidance, incidents, annual files, and merged PDF attachments
+- Settings-driven shifts, roster rules, stock, recognition templates, colors, and messages
+- Generated PostgreSQL parity schema and local/S3-compatible employee-file storage
+- Unit, UI audit, build, and authenticated browser validation
 
 ## Features
 
@@ -278,8 +258,8 @@ public/
 
 ## Notes For Next Level
 
-- PostgreSQL migration is prepared through `prisma/schema.postgres.prisma`.
-- Production should use PostgreSQL instead of SQLite.
+- `prisma/schema.postgres.prisma` is generated from the authoritative SQLite schema. Rehearse migration on an isolated PostgreSQL database before cutover.
+- Multi-instance production should use PostgreSQL and the S3-compatible employee-file provider instead of local SQLite and local protected-file storage.
 - Silent printing to a specific remote printer will require a local print agent/service.
 - Keep `.env` private and never upload real secrets.
 - Do not commit runtime database files, backups, logs, `node_modules`, or `.next`.

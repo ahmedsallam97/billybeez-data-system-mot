@@ -361,8 +361,8 @@ No currently reproduced runtime-blocking roster API error remains in the committ
 - Latest verified local counts: 16 total employees, 13 active, 3 inactive, 8 active HRIS, 5 active Part-Time.
 - SQLite integrity was verified as `ok` before the Employee 360 schema changes and again during closure work.
 - Pre-change backup: `backups/manual-2026-09-14T02-24-42-035Z.db`.
-- Latest verified backup: `backups/manual-2026-09-25T14-20-18-567Z.db`.
-- Full confidential non-Git restore package: `D:\Projects\billybeez-system-backups\BillyBeez-MOT-restore-2026-09-25T14-27-00Z.zip`.
+- Latest verified backup: `backups/manual-2026-09-25T20-27-43-725Z.db`.
+- Full confidential non-Git restore package: `D:\Projects\billybeez-system-backups\BillyBeez-MOT-restore-2026-09-25T20-29-53Z-r1.zip`.
 - Read `BACKUP_INVENTORY.md` and `RESTORE_GUIDE.md` before restoring. The archive remains local and must never be uploaded to GitHub.
 - The local database contains the operational schedule/history and must not be reseeded or reset.
 - The latest local rotation plan at handoff is V1 for 2026-09-24 with 13 DATA assignments, merged cashier bands, no cashier rotations, and no duplicate employee/hour or position/hour assignment. Optional positions were correctly withheld because the published day includes leave records and `optionalOnlyWhenFullyStaffed` is enabled.
@@ -557,4 +557,4 @@ The current Operations implementation now includes the following verified behavi
 
 The same completion pass also wired the previously saved rules into runtime behavior: attendance calculates lateness and early leave from the configured grace periods, evaluation closure enforces required review, leave approval enforces negative-balance and coverage rules, stock alerts use the configured threshold, schedule import can create a new draft when none exists, and the roster selects one front cashier per working shift while honoring mandatory rotation priorities. Trip and birthday meals now use the configurable meal catalog. Employee 360 now includes persisted Guest Feedback and Guidance/Penalties records with the corresponding API and database models.
 
-Runtime verification on 2026-09-25 covered the roster poster, Settings sidebar, Employee 360, offers, stock, and monthly schedule pages on port 3008. The final checks were `npm run build`, `npm test` (64/64), `npm run lint`, and a verified SQLite backup at `backups/manual-2026-09-25T14-20-18-567Z.db`. The confidential non-Git restore package is `D:\Projects\billybeez-system-backups\BillyBeez-MOT-restore-2026-09-25T14-27-00Z.zip`.
+Runtime verification on 2026-09-25 covered the roster poster, Settings, Employee 360, offers, stock, monthly schedule, Incidents, and protected Complete Employee File export. The final checks were `npm run build`, `npm test` (67/67), `npm run lint`, authenticated Playwright (2/2), PostgreSQL schema validation, and a verified SQLite backup at `backups/manual-2026-09-25T20-27-43-725Z.db`. The confidential non-Git restore package is `D:\Projects\billybeez-system-backups\BillyBeez-MOT-restore-2026-09-25T20-29-53Z-r1.zip`.

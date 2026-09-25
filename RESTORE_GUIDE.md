@@ -7,7 +7,7 @@ This procedure restores the current Billy Beez system from two sources:
 
 The restore archive is expected at:
 
-`D:\Projects\billybeez-system-backups\BillyBeez-MOT-restore-2026-09-25T14-27-00Z.zip`
+`D:\Projects\billybeez-system-backups\BillyBeez-MOT-restore-2026-09-25T20-29-53Z-r1.zip`
 
 Never upload the restore archive to GitHub. It contains credentials and employee/operational information.
 
@@ -52,19 +52,18 @@ Do not run the seed script. The restore archive contains the real current databa
 Choose a temporary access-controlled directory outside the repository:
 
 ```powershell
-$Archive = 'D:\Projects\billybeez-system-backups\BillyBeez-MOT-restore-2026-09-25T14-27-00Z.zip'
-$Extracted = 'D:\SecureRestore\BillyBeez-MOT-restore-2026-09-25T14-27-00Z'
-New-Item -ItemType Directory -Force -Path $Extracted | Out-Null
-Expand-Archive -LiteralPath $Archive -DestinationPath $Extracted -Force
+$Archive = 'D:\Projects\billybeez-system-backups\BillyBeez-MOT-restore-2026-09-25T20-29-53Z-r1.zip'
+$Package = 'D:\SecureRestore\BillyBeez-MOT-restore-2026-09-25T20-29-53Z'
+New-Item -ItemType Directory -Force -Path $Package | Out-Null
+Expand-Archive -LiteralPath $Archive -DestinationPath $Package -Force
 ```
 
-Open `RESTORE_FIRST.txt` inside the extracted package. Confirm these required entries exist:
+Open `PACKAGE_INFO.txt` inside the extracted package. Confirm these required entries exist:
 
 ```powershell
-$Package = Join-Path $Extracted 'BillyBeez-MOT-restore-2026-09-25T14-27-00Z'
-Test-Path (Join-Path $Package 'repo-overlay\.env')
-Test-Path (Join-Path $Package 'repo-overlay\prisma\dev.db')
-Test-Path (Join-Path $Package 'manifest\SHA256SUMS.txt')
+Test-Path (Join-Path $Package '.env')
+Test-Path (Join-Path $Package 'prisma\dev.db')
+Test-Path (Join-Path $Package 'PACKAGE_SHA256.csv')
 ```
 
 Each command must return `True`.
@@ -72,16 +71,13 @@ Each command must return `True`.
 Verify SHA-256 checksums without printing file contents:
 
 ```powershell
-$Manifest = Join-Path $Package 'manifest\SHA256SUMS.txt'
+$Manifest = Join-Path $Package 'PACKAGE_SHA256.csv'
 $Failures = @()
-Get-Content -LiteralPath $Manifest | ForEach-Object {
-  if ($_ -match '^([0-9a-f]{64})  (.+)$') {
-    $Expected = $Matches[1]
-    $Relative = $Matches[2].Replace('/', '\')
-    $File = Join-Path $Package $Relative
-    if (!(Test-Path -LiteralPath $File) -or (Get-FileHash -Algorithm SHA256 -LiteralPath $File).Hash.ToLowerInvariant() -ne $Expected) {
-      $Failures += $Relative
-    }
+Import-Csv -LiteralPath $Manifest | ForEach-Object {
+  $Relative = $_.Path.Replace('/', '\')
+  $File = Join-Path $Package $Relative
+  if (!(Test-Path -LiteralPath $File) -or (Get-FileHash -Algorithm SHA256 -LiteralPath $File).Hash.ToLowerInvariant() -ne $_.SHA256) {
+    $Failures += $Relative
   }
 }
 if ($Failures.Count) { throw "Backup checksum failure: $($Failures -join ', ')" }
@@ -96,7 +92,7 @@ Set repository and package paths:
 
 ```powershell
 $Repo = (Get-Location).Path
-$Overlay = Join-Path $Package 'repo-overlay'
+$Overlay = $Package
 ```
 
 If any database already exists in the new clone, preserve it before replacement:
@@ -197,7 +193,7 @@ Do not run `npm run db:pg:push` against production until the database and data m
 Verify the archived recovery point header:
 
 ```powershell
-npm run db:verify-backup -- .\backups\manual-2026-09-25T14-20-18-567Z.db
+npm run db:verify-backup -- .\backups\manual-2026-09-25T20-27-43-725Z.db
 ```
 
 Run the application tests and build:
@@ -286,6 +282,6 @@ At package creation, employee storage contained 12 protected files across 12 emp
 
 ## 11. Rollback if validation fails
 
-Stop the server. Preserve the failed restored database for diagnosis, then replace `prisma\dev.db` with the verified recovery point `backups\manual-2026-09-25T14-20-18-567Z.db`. Repeat database verification before restarting.
+Stop the server. Preserve the failed restored database for diagnosis, then replace `prisma\dev.db` with the verified recovery point `backups\manual-2026-09-25T20-27-43-725Z.db`. Repeat database verification before restarting.
 
 If package checksums fail, do not restore from the damaged archive. Return to the original machine and create a new backup package from the verified active database.

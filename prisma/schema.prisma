@@ -298,6 +298,7 @@ model Employee {
   qualifications       EmployeeQualification[]
   guestFeedback        EmployeeGuestFeedback[]
   guidanceRecords      EmployeeGuidanceRecord[]
+  incidents            EmployeeIncident[]
 
   @@index([employmentType, employmentStatus])
   @@index([jobTitle])
@@ -417,6 +418,29 @@ model EmployeeGuidanceRecord {
 
   @@index([employeeId, recordDate])
   @@index([recordType, status])
+}
+
+model EmployeeIncident {
+  id              String    @id @default(cuid())
+  employeeId      String
+  incidentDate    DateTime
+  incidentType    String
+  title           String
+  description     String?
+  severity        String    @default("MEDIUM")
+  location        String?
+  peopleInvolved  String?
+  immediateAction String?
+  followUpAction  String?
+  status          String    @default("OPEN")
+  closedAt        DateTime?
+  createdBy       String?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  employee        Employee  @relation(fields: [employeeId], references: [id], onDelete: Restrict)
+
+  @@index([employeeId, incidentDate])
+  @@index([severity, status])
 }
 
 model Category {

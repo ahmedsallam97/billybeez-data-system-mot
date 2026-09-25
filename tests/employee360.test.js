@@ -15,6 +15,7 @@ test("Employee 360 file modes expose the intended sections", () => {
   assert.ok(sectionsForFile("FULL_RESTRICTED").includes("Personal"));
   assert.ok(sectionsForFile("MANAGEMENT").includes("Guest Feedback"));
   assert.ok(sectionsForFile("MANAGEMENT").includes("Guidance & Penalties"));
+  assert.ok(sectionsForFile("MANAGEMENT").includes("Incidents"));
   assert.deepEqual(sectionsForFile("CUSTOM", ["Overview", "Timeline"]), ["Overview", "Timeline"]);
 });
 
@@ -24,11 +25,13 @@ test("Employee 360 timeline aggregates source records and orders them newest fir
     documents: [{ uploadedAt: "2026-09-12", documentType: "CONTRACT", displayName: "contract.pdf" }],
     guestFeedback: [{ feedbackDate: "2026-09-14", source: "GUEST", rating: 5, comment: "Helpful" }],
     guidanceRecords: [{ recordDate: "2026-09-13", recordType: "COMMENDATION", title: "Excellent shift", status: "CLOSED" }],
+    incidents: [{ incidentDate: "2026-09-15", severity: "HIGH", title: "Safety check", status: "OPEN" }],
     trainingRecords: [], qualifications: [], scheduleAssignments: [], attendanceRecords: [], dailyEvaluations: [], monthlyAppraisals: [], eotmWins: [], successionCandidates: [],
   });
-  assert.equal(result.length, 4);
-  assert.equal(result[0].type, "GUEST_FEEDBACK");
-  assert.equal(result[1].type, "COMMENDATION");
-  assert.equal(result[2].type, "DOCUMENT");
-  assert.equal(result[3].title, "POSITION_CHANGE");
+  assert.equal(result.length, 5);
+  assert.equal(result[0].type, "INCIDENT");
+  assert.equal(result[1].type, "GUEST_FEEDBACK");
+  assert.equal(result[2].type, "COMMENDATION");
+  assert.equal(result[3].type, "DOCUMENT");
+  assert.equal(result[4].title, "POSITION_CHANGE");
 });

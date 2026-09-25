@@ -168,6 +168,8 @@ if ($Missing) { throw "Missing environment keys: $($Missing -join ', ')" }
 
 For the restored package, `DATABASE_URL` should resolve to the SQLite database under `prisma\dev.db`. Do not replace the restored secret with the placeholder from `.env.example`.
 
+The workstation restore continues to use `EMPLOYEE_FILE_STORAGE_PROVIDER="local"` (or leaves it unset) and reads protected files from `storage\employee-files\`. For a stateless or multi-instance deployment, set the provider to `s3` and fill the `EMPLOYEE_FILE_S3_*` variables documented in `.env.example`; do not commit their values.
+
 For a long-lived copy on a new machine, generate a new strong `SESSION_SECRET` after the first successful validation unless existing browser sessions must remain valid. Changing it logs out existing sessions but does not alter database data.
 
 ## 6. Generate Prisma Client without changing the database
@@ -178,6 +180,17 @@ npx prisma validate
 ```
 
 Do not run `npm run db:push` during a normal full restore. The archived database already contains the required schema and data. Do not run `npm run db:seed`.
+
+To validate the generated PostgreSQL-parity schema without changing SQLite:
+
+```powershell
+npm run db:pg:sync-schema
+$env:POSTGRES_DATABASE_URL="postgresql://user:password@host:5432/isolated_validation_database"
+npm run db:pg:validate
+Remove-Item Env:POSTGRES_DATABASE_URL
+```
+
+Do not run `npm run db:pg:push` against production until the database and data migration have been rehearsed and reviewed on an isolated PostgreSQL instance.
 
 ## 7. Verify the restored database
 
@@ -193,6 +206,7 @@ Run the application tests and build:
 npm test
 npm run lint
 npm run build
+npm run test:e2e
 ```
 
 Open the restored database in read-only mode and run SQLite integrity and count checks:

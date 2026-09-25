@@ -41,7 +41,7 @@ As of 2026-09-25:
 - trips and birthdays support create/edit/delete, reusable contacts, meal counts, stock-driven bracelet color/material display, and reservation/release of bracelet quantities;
 - schedule import/export includes both Operations and Cashier departments, with direct downloadable PDF, XLSX, browser print, and distinct cancel/delete draft actions;
 - `/settings` is the Operations settings/insights center; the previous management-settings selector is not exposed there;
-- Guest Feedback and Guidance/Penalties are persisted Employee 360 workflows; a distinct Incidents module has not been invented;
+- Guest Feedback, Guidance/Penalties, and Incidents are persisted Employee 360 workflows with timeline and Complete Employee File integration;
 - no pull request was created as part of this handoff.
 
 The current local database also contains 23 schedules and 9,087 schedule assignments. These figures describe the local database and are not seed data committed to Git.
@@ -118,8 +118,8 @@ The application uses server routes under `app/api/`, Prisma through `lib/db`, an
 - `app/settings/` — Operations management/settings center.
 - `lib/` — authentication, authorization, audit, settings, Prisma access, shared POS logic, and role definitions.
 - `lib/operations/` — schedule, roster, live daily operations, employee aggregation, attendance, leave, overtime, recognition, succession, and Employee 360 helpers.
-- `prisma/` — the authoritative SQLite schema, a legacy/incomplete PostgreSQL schema, and seed/migration support.
-- `tests/` — unit and focused integration-style tests for existing POS and the new Operations/Employee 360 behavior.
+- `prisma/` — the authoritative SQLite schema and a generated PostgreSQL-parity schema plus seed/migration support.
+- `tests/` — unit, focused integration-style, and Playwright browser tests for POS and Operations/Employee 360 behavior.
 - `scripts/` — database backup/restore/verification, UI audit, import, seed, and maintenance scripts.
 - `docs/` — Operations migration plan and reconciliation notes. These contain aggregate migration facts only, not the private employee mapping.
 - `public/` — public static application assets. Employee documents must never be stored here.
@@ -156,7 +156,7 @@ Core areas include:
 
 The Employee 360 aggregation reads existing operational source records. It does not duplicate schedule, attendance, evaluation, appraisal, recognition, or leave history. The unified timeline is derived at API time instead of being persisted as a second timeline table.
 
-`prisma/schema.postgres.prisma` does not yet match the expanded SQLite schema. Treat it as incomplete migration scaffolding. Do not run `npm run db:pg:push` against a real database until the PostgreSQL schema is reconciled and reviewed.
+`prisma/schema.postgres.prisma` is generated from the authoritative SQLite schema by `npm run db:pg:sync-schema` and passes Prisma validation. It has not yet been migrated against an isolated real PostgreSQL instance, so review generated migrations and rehearse restore/cutover before any production push.
 
 ## Roles and permissions
 
@@ -303,9 +303,9 @@ Authentication uses bcrypt-hashed database passwords and an HMAC-signed HTTP-onl
 ## Features partially completed or intentionally deferred
 
 - A separate Incidents workflow is intentionally absent until its exact business rules are approved; Guidance/Penalties is implemented.
-- Complete Employee File attachment merging is not implemented.
-- Employee file storage is local filesystem storage. It needs object storage before stateless/multi-instance deployment.
-- PostgreSQL schema migration is incomplete and must be reconciled with SQLite.
+- Complete Employee File download now creates a protected server-side PDF and embeds active PDF, JPG, and PNG attachments; unsupported or unavailable attachments are listed in the PDF.
+- Employee file storage uses a provider adapter. Local filesystem remains the workstation default; S3-compatible storage is available through environment configuration.
+- PostgreSQL schema parity is automated and validated, while a real isolated PostgreSQL migration rehearsal remains outstanding.
 - The project lacks a full automated browser end-to-end suite.
 - Roster gender and Team Leader fields are configurable, but historical/local records may still be null until a manager configures them. Name-based gender inference exists only as a presentation fallback.
 - Some operational staffing requirements can exceed the available scheduled team. Treat resulting coverage warnings as an operational capacity/configuration gap, not as a duplicate-assignment bug.
@@ -318,16 +318,16 @@ Authentication uses bcrypt-hashed database passwords and an HMAC-signed HTTP-onl
 - There is no committed deployment pipeline or production infrastructure definition.
 - SQLite and local upload storage are single-host state. They require persistent volumes, backup discipline, and single-writer considerations.
 - Generated screenshots and PDFs are not versioned because they can reveal employee information.
-- The repository's UI audit is useful but is not a substitute for assistive-technology testing or browser E2E coverage.
+- The repository now has baseline authenticated Playwright coverage for Employee 360, protected PDF export, roster, settings, and session/JSON regressions. Expand it as workflows change.
 - Direct browser print behavior can vary by browser; Complete Employee File and roster print layouts should be visually checked after CSS changes.
 
 No currently reproduced runtime-blocking roster API error remains in the committed code. If `Unexpected end of JSON input` returns, inspect the server terminal first: it previously indicated an API/server failure rather than valid empty data.
 
 ## Technical debt
 
-- Reconcile and test a PostgreSQL schema/migration path.
-- Move employee files to protected object storage with signed or authenticated access.
-- Add Playwright or equivalent E2E coverage for schedule publish, daily roster, attendance, evaluation, Employee 360 uploads, protected downloads, and print previews.
+- Rehearse the generated PostgreSQL schema and data migration on an isolated real PostgreSQL database.
+- Configure and validate the S3-compatible employee-file provider in the target deployment.
+- Expand Playwright coverage to destructive/transactional schedule publish, attendance finalization, evaluation approval, and upload lifecycle cases using isolated fixtures.
 - Break up the large `DailyWorkspace.jsx` and `DailyApprovalPreview.jsx` components.
 - Replace alert-based client feedback with consistent form validation and notifications.
 - Add explicit schema migrations instead of relying only on `prisma db push` for production evolution.
@@ -378,7 +378,10 @@ Create a local `.env` from `.env.example`, then add the required variables. Neve
 - `SESSION_SECRET` — required; at least 32 characters; use a cryptographically random value.
 - `AUTH_COOKIE_NAME` — optional cookie-name override.
 - `COOKIE_SECURE` — optional; use `false` only for local HTTP development. Production defaults to secure cookies.
-- `POSTGRES_DATABASE_URL` — only for future PostgreSQL schema validation/migration after the schema is reconciled.
+- `POSTGRES_DATABASE_URL` — PostgreSQL validation/migration target; use an isolated database until cutover is reviewed.
+- `EMPLOYEE_FILE_STORAGE_PROVIDER` — `local` by default or `s3` for protected object storage.
+- `EMPLOYEE_FILE_STORAGE_ROOT` — optional local storage root override.
+- `EMPLOYEE_FILE_S3_BUCKET`, `EMPLOYEE_FILE_S3_REGION`, `EMPLOYEE_FILE_S3_ENDPOINT`, `EMPLOYEE_FILE_S3_PREFIX`, `EMPLOYEE_FILE_S3_ACCESS_KEY_ID`, `EMPLOYEE_FILE_S3_SECRET_ACCESS_KEY`, `EMPLOYEE_FILE_S3_FORCE_PATH_STYLE`, `EMPLOYEE_FILE_S3_SSE` — S3-compatible provider settings; never commit values.
 
 Do not put secret values, API keys, passwords, access tokens, or production database URLs in documentation, scripts, commits, screenshots, or issue text.
 
@@ -412,7 +415,7 @@ Production-style local start uses `npm run start` on port 3000 after `npm run bu
 - Use `npm run db:push` only after reviewing the exact Prisma diff against the intended database.
 - Do not run `npm run db:seed` against the current operational database. It is intended for a disposable/demo database and may overwrite or create unwanted records.
 - Do not run the ignored `scripts/migrate-bb-oms.js` as a routine setup step.
-- Do not run PostgreSQL push commands until `prisma/schema.postgres.prisma` is brought into parity and validated on an isolated database.
+- Do not run PostgreSQL push commands against production. The parity schema validates, but the migration must first be rehearsed and reviewed on an isolated database.
 
 For a new clean environment, schema creation and seed behavior must be tested on a disposable database first. For an existing Billy Beez database, preserve operational history and reconcile by stable identifiers rather than names.
 
@@ -457,15 +460,15 @@ Do not deploy the current SQLite file and local `storage/` directory to an ephem
 
 ## Current unfinished tasks
 
-1. Reconcile the PostgreSQL schema with the complete SQLite schema and produce reviewed migrations.
-2. Move protected employee uploads to production-grade object storage.
-3. Add browser E2E tests for critical Employee 360 and Daily Operations flows.
+1. Run and review a full SQLite-to-PostgreSQL migration rehearsal on an isolated database.
+2. Configure the S3-compatible employee-file provider and verify upload/download/backup behavior in the deployment environment.
+3. Expand the new authenticated Playwright suite with isolated transactional fixtures.
 4. Select the fourth backup cashier and any Team Leader through Settings; these choices were intentionally not invented. Enter real inventory quantities and optional qualification restrictions as operational data becomes available.
 5. Resolve or explicitly accept current operational coverage warnings using real staffing requirements; do not suppress them in code.
 6. Continue visual refinement using runtime screenshots at actual branch desktop widths and A4 print preview.
-7. Add browser E2E coverage for the completed Guest Feedback and Guidance/Penalties employee workflows.
-8. Decide whether a separate Incidents workflow is needed beyond the current Guidance/Penalties records.
-9. Decide whether Complete Employee File attachment merging is required and design it honestly if approved.
+7. Add isolated create/update browser E2E coverage for Guest Feedback, Guidance/Penalties, and Incidents.
+8. Define any additional incident investigation/closure fields only from approved branch requirements; the distinct Incidents workflow is now present.
+9. Add Arabic font embedding to the server-generated Complete Employee File PDF if an Arabic merged export is required; the browser print preview remains bilingual.
 10. Refresh README and remove or replace stale development credential guidance.
 
 ## Recommended next steps in priority order
@@ -475,10 +478,10 @@ Do not deploy the current SQLite file and local `storage/` directory to an ephem
 3. Start the server on port 3008 and run a focused runtime smoke test of schedule, roster, attendance, daily evaluation, Employee 360, uploads, protected file access, and both print previews.
 4. Review current Settings data with the branch manager and select the fourth backup cashier, Team Leader, real stock quantities, and any qualification restrictions the branch actually uses.
 5. Verify coverage warnings against the real staffing model and adjust requirements or staffing only with operational approval.
-6. Add E2E coverage before another large UI refactor.
-7. Reconcile PostgreSQL and object storage in an isolated environment before planning deployment.
+6. Extend the authenticated E2E suite before another large UI refactor.
+7. Rehearse PostgreSQL and the configured object-storage target in an isolated environment before planning deployment.
 8. Update README and remove stale credential examples.
-9. Extend the completed Guest Feedback and Guidance/Penalties modules only from approved operational requirements.
+9. Extend Guest Feedback, Guidance/Penalties, and Incidents only from approved operational requirements.
 
 ## Files to review first
 

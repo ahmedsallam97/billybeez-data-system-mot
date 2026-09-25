@@ -19,6 +19,7 @@ The package folder contains 57 files (about 132.3 MiB before ZIP compression). A
 | `D:\Projects\billybeez-data-system-mot\prisma\dev.db` | Active SQLite database used by the application | Yes: users, employee, POS, and operational data | Yes | `<repo>\prisma\dev.db` |
 | `D:\Projects\billybeez-data-system-mot\backups\*.db` | Historical and fresh SQLite recovery points | Yes: complete database snapshots | Yes, all database files present at package time | `<repo>\backups\` |
 | `D:\Projects\billybeez-data-system-mot\storage\employee-files\` | Protected employee photo/document binary storage | Yes: employee photos/documents | Yes: all 12 files in 12 employee folders | `<repo>\storage\employee-files\` |
+| S3-compatible employee-file object storage | Optional deployment target; not configured on this workstation | Yes | No; local `storage\employee-files\` is the active source | Configure `EMPLOYEE_FILE_S3_*` and migrate objects only for a reviewed deployment |
 | `D:\Projects\billybeez-data-system-mot\.env` | Local database URL, cookie configuration, and session secret | Yes: contains a secret value | Yes | `<repo>\.env` |
 | `D:\Projects\billybeez-data-system-mot\check-admin.js` | Local administrator diagnostic helper | Yes: may contain a local credential | Yes | `<repo>\check-admin.js` |
 | `D:\Projects\billybeez-data-system-mot\reset-admin.js` | Local administrator reset helper | Yes: may contain a local credential | Yes | `<repo>\reset-admin.js` |

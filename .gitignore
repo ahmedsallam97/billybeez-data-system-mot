@@ -15,6 +15,9 @@ backups/
 storage/
 artifacts/employee360-closure/
 output/pdf/
+playwright/.auth/
+test-results/
+playwright-report/
 check-admin.js
 reset-admin.js
 scripts/migrate-bb-oms.js

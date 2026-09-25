@@ -7,6 +7,7 @@
     "lint": "node scripts/ui-audit.js",
     "db:push": "prisma db push",
     "db:pg:validate": "prisma validate --schema prisma/schema.postgres.prisma",
+    "db:pg:sync-schema": "node scripts/sync-postgres-schema.js",
     "db:pg:push": "prisma db push --schema prisma/schema.postgres.prisma",
     "db:seed": "node scripts/seed.js",
     "db:hash-passwords": "node scripts/hash-passwords.js",
@@ -19,9 +20,11 @@
     "products:cleanup-quick-duplicates": "node scripts/cleanup-quick-product-duplicates.js",
     "items:import": "node scripts/import-items-categories.js",
     "db:import:apps-script": "node scripts/import-apps-script.js",
-    "clasp:push": "clasp push --force"
+    "clasp:push": "clasp push --force",
+    "test:e2e": "playwright test"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.1140.0",
     "@fontsource/tajawal": "^5.2.7",
     "@prisma/client": "^6.19.1",
     "bcryptjs": "^3.0.3",
@@ -34,7 +37,8 @@
     "read-excel-file": "^9.3.1"
   },
   "devDependencies": {
-    "@google/clasp": "^3.3.0"
+    "@google/clasp": "^3.3.0",
+    "@playwright/test": "^1.63.0"
   },
   "prisma": {
     "seed": "node scripts/seed.js"

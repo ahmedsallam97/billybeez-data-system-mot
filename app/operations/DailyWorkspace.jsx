@@ -203,7 +203,6 @@ export default function DailyWorkspace({ initialView = "attendance" }) {
   const records = attendance?.day?.records || [];
   const updateAttendance = (record, values) => {
     const finalized = attendance.day.status === "FINALIZED";
-    if (finalized && !values.reason.trim()) return setError(isArabic ? "سبب التصحيح مطلوب" : "Correction reason required");
     mutate("/api/operations/attendance", "PATCH", {
       action: finalized ? "correct" : "update",
       recordId: record.id,
@@ -218,13 +217,13 @@ export default function DailyWorkspace({ initialView = "attendance" }) {
   return <div className="live-ops-workspace">
     <header className="panel live-ops-header">
       <div>
-        <span className="daily-preview-eyebrow">BILLY BEEZ · MOT</span>
+        <span className="daily-preview-eyebrow">BILLY BEEZ · {daily?.branchConfig?.branchCode || daily?.branch || "MOT"}</span>
         <h1>{evaluationMode ? (isArabic ? "التقييم اليومي" : "Daily Evaluation") : (isArabic ? "الحضور اليومي" : "Daily Attendance")}</h1>
         <p>{evaluationMode ? (isArabic ? "درجات اليوم جاهزة للتعديل والحفظ والاعتماد." : "Today's scores are ready to edit, save and approve.") : (isArabic ? "مواعيد الدخول والخروج تُجهز من الشيفت المنشور." : "In and out times are prepared from the published shift.")}</p>
       </div>
     </header>
     <section className="panel daily-controls">
-      <b>MOT</b>
+      <b>{daily?.branchConfig?.branchCode || daily?.branch || "MOT"}</b>
       <button type="button" onClick={() => setDate(today)}>{isArabic ? "اليوم" : "Today"}</button>
       <button type="button" onClick={() => setDate(addDays(today, 1))}>{isArabic ? "غدًا" : "Tomorrow"}</button>
       <input aria-label={isArabic ? "التاريخ" : "Date"} type="date" value={date} onChange={(event) => setDate(event.target.value)} />

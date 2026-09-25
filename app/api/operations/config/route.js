@@ -2,11 +2,12 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { authorizeApi } from "@/lib/api-auth";
 import { writeAudit } from "@/lib/audit";
-import { ensureDefaultSettings } from "@/lib/settings";
+import { ensureDefaultSettings, getSetting } from "@/lib/settings";
 
 const OPS_KEYS = [
   "DAILY_OPERATIONS_TEMPLATE_CONFIG", "OPS_MOTIVATION_PHRASES", "OPS_CASHIER_CONFIG", "OPS_BRANCH_CONFIG",
   "OPS_SCHEDULE_CODE_CONFIG", "OPS_ROTATION_RULES", "OPS_ATTENDANCE_RULES", "OPS_EVALUATION_RULES", "OPS_LEAVE_RULES", "OPS_PLANNING_CATALOGS",
+  "RECOGNITION_ARTWORK_CONFIG",
 ];
 
 export async function GET() {
@@ -21,7 +22,7 @@ export async function GET() {
     prisma.opsEvaluationCriteriaVersion.findFirst({ where: { active: true }, include: { criteria: { include: { reasons: true }, orderBy: { sortOrder: "asc" } } }, orderBy: { createdAt: "desc" } }),
     prisma.opsTripPartner.findMany({ orderBy: { name: "asc" } }),
     prisma.opsBirthdayCustomer.findMany({ orderBy: { customerName: "asc" } }),
-    prisma.employee.findMany({ where: { active: true }, select: { id: true, name: true, operationalName: true, gender: true, operationsTeamLeader: true, department: true, jobTitle: true }, orderBy: { name: "asc" } }),
+    prisma.employee.findMany({ where: { active: true }, select: { id: true, name: true, nameEn: true, operationalName: true, gender: true, operationsTeamLeader: true, department: true, jobTitle: true, documents: { where: { documentType: "EMPLOYEE_PHOTO", status: "ACTIVE" }, select: { id: true }, orderBy: { uploadedAt: "desc" }, take: 1 } }, orderBy: { name: "asc" } }),
     prisma.opsOperationalNotice.findMany({ orderBy: [{ active: "desc" }, { effectiveFrom: "desc" }], take: 50 }),
   ]);
   return NextResponse.json({
@@ -36,6 +37,8 @@ export async function POST(request) {
   if (error) return error;
   const body = await request.json().catch(() => ({}));
   try {
+    let branchConfig = {}; try { branchConfig = JSON.parse(await getSetting("OPS_BRANCH_CONFIG", "{}")); } catch {}
+    const defaultBranch = String(branchConfig.branchCode || "MOT");
     let record;
     if (body.action === "saveShift") {
       const code = String(body.code || "").trim().toUpperCase();
@@ -55,7 +58,7 @@ export async function POST(request) {
       const data = { shiftCode, startTime: String(body.startTime || "") || null, endTime: String(body.endTime || "") || null, minEmployees: Math.max(0, Number(body.minEmployees || 0)), effectiveFrom, effectiveTo: String(body.effectiveTo || "") || null };
       record = current ? await prisma.opsPositionStaffingRequirement.update({ where: { id: current.id }, data }) : await prisma.opsPositionStaffingRequirement.create({ data: { ...data, operationalPositionId: position.id } });
     } else if (body.action === "savePartner") {
-      const branch = String(body.branch || "MOT");
+      const branch = String(body.branch || defaultBranch);
       const name = String(body.name || "").trim(); if (!name) throw new Error("Academy name is required");
       const values = { name, supervisorName: String(body.supervisorName || "").trim() || null, supervisorPhone: String(body.supervisorPhone || "").trim() || null, notes: String(body.notes || "").trim() || null, updatedBy: user.id };
       if (body.partnerId) {
@@ -64,11 +67,11 @@ export async function POST(request) {
         record = await prisma.opsTripPartner.update({ where: { id: current.id }, data: values });
       } else record = await prisma.opsTripPartner.upsert({ where: { branch_name: { branch, name } }, update: values, create: { branch, ...values, createdBy: user.id } });
     } else if (body.action === "deletePartner") {
-      const current = await prisma.opsTripPartner.findFirst({ where: { id: String(body.partnerId || ""), branch: String(body.branch || "MOT") } });
+      const current = await prisma.opsTripPartner.findFirst({ where: { id: String(body.partnerId || ""), branch: String(body.branch || defaultBranch) } });
       if (!current) throw new Error("Academy not found");
       record = await prisma.opsTripPartner.delete({ where: { id: current.id } });
     } else if (body.action === "saveCustomer") {
-      const branch = String(body.branch || "MOT");
+      const branch = String(body.branch || defaultBranch);
       const phone = String(body.phone || "").trim(); const customerName = String(body.customerName || "").trim();
       if (!phone || !customerName) throw new Error("Customer name and phone are required");
       const values = { phone, customerName, childName: String(body.childName || "").trim() || null, notes: String(body.notes || "").trim() || null, updatedBy: user.id };
@@ -78,7 +81,7 @@ export async function POST(request) {
         record = await prisma.opsBirthdayCustomer.update({ where: { id: current.id }, data: values });
       } else record = await prisma.opsBirthdayCustomer.upsert({ where: { branch_phone: { branch, phone } }, update: values, create: { branch, ...values, createdBy: user.id } });
     } else if (body.action === "deleteCustomer") {
-      const current = await prisma.opsBirthdayCustomer.findFirst({ where: { id: String(body.customerId || ""), branch: String(body.branch || "MOT") } });
+      const current = await prisma.opsBirthdayCustomer.findFirst({ where: { id: String(body.customerId || ""), branch: String(body.branch || defaultBranch) } });
       if (!current) throw new Error("Customer not found");
       record = await prisma.opsBirthdayCustomer.delete({ where: { id: current.id } });
     } else if (body.action === "saveOperationalName") {
@@ -86,7 +89,7 @@ export async function POST(request) {
     } else if (body.action === "saveNotice") {
       const title = String(body.title || "").trim(); const message = String(body.message || "").trim(); const effectiveFrom = String(body.effectiveFrom || "");
       if (!title || !message || !effectiveFrom) throw new Error("Notice title, message and start date are required");
-      record = await prisma.opsOperationalNotice.create({ data: { branch: "MOT", title, message, priority: String(body.priority || "INFO"), effectiveFrom, effectiveTo: String(body.effectiveTo || "") || null, active: true, createdBy: user.id, updatedBy: user.id } });
+      record = await prisma.opsOperationalNotice.create({ data: { branch: defaultBranch, title, message, priority: String(body.priority || "INFO"), effectiveFrom, effectiveTo: String(body.effectiveTo || "") || null, active: true, createdBy: user.id, updatedBy: user.id } });
     } else {
       throw new Error("Unknown settings action");
     }

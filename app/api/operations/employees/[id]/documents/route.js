@@ -14,6 +14,8 @@ const safeName = (name) => String(name || "file").replace(/[^a-zA-Z0-9._-]/g, "_
 export async function POST(request, { params }) {
   const { user, error } = await authorizeApi("OPS_EMPLOYEE_MANAGE"); if (error) return error;
   const { id } = await params; const form = await request.formData(); const file = form.get("file"); const documentType = String(form.get("documentType") || "OTHER");
+  const submittedEmployeeId = String(form.get("employeeId") || "");
+  if (!submittedEmployeeId || submittedEmployeeId !== id) return NextResponse.json({ success: false, error: "Upload target does not match the selected employee" }, { status: 409 });
   if (!(file instanceof File) || !file.size || file.size > 8 * 1024 * 1024 || !ALL_TYPES.has(file.type)) return NextResponse.json({ success: false, error: "Use a JPG, PNG, WebP, or PDF up to 8 MB" }, { status: 400 });
   const employee = await prisma.employee.findUnique({ where: { id } }); if (!employee) return NextResponse.json({ success: false, error: "Employee not found" }, { status: 404 });
   if (documentType === "EMPLOYEE_PHOTO" && !PHOTO_TYPES.has(file.type)) return NextResponse.json({ success: false, error: "Employee photo must be an image" }, { status: 400 });

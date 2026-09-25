@@ -75,6 +75,7 @@ const editableKeys = new Set([
   "OPS_EVALUATION_RULES",
   "OPS_LEAVE_RULES",
   "OPS_PLANNING_CATALOGS",
+  "RECOGNITION_ARTWORK_CONFIG",
 ]);
 
 function serializeSetting(setting) {

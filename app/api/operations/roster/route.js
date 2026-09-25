@@ -14,6 +14,7 @@ export async function GET(request) {
   const parse = (value, fallback) => { try { return JSON.parse(value); } catch { return fallback; } };
   const branchConfig = parse(await getSetting("OPS_BRANCH_CONFIG", "{}"), {});
   const branch = branchConfig.branchCode || "MOT";
+  const rotationRules = parse(await getSetting("OPS_ROTATION_RULES", "{}"), {});
   const schedule = await prisma.opsSchedule.findFirst({ where: { status: "PUBLISHED", periodStart: { lte: date }, periodEnd: { gte: date } }, orderBy: { version: "desc" } });
   if (!schedule) return NextResponse.json({ success: true, date, schedule: null, roster: [] });
   const [assignments, shiftDefinitions, operationsDay, attendanceDay, trips, events, offerRows, notices, stockRows, cashierConfigRaw, phrasesRaw] = await Promise.all([
@@ -54,8 +55,9 @@ export async function GET(request) {
   const globalStock = stockRows.filter((item) => item.workDate === "ALL");
   const wristbands = globalStock.length ? globalStock : stockRows.filter((item) => item.workDate === date);
   const phraseIndex = Math.abs(new Date(`${date}T00:00:00Z`).getTime() / 86400000) % Math.max(phrases.length, 1);
-  const amStartsAtNine = trips.some((trip) => String(trip.startTime || "").startsWith("09:"));
-  const shifts = Object.fromEntries(shiftDefinitions.map((shift) => [shift.code, shift.code === "AM" && amStartsAtNine ? { ...shift, startTime: "09:00", endTime: "17:00" } : shift]));
+  const earlyRule = rotationRules.earlyTripRule || {}; const earlyShift = earlyRule.shiftCode || "AM"; const earlyTrigger = earlyRule.triggerTime || "09:00";
+  const hasEarlyTrip = earlyRule.enabled !== false && trips.some((trip) => String(trip.startTime || "").startsWith(earlyTrigger.slice(0, 3)));
+  const shifts = Object.fromEntries(shiftDefinitions.map((shift) => [shift.code, shift.code === earlyShift && hasEarlyTrip ? { ...shift, startTime: earlyRule.startTime || "09:00", endTime: earlyRule.endTime || "17:00" } : shift]));
   const rotationPlan = operationsDay?.rotationPlans?.[0] || null;
   const rosterAssignments = applyCashierFallbacks(assignments, cashierConfig);
   return NextResponse.json({
@@ -71,7 +73,7 @@ export async function GET(request) {
     }),
     attendance: attendanceDay ? { id: attendanceDay.id, status: attendanceDay.status, records: attendanceDay.records } : null,
     rotation: rotationPlan ? { id: rotationPlan.id, version: rotationPlan.version, status: rotationPlan.status, assignments: rotationPlan.assignments, breaks: rotationPlan.breaks } : null,
-    trips, events, offers, notices, wristbands, cashierConfig, motivationalPhrase: phrases[phraseIndex] || "Great teams make great days.",
+    trips, events, offers, notices, wristbands, cashierConfig, rotationRules, branchConfig, motivationalPhrase: phrases[phraseIndex] || "Great teams make great days.",
   });
   } catch (requestError) {
     console.error("Failed to load daily operations roster", { date, error: requestError });

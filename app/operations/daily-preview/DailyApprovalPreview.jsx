@@ -9,6 +9,7 @@ import {
   WORKING_SHIFTS,
 } from "@/lib/operations/roster";
 import { previewCardLines } from "@/lib/operations/daily-preview";
+import { colorNameFor, stockAvailable } from "@/lib/operations/planning";
 import { useI18n } from "@/app/i18n";
 import { employeeGenderClass } from "@/app/employeeDisplay";
 
@@ -129,18 +130,35 @@ function employeeTone(person) {
 
 function OfferCardContent({ offers = [] }) {
   if (!offers.length) return <p>No active offers</p>;
-  return offers.map((offer) => (
-    <div className="ops-offer-item" key={offer.id}>
-      <b>{offer.title}</b>
+  const dayNames = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+  return <div className="ops-offer-grid">{offers.map((offer) => {
+    let weekdays = [];
+    try { weekdays = JSON.parse(offer.weekdaysJson || "[]"); } catch { weekdays = []; }
+    return <article className="ops-offer-item" key={offer.id}>
+      <b>{offer.title} {offer.discountPercent != null && <em className="ops-discount-badge">-{offer.discountPercent}%</em>}</b>
       {(offer.priceBefore != null || offer.priceAfter != null) && (
         <span className="ops-offer-price">
           {offer.priceBefore != null && <del>{offer.priceBefore} EGP</del>}
           {offer.priceAfter != null && <strong>{offer.priceAfter} EGP</strong>}
         </span>
       )}
+      <span className="ops-offer-children">Admits {offer.childrenCount || 1} {(offer.childrenCount || 1) === 1 ? "child" : "children"}</span>
+      {weekdays.length > 0 && <small>{weekdays.map((day) => dayNames[day]).filter(Boolean).join(" · ")}</small>}
       {offer.details && <small>{offer.details}</small>}
-    </div>
-  ));
+    </article>;
+  })}</div>;
+}
+
+function BraceletCardContent({ items = [] }) {
+  const bracelets = items.filter((item) => !item.stockCategory || item.stockCategory === "BRACELET");
+  if (!bracelets.length) return <p>No wristband stock recorded</p>;
+  return <div className="ops-bracelet-list">{bracelets.map((item) => (
+    <p key={item.id || item.wristbandType}>
+      <i className="ops-bracelet-swatch" style={{ backgroundColor: item.color || "#cccccc" }} aria-hidden="true" />
+      <b>{item.usageType || item.wristbandType} ⇒ {item.material || "Bracelet"} {item.colorName || colorNameFor(item.color)}</b>
+      <span>{stockAvailable(item)} remaining</span>
+    </p>
+  ))}</div>;
 }
 async function readApiJson(response, fallbackMessage) {
   const raw = await response.text();
@@ -151,6 +169,7 @@ async function readApiJson(response, fallbackMessage) {
   return body;
 }
 async function posterPngBlob({ data, config, weekday, grouped, scheduleColors }) {
+  const slotCount = Math.max(1, Number(config.rotationSlotCount) || 8);
   const width = 1500;
   const margin = 28;
   const contentWidth = width - margin * 2;
@@ -158,18 +177,17 @@ async function posterPngBlob({ data, config, weekday, grouped, scheduleColors })
   const nonWorking = Object.entries(grouped)
     .filter(([key]) => !WORKING_SHIFTS.includes(key))
     .flatMap(([group, people]) => people.map((person) => ({ ...person, group })));
-  const visibleCards = config.cardOrder.filter((card) => config.visibleCards[card] && (card !== "trips" || data.trips?.length) && (card !== "birthdays" || data.events?.length));
-  const cardLinesByCard = Object.fromEntries(visibleCards.map((card) => [card, card === "offers"
-    ? (data.offers || []).map((offer) => `${offer.title}${offer.priceBefore != null ? ` · ${offer.priceBefore}→${offer.priceAfter ?? "—"} EGP` : offer.priceAfter != null ? ` · ${offer.priceAfter} EGP` : ""}`)
-    : previewCardLines(card, data)]));
+  const visibleCards = config.cardOrder.filter((card) => card !== "offers" && config.visibleCards[card] && (card !== "trips" || data.trips?.length) && (card !== "birthdays" || data.events?.length));
+  const cardLinesByCard = Object.fromEntries(visibleCards.map((card) => [card, previewCardLines(card, data)]));
   const compactCards = visibleCards.filter((card) => ["trips", "birthdays"].includes(card));
   const cardRows = [...(compactCards.length ? [compactCards] : []), ...visibleCards.filter((card) => !["trips", "birthdays"].includes(card)).map((card) => [card])];
   const cardRowHeights = cardRows.map((row) => Math.max(132, 58 + Math.max(1, ...row.map((card) => cardLinesByCard[card]?.length || 0)) * 21));
   const rosterRows = WORKING_SHIFTS.reduce((total, shift) => total + (grouped[shift]?.length ? grouped[shift].length + 2 : 0), 0);
   const cardHeight = cardRows.length ? cardRowHeights.reduce((sum, value) => sum + value, 0) + (cardRows.length - 1) * 12 + 20 : 0;
   const leavesHeight = config.visibleSections.leaves ? 52 + Math.max(1, nonWorking.length) * 34 : 0;
-  const notesHeight = config.visibleSections.notes ? 82 : 0;
-  const height = 150 + cardHeight + 76 + rosterRows * 42 + leavesHeight + notesHeight + 86;
+  const offersHeight = config.visibleCards.offers !== false && data.offers?.length ? 164 : 0;
+  const notesHeight = config.visibleSections.notes ? 52 + Math.max(1, data.notices?.length || 0) * 52 : 0;
+  const height = 150 + cardHeight + 76 + rosterRows * 42 + leavesHeight + offersHeight + notesHeight + 100;
   const xml = (value) => String(value ?? "").replace(/[&<>"']/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&apos;" })[char]);
   const short = (value, limit = 34) => { const text = String(value || ""); return text.length > limit ? `${text.slice(0, limit - 1)}…` : text; };
   const nodes = [];
@@ -191,7 +209,7 @@ async function posterPngBlob({ data, config, weekday, grouped, scheduleColors })
       const cardWidth = (contentWidth - gap * (row.length - 1)) / row.length;
       row.forEach((card, index) => {
         const x = margin + index * (cardWidth + gap);
-        const tone = card === "offers" ? "#d98a31" : card === "trips" ? "#3182bd" : card === "birthdays" ? "#4f8c5c" : "#2e7da5";
+        const tone = config.cardColors?.[card] || (card === "offers" ? "#d98a31" : card === "trips" ? "#3182bd" : card === "birthdays" ? "#4f8c5c" : "#2e7da5");
         rect(x, y, cardWidth, rowHeight, "#fffdf8", tone, 12);
         rect(x, y, cardWidth, 38, tone, "none", 10);
         text(cardLabels[card], x + cardWidth / 2, y + 26, 17, 900, "#ffffff", "middle");
@@ -219,19 +237,19 @@ async function posterPngBlob({ data, config, weekday, grouped, scheduleColors })
     if (!people.length) return;
     const shiftColor = shift === "AM" ? config.amColor : shift === "BW" ? config.bwColor : config.pmColor;
     const startHour = Number(data?.shifts?.[shift]?.startTime?.slice(0, 2) || (shift === "PM" ? 15 : 10));
-    const hours = Array.from({ length: 8 }, (_, index) => String((startHour + index - 1) % 12 + 1));
+    const hours = Array.from({ length: slotCount }, (_, index) => String((startHour + index - 1) % 12 + 1));
     rect(margin, y, contentWidth, 38, shiftColor, "#8b8794");
     text(shift === "AM" ? "MORNING SHIFT (AM)" : shift === "BW" ? "BETWEEN SHIFT (BW)" : "NIGHT SHIFT (PM)", margin + 12, y + 25, 16, 900);
     text(`${formatTime12(data?.shifts?.[shift]?.startTime)} — ${formatTime12(data?.shifts?.[shift]?.endTime)}`, margin + contentWidth - 12, y + 25, 15, 800, config.text, "end");
     y += 38;
     rect(margin, y, contentWidth, 30, "#f3edf8", "#8b8794");
     text("ROTATION TIME", margin + numberWidth + nameWidth + (attendanceWidth + breakWidth) / 2, y + 20, 12, 900, config.text, "middle");
-    hours.forEach((hour, index) => text(hour, rotationX + rotationWidth / 8 * (index + 0.5), y + 20, 13, 900, config.text, "middle"));
+    hours.forEach((hour, index) => text(hour, rotationX + rotationWidth / slotCount * (index + 0.5), y + 20, 13, 900, config.text, "middle"));
     y += 30;
     people.forEach((person, personIndex) => {
       const role = rosterRole(person);
       const tone = employeeTone(person);
-      const nameTone = tone === "cashier" ? "#b9e2c3" : tone === "leader" ? "#c3e9f6" : tone === "cashier-leader" ? "#d5b9ec" : tone === "female" ? "#fff0a8" : "#e7d6f6";
+      const roleColors = config.roleColors || {}; const nameTone = tone === "cashier" ? (roleColors.cashier || "#b9e2c3") : tone === "leader" ? (roleColors.leader || "#c3e9f6") : tone === "cashier-leader" ? (roleColors.cashierLeader || "#d5b9ec") : tone === "female" ? (roleColors.female || "#fff0a8") : (roleColors.male || "#e7d6f6");
       rect(margin, y, contentWidth, 42, "#ffffff", "#bcb5c3");
       rect(margin + numberWidth, y, nameWidth, 42, nameTone, "#bcb5c3");
       text(personIndex + 1, margin + numberWidth / 2, y + 27, 14, 900, config.text, "middle");
@@ -243,9 +261,9 @@ async function posterPngBlob({ data, config, weekday, grouped, scheduleColors })
         hours.forEach((hour, index) => {
           const slotHour = (startHour + index) % 24;
           const assignment = assignments.find((item) => item.employeeId === person.employee.id && Number(item.startTime?.slice(0, 2)) === slotHour);
-          const cellX = rotationX + rotationWidth / 8 * index;
+          const cellX = rotationX + rotationWidth / slotCount * index;
           if (index) nodes.push(`<line x1="${cellX}" y1="${y}" x2="${cellX}" y2="${y + 42}" stroke="#bcb5c3"/>`);
-          text(short(assignment?.position?.code || "", 10), cellX + rotationWidth / 16, y + 27, 12, 800, config.text, "middle");
+          text(short(assignment?.position?.code || "", 10), cellX + rotationWidth / (slotCount * 2), y + 27, 12, 800, config.text, "middle");
         });
       }
       y += 42;
@@ -256,10 +274,32 @@ async function posterPngBlob({ data, config, weekday, grouped, scheduleColors })
     y += 14; rect(margin, y, contentWidth, 38, config.primary, "none", 8); text("TODAY'S LEAVES / OFF", margin + contentWidth - 14, y + 25, 16, 900, "#ffffff", "end"); y += 38;
     (nonWorking.length ? nonWorking : [{ group: "—", employee: { name: "No leave / off in the published schedule" } }]).forEach((item) => { const badgeColor = scheduleColor(item.group, scheduleColors); rect(margin, y, contentWidth, 34, "#fff", "#d4ced8"); if (item.group !== "—") { rect(margin + 10, y + 5, 86, 24, badgeColor, "none", 5); text(item.group, margin + 53, y + 22, 12, 900, contrastColor(badgeColor), "middle"); } else text(item.group, margin + 14, y + 23, 13, 900); text(rosterName(item.employee), margin + 110, y + 23, 14, 700); y += 34; });
   }
+  if (config.visibleCards.offers !== false && data.offers?.length) {
+    y += 14; rect(margin, y, contentWidth, 38, config.cardColors?.offers || "#d98a31", "none", 8); text("TODAY'S OFFERS", margin + contentWidth - 14, y + 25, 16, 900, "#ffffff", "end"); y += 46;
+    const gap = 12; const offerWidth = (contentWidth - gap * (data.offers.length - 1)) / data.offers.length;
+    data.offers.forEach((offer, index) => {
+      const x = margin + index * (offerWidth + gap);
+      rect(x, y, offerWidth, 104, "#fffaf2", config.cardColors?.offers || "#d98a31", 10);
+      text(short(offer.title, 26), x + 12, y + 25, 15, 900);
+      if (offer.discountPercent != null) text(`-${offer.discountPercent}%`, x + offerWidth - 12, y + 25, 13, 900, "#c61f3c", "end");
+      const prices = `${offer.priceBefore != null ? `Was ${offer.priceBefore}` : ""}${offer.priceAfter != null ? `  Now ${offer.priceAfter} EGP` : ""}`.trim();
+      if (prices) text(short(prices, 30), x + 12, y + 51, 13, 800);
+      text(`Admits ${offer.childrenCount || 1} ${(offer.childrenCount || 1) === 1 ? "child" : "children"}`, x + 12, y + 76, 13, 800, "#176837");
+      if (offer.details) text(short(offer.details, 34), x + 12, y + 96, 11, 600);
+    });
+    y += 104;
+  }
   if (config.visibleSections.notes) {
     y += 14; rect(margin, y, contentWidth, 38, config.primary, "none", 8); text("OPERATIONAL NOTES", margin + contentWidth - 14, y + 25, 16, 900, "#ffffff", "end"); y += 38;
-    const notes = data.notices?.length ? data.notices.map((item) => item.title) : ["No operational notices recorded"];
-    text(short(notes.join(" · "), 150), margin + 14, y + 27, 14, 700); y += 42;
+    const notices = data.notices?.length ? data.notices : [{ title: "No operational notices recorded", message: "", priority: "INFO" }];
+    notices.forEach((notice) => {
+      const critical = String(notice.priority || "").toUpperCase() === "CRITICAL";
+      rect(margin, y, contentWidth, 52, critical ? "#fee7eb" : "#ffffff", critical ? "#d7193f" : "#d4ced8", 4);
+      text(short(notice.title, 44), margin + 14, y + 22, 14, 900, critical ? "#a50f2d" : config.text);
+      if (notice.message) text(short(notice.message, 145), margin + 14, y + 42, 12, 650, critical ? "#8f1730" : config.text);
+      if (critical) text("CRITICAL", margin + contentWidth - 14, y + 22, 12, 900, "#d7193f", "end");
+      y += 52;
+    });
   }
   y += 22; rect(margin, y, contentWidth, 5, config.accent); text(data.motivationalPhrase || config.footerMotto, width / 2, y + 35, 15, 900, config.text, "middle");
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">${nodes.join("")}</svg>`;
@@ -274,207 +314,8 @@ async function posterPngBlob({ data, config, weekday, grouped, scheduleColors })
     return await new Promise((resolve, reject) => canvas.toBlob((blob) => blob ? resolve(blob) : reject(new Error("Image generation failed")), "image/png"));
   } finally { URL.revokeObjectURL(url); }
 }
-function move(list, item, direction) {
-  const index = list.indexOf(item);
-  const next = index + direction;
-  if (next < 0 || next >= list.length) return list;
-  const copy = [...list];
-  [copy[index], copy[next]] = [copy[next], copy[index]];
-  return copy;
-}
-
-function TemplateEditor({ config, onChange, phrases, onPhrasesChange, save, saving, isArabic }) {
-  const update = (key, value) => onChange({ ...config, [key]: value });
-  const color = (key, label) => (
-    <label className="template-field" key={key}>
-      {label}
-      <span>
-        <input
-          type="color"
-          value={config[key]}
-          onChange={(e) => update(key, e.target.value)}
-        />
-        <input
-          value={config[key]}
-          onChange={(e) => update(key, e.target.value)}
-        />
-      </span>
-    </label>
-  );
-  const reorder = (key, item, direction) =>
-    update(key, move(config[key], item, direction));
-  return (
-    <aside className="panel daily-template-editor no-print">
-      <div className="daily-template-editor-head">
-        <div>
-          <b>{isArabic ? "محرر التيمبلت المباشر" : "Live template editor"}</b>
-          <small>
-            {isArabic
-              ? "المعاينة تتغير فورًا، والحفظ عند الضغط على حفظ."
-              : "Preview changes instantly; settings save when you choose Save."}
-          </small>
-        </div>
-        <button onClick={save} disabled={saving}>
-          {saving
-            ? isArabic
-              ? "جارٍ الحفظ..."
-              : "Saving..."
-            : isArabic
-              ? "حفظ التيمبلت"
-              : "Save template"}
-        </button>
-      </div>
-      <div className="template-editor-grid">
-        <label className="template-field template-wide">
-          {isArabic ? "الجمل التحفيزية اليومية — سطر لكل جملة" : "Daily motivational phrases — one per line"}
-          <textarea
-            aria-label={isArabic ? "الجمل التحفيزية اليومية" : "Daily motivational phrases"}
-            value={phrases.join("\n")}
-            onChange={(e) => onPhrasesChange(e.target.value.split("\n").map((x) => x.trim()).filter(Boolean))}
-          />
-        </label>
-        <label className="template-field">
-          {isArabic ? "رابط اللوجو" : "Logo URL / local path"}
-          <input
-            value={config.logoUrl}
-            onChange={(e) => update("logoUrl", e.target.value)}
-          />
-        </label>
-        <label className="template-field">
-          {isArabic ? "اسم الفرع" : "Branch"}
-          <input
-            value={config.branchName}
-            onChange={(e) => update("branchName", e.target.value)}
-          />
-        </label>
-        <label className="template-field">
-          {isArabic ? "العنوان" : "Title"}
-          <input
-            value={config.title}
-            onChange={(e) => update("title", e.target.value)}
-          />
-        </label>
-        <label className="template-field">
-          {isArabic ? "السطر الفرعي" : "Subtitle"}
-          <input
-            value={config.subtitle}
-            onChange={(e) => update("subtitle", e.target.value)}
-          />
-        </label>
-        {color("primary", isArabic ? "اللون الأساسي" : "Primary")}
-        {color("accent", isArabic ? "لون التمييز" : "Accent")}
-        {color("amColor", "AM band")}
-        {color("bwColor", "BW band")}
-        {color("pmColor", "PM band")}
-      </div>
-      <div className="template-editor-columns">
-        <section>
-          <b>{isArabic ? "ترتيب كروت أعلى الصفحة" : "Top-card order"}</b>
-          {config.cardOrder.map((card) => (
-            <div className="template-sort-row" key={card}>
-              <label>
-                <input
-                  type="checkbox"
-                  checked={config.visibleCards[card]}
-                  onChange={(e) =>
-                    update("visibleCards", {
-                      ...config.visibleCards,
-                      [card]: e.target.checked,
-                    })
-                  }
-                />{" "}
-                {cardLabels[card]}
-              </label>
-              <span>
-                <button onClick={() => reorder("cardOrder", card, -1)}>
-                  ↑
-                </button>
-                <button onClick={() => reorder("cardOrder", card, 1)}>↓</button>
-              </span>
-            </div>
-          ))}
-        </section>
-        <section>
-          <b>{isArabic ? "ترتيب الأقسام" : "Section order"}</b>
-          {config.sectionOrder.map((part) => (
-            <div className="template-sort-row" key={part}>
-              <label>
-                <input
-                  type="checkbox"
-                  checked={config.visibleSections[part]}
-                  onChange={(e) =>
-                    update("visibleSections", {
-                      ...config.visibleSections,
-                      [part]: e.target.checked,
-                    })
-                  }
-                />{" "}
-                {sectionLabels[part]}
-              </label>
-              <span>
-                <button onClick={() => reorder("sectionOrder", part, -1)}>
-                  ↑
-                </button>
-                <button onClick={() => reorder("sectionOrder", part, 1)}>
-                  ↓
-                </button>
-              </span>
-            </div>
-          ))}
-          <b className="template-subhead">
-            {isArabic ? "أعمدة جدول الموظفين" : "Employee table columns"}
-          </b>
-          {[
-            ["attendance", isArabic ? "حضور" : "Attendance"],
-            ["breaks", isArabic ? "بريك" : "Break"],
-            ["rotation", isArabic ? "روتيشن" : "Rotation"],
-          ].map(([key, label]) => (
-            <label className="template-toggle" key={key}>
-              <input
-                type="checkbox"
-                checked={config.visibleSections[key]}
-                onChange={(e) =>
-                  update("visibleSections", {
-                    ...config.visibleSections,
-                    [key]: e.target.checked,
-                  })
-                }
-              />{" "}
-              {label}
-            </label>
-          ))}
-        </section>
-      </div>
-      <div className="template-editor-grid">
-        {config.cardOrder.map((card) => (
-          <label className="template-field" key={card}>
-            {cardLabels[card]}
-            <textarea
-              aria-label={cardLabels[card]}
-              value={config.cardContent[card] || ""}
-              onChange={(e) =>
-                update("cardContent", {
-                  ...config.cardContent,
-                  [card]: e.target.value,
-                })
-              }
-            />
-          </label>
-        ))}
-        <label className="template-field template-wide">
-          {isArabic ? "ملاحظات التشغيل" : "Operational notes"}
-          <textarea
-            aria-label={isArabic ? "ملاحظات التشغيل" : "Operational notes"}
-            value={config.operationalNotes}
-            onChange={(e) => update("operationalNotes", e.target.value)}
-          />
-        </label>
-      </div>
-    </aside>
-  );
-}
-
 function OperationsPoster({ config, weekday, data, grouped, scheduleColors }) {
+  const slotCount = Math.max(1, Number(config.rotationSlotCount) || 8);
   const style = {
     "--ops-primary": config.primary,
     "--ops-accent": config.accent,
@@ -482,6 +323,7 @@ function OperationsPoster({ config, weekday, data, grouped, scheduleColors }) {
     "--ops-am": config.amColor,
     "--ops-bw": config.bwColor,
     "--ops-pm": config.pmColor,
+    "--ops-female": config.roleColors?.female, "--ops-male": config.roleColors?.male, "--ops-cashier": config.roleColors?.cashier, "--ops-leader": config.roleColors?.leader, "--ops-cashier-leader": config.roleColors?.cashierLeader,
   };
   const columnParts = [
     "36px",
@@ -489,7 +331,7 @@ function OperationsPoster({ config, weekday, data, grouped, scheduleColors }) {
     ...(config.visibleSections.attendance ? ["63px", "63px"] : []),
     ...(config.visibleSections.breaks ? ["63px", "63px"] : []),
     ...(config.visibleSections.rotation
-      ? Array(8).fill(
+      ? Array(slotCount).fill(
           "minmax(21px, 1fr)",
         )
       : []),
@@ -502,11 +344,12 @@ function OperationsPoster({ config, weekday, data, grouped, scheduleColors }) {
     );
   const show = config.visibleSections;
   const assignments = data.rotation?.assignments || [];
+  const topCards = config.cardOrder.filter((card) => card !== "offers" && config.visibleCards[card] && (card !== "trips" || data.trips?.length) && (card !== "birthdays" || data.events?.length));
   const shiftBlock = (shift) => {
     const people = grouped[shift] || [];
     if (!people.length) return null;
     const startHour = Number(data?.shifts?.[shift]?.startTime?.slice(0, 2) || 10);
-    const rotationHours = Array.from({ length: 8 }, (_, index) => String((startHour + index - 1) % 12 + 1));
+    const rotationHours = Array.from({ length: slotCount }, (_, index) => String((startHour + index - 1) % 12 + 1));
     const total = people.length;
     const leadingColumns = 2 + (show.attendance ? 2 : 0) + (show.breaks ? 2 : 0);
     return (
@@ -552,7 +395,7 @@ function OperationsPoster({ config, weekday, data, grouped, scheduleColors }) {
                 </>
               )}
               {show.rotation && role && (
-                <i className={`ops-role-band ops-role-${role.tone}`} style={{ gridColumn: "span 8" }}>{role.label}</i>
+                <i className={`ops-role-band ops-role-${role.tone}`} style={{ gridColumn: `span ${slotCount}` }}>{role.label}</i>
               )}
               {show.rotation && !role &&
                 rotationHours.map((hour, cell) => {
@@ -563,7 +406,7 @@ function OperationsPoster({ config, weekday, data, grouped, scheduleColors }) {
                         item.employeeId === person.employee.id &&
                         Number(item.startTime?.slice(0, 2)) === slotHour,
                     );
-                  const strong = ["DROP", "TOWER", "DATA"].includes(
+                  const strong = (config.rotationHighlightedCodes || ["DROP", "TOWER", "DATA"]).includes(
                     assignment?.position?.code,
                   );
                   return (
@@ -581,9 +424,6 @@ function OperationsPoster({ config, weekday, data, grouped, scheduleColors }) {
       </section>
     );
   };
-  const realNotes = data.notices?.length
-    ? data.notices.flatMap((item) => [item.title, item.details]).filter(Boolean)
-    : ["No operational notices recorded"];
   const sections = {
     roster: (
       <section className="ops-table" key="roster">
@@ -604,7 +444,7 @@ function OperationsPoster({ config, weekday, data, grouped, scheduleColors }) {
             <b
               className="ops-rotation-head"
               style={{
-                gridColumn: "span 8",
+                gridColumn: `span ${slotCount}`,
               }}
             >
               ROTATION (HOURLY)
@@ -615,7 +455,7 @@ function OperationsPoster({ config, weekday, data, grouped, scheduleColors }) {
           <b></b><b></b>
           {show.attendance && <><b>IN</b><b>OUT</b></>}
           {show.breaks && <><b>FROM</b><b>TO</b></>}
-          {show.rotation && Array.from({ length: 8 }, (_, index) => <b key={index}></b>)}
+          {show.rotation && Array.from({ length: slotCount }, (_, index) => <b key={index}></b>)}
         </div>
         {WORKING_SHIFTS.map(shiftBlock)}
       </section>
@@ -637,12 +477,21 @@ function OperationsPoster({ config, weekday, data, grouped, scheduleColors }) {
         )}
       </section>
     ),
+    offers: data.offers?.length ? (
+      <section className="ops-bottom-card ops-offers-section" key="offers">
+        <h3>TODAY'S OFFERS</h3>
+        <OfferCardContent offers={data.offers} />
+      </section>
+    ) : null,
     notes: (
       <section className="ops-bottom-card ops-notes" key="notes">
         <h3>OPERATIONAL NOTES</h3>
-        {realNotes.map((note, index) => (
-          <p key={index}>{note}</p>
-        ))}
+        {data.notices?.length ? data.notices.map((notice) => (
+          <article className={`ops-notice-item priority-${String(notice.priority || "INFO").toLowerCase()}`} key={notice.id}>
+            <b>{notice.title}</b>
+            <span>{notice.message}</span>
+          </article>
+        )) : <p>No operational notices recorded</p>}
       </section>
     ),
     footer: (
@@ -653,6 +502,11 @@ function OperationsPoster({ config, weekday, data, grouped, scheduleColors }) {
       </footer>
     ),
   };
+  const posterSectionOrder = (config.sectionOrder || []).filter((part) => part !== "offers");
+  if (config.visibleCards.offers !== false && data.offers?.length) {
+    const notesIndex = posterSectionOrder.indexOf("notes");
+    posterSectionOrder.splice(notesIndex < 0 ? posterSectionOrder.length : notesIndex, 0, "offers");
+  }
   return (
     <article className="daily-operations-poster" style={style}>
       <header className="ops-brand">
@@ -672,18 +526,17 @@ function OperationsPoster({ config, weekday, data, grouped, scheduleColors }) {
           <small>{weekday}</small>
         </b>
       </header>
-      <section className={`ops-info-cards ops-info-cards-${config.cardOrder.filter((card) => config.visibleCards[card] && (card !== "trips" || data.trips?.length) && (card !== "birthdays" || data.events?.length)).length}`}>
-        {config.cardOrder
-          .filter((card) => config.visibleCards[card] && (card !== "trips" || data.trips?.length) && (card !== "birthdays" || data.events?.length))
+      {topCards.length > 0 && <section className={`ops-info-cards ops-info-cards-${topCards.length}`}>
+        {topCards
           .map((card) => (
-            <article key={card} className={`ops-info-card ${card}`}>
-              <h3>{cardLabels[card]}</h3>
-              {card === "offers" ? <OfferCardContent offers={data.offers} /> : previewCardLines(card, data).map((line, index) => <p key={index}>{line}</p>)}
+            <article key={card} className={`ops-info-card ${card}`} style={{ borderColor: config.cardColors?.[card] }}>
+              <h3 style={{ background: config.cardColors?.[card] }}>{cardLabels[card]}</h3>
+              {card === "bracelets" ? <BraceletCardContent items={data.wristbands || []} /> : previewCardLines(card, data).map((line, index) => <p key={index}>{line}</p>)}
             </article>
           ))}
-      </section>
-      {config.sectionOrder
-        .filter((part) => show[part])
+      </section>}
+      {posterSectionOrder
+        .filter((part) => part === "offers" || show[part])
         .map((part) => sections[part])}
     </article>
   );
@@ -701,7 +554,6 @@ export default function DailyApprovalPreview() {
   const [config, setConfig] = useState(fallback);
   const [phrases, setPhrases] = useState([]);
   const [scheduleColors, setScheduleColors] = useState({});
-  const [showEditor, setShowEditor] = useState(false);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -725,7 +577,7 @@ export default function DailyApprovalPreview() {
         }
         return roster;
       }),
-      fetch("/api/settings?keys=DAILY_OPERATIONS_TEMPLATE_CONFIG,OPS_MOTIVATION_PHRASES,OPS_SCHEDULE_CODE_CONFIG").then(
+      fetch("/api/settings?keys=DAILY_OPERATIONS_TEMPLATE_CONFIG,OPS_MOTIVATION_PHRASES,OPS_SCHEDULE_CODE_CONFIG,OPS_ROTATION_RULES,OPS_BRANCH_CONFIG").then(
         async (response) => {
           const body = await readApiJson(response, "Template settings could not be loaded. Refresh and try again.");
           const row = body.settings?.find(
@@ -735,6 +587,8 @@ export default function DailyApprovalPreview() {
             config: mergeConfig(JSON.parse(row?.value || "{}")),
             phrases: JSON.parse(body.settings?.find((setting) => setting.key === "OPS_MOTIVATION_PHRASES")?.value || "[]"),
             scheduleColors: JSON.parse(body.settings?.find((setting) => setting.key === "OPS_SCHEDULE_CODE_CONFIG")?.value || "{}"),
+            rotationRules: JSON.parse(body.settings?.find((setting) => setting.key === "OPS_ROTATION_RULES")?.value || "{}"),
+            branch: JSON.parse(body.settings?.find((setting) => setting.key === "OPS_BRANCH_CONFIG")?.value || "{}"),
           };
         },
       ),
@@ -742,7 +596,7 @@ export default function DailyApprovalPreview() {
       .then(([roster, template]) => {
         if (active) {
           setData(roster);
-          setConfig(template.config);
+          setConfig({ ...template.config, rotationSlotCount: template.rotationRules?.slotsPerShift || 8, rotationHighlightedCodes: template.rotationRules?.highlightedPositionCodes || ["DROP", "TOWER", "DATA"], branchCode: template.branch?.branchCode || "MOT", branchName: template.branch?.branchName || "MOT Branch" });
           setPhrases(Array.isArray(template.phrases) ? template.phrases : []);
           setScheduleColors(template.scheduleColors || {});
         }
@@ -796,13 +650,20 @@ export default function DailyApprovalPreview() {
     try {
       if (!data?.schedule) throw new Error("Roster preview is not ready");
       const blob = await posterPngBlob({ data, config, weekday, grouped, scheduleColors });
-      const file = new File([blob], `BillyBeez-MOT-roster-${date}.png`, { type: "image/png" });
-      const message = isArabic ? `روستر Billy Beez MOT - ${date}` : `Billy Beez MOT roster - ${date}`;
+      const branchCode = config.branchCode || "MOT";
+      const file = new File([blob], `BillyBeez-${branchCode}-roster-${date}.png`, { type: "image/png" });
+      const message = isArabic ? `روستر Billy Beez ${branchCode} - ${date}` : `Billy Beez ${branchCode} roster - ${date}`;
       if (navigator.share && navigator.canShare?.({ files: [file] })) {
-        if (popup) popup.close();
-        await navigator.share({ files: [file], title: message, text: message });
-        setActionMessage(isArabic ? "تم فتح المشاركة بصورة الروستر؛ اختر واتساب" : "The roster image is ready to share; choose WhatsApp");
-        return;
+        try {
+          await navigator.share({ files: [file], title: message, text: message });
+          if (popup) popup.close();
+          setActionMessage(isArabic ? "تم فتح المشاركة بصورة الروستر؛ اختر واتساب" : "The roster image is ready to share; choose WhatsApp");
+          return;
+        } catch (nativeShareError) {
+          if (nativeShareError?.name === "AbortError") { if (popup) popup.close(); return; }
+          // Desktop browsers can expose navigator.share while rejecting it after
+          // asynchronous image generation. Continue to clipboard/download fallback.
+        }
       }
       if (!navigator.clipboard?.write || typeof ClipboardItem === "undefined") throw new Error("Image clipboard is not supported in this browser");
       let copied = true;
@@ -814,7 +675,7 @@ export default function DailyApprovalPreview() {
         const downloadUrl = URL.createObjectURL(blob);
         const download = document.createElement("a");
         download.href = downloadUrl;
-        download.download = `BillyBeez-MOT-roster-${date}.png`;
+        download.download = `BillyBeez-${branchCode}-roster-${date}.png`;
         download.click();
         window.setTimeout(() => URL.revokeObjectURL(downloadUrl), 1500);
       }
@@ -825,33 +686,11 @@ export default function DailyApprovalPreview() {
         : (isArabic ? "المتصفح منع النسخ التلقائي؛ تم تنزيل صورة الروستر وفتح واتساب" : "Clipboard access was blocked; the roster image was downloaded and WhatsApp opened"));
     } catch (shareError) { if (popup) popup.close(); setError(shareError.message); }
   };
-  const save = async () => {
-    setSaving(true);
-    setError("");
-    try {
-      const response = await fetch("/api/settings", {
-        method: "PATCH",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          key: "DAILY_OPERATIONS_TEMPLATE_CONFIG",
-          value: JSON.stringify(config),
-        }),
-      });
-      const body = await response.json();
-      if (!response.ok) throw new Error(body.error || "Save failed");
-      const phraseResponse = await fetch("/api/settings", { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ key: "OPS_MOTIVATION_PHRASES", value: JSON.stringify(phrases) }) });
-      const phraseBody = await phraseResponse.json(); if (!phraseResponse.ok) throw new Error(phraseBody.error || "Phrase save failed");
-    } catch (requestError) {
-      setError(requestError.message);
-    } finally {
-      setSaving(false);
-    }
-  };
   return (
     <section className="daily-approval-preview">
       <header className="panel daily-preview-header">
         <div>
-          <span className="daily-preview-eyebrow">BILLY BEEZ · MOT</span>
+          <span className="daily-preview-eyebrow">BILLY BEEZ · {config.branchCode || "MOT"}</span>
           <h1>
             {isArabic ? "تيمبلت العمليات اليومية" : "Daily Operations Template"}
           </h1>

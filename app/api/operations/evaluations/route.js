@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { authorizeApi } from "@/lib/api-auth";
 import { writeAudit } from "@/lib/audit";
+import { getSetting } from "@/lib/settings";
 
 function validDate(value) { return /^\d{4}-\d{2}-\d{2}$/.test(String(value || "")); }
 
@@ -16,7 +17,7 @@ export async function GET(request) {
   if (error) return error;
   const date = String(new URL(request.url).searchParams.get("date") || "");
   if (!validDate(date)) return NextResponse.json({ success: false, error: "Invalid date" }, { status: 400 });
-  const [team, day, activeVersion] = await Promise.all([
+  const [team, day, activeVersion, rulesRaw] = await Promise.all([
     expectedTeam(date),
     prisma.opsDailyEvaluationDay.findFirst({
       where: { evaluationDate: date },
@@ -35,8 +36,10 @@ export async function GET(request) {
       orderBy: { version: "desc" },
     }),
     prisma.opsEvaluationCriteriaVersion.findFirst({ where: { active: true }, include: { criteria: { where: { active: true }, include: { reasons: { where: { active: true } } }, orderBy: { sortOrder: "asc" } } }, orderBy: { createdAt: "desc" } }),
+    getSetting("OPS_EVALUATION_RULES", "{}"),
   ]);
-  return NextResponse.json({ success: true, date, team, day, criteriaVersion: day?.criteriaVersion || activeVersion });
+  let rules = {}; try { rules = JSON.parse(rulesRaw); } catch {}
+  return NextResponse.json({ success: true, date, team, day, criteriaVersion: day?.criteriaVersion || activeVersion, rules });
 }
 
 export async function POST(request) {
@@ -47,6 +50,7 @@ export async function POST(request) {
   const date = String(body.date || "");
   if (!validDate(date)) return NextResponse.json({ success: false, error: "Invalid date" }, { status: 400 });
   try {
+    let rules = {}; try { rules = JSON.parse(await getSetting("OPS_EVALUATION_RULES", "{}")); } catch {}
     if (body.action === "open") {
       const existing = await prisma.opsDailyEvaluationDay.findFirst({ where: { evaluationDate: date }, orderBy: { version: "desc" } });
       if (existing) return NextResponse.json({ success: true, day: existing, existing: true });
@@ -56,7 +60,8 @@ export async function POST(request) {
       const maxScore = criteriaVersion.criteria.reduce((sum, item) => sum + item.maxScore, 0);
       const day = await prisma.$transaction(async (tx) => {
         const created = await tx.opsDailyEvaluationDay.create({ data: { evaluationDate: date, criteriaVersionId: criteriaVersion.id } });
-        await tx.opsEmployeeDailyEvaluation.createMany({ data: team.map((item) => ({ dailyEvaluationDayId: created.id, employeeId: item.employeeId, maxScore, finalScore: maxScore, status: "DEFAULT_FULL" })) });
+        const fullDefault = rules.defaultScoreMode !== "ZERO_UNREVIEWED";
+        await tx.opsEmployeeDailyEvaluation.createMany({ data: team.map((item) => ({ dailyEvaluationDayId: created.id, employeeId: item.employeeId, maxScore, finalScore: fullDefault ? maxScore : 0, status: fullDefault ? "DEFAULT_FULL" : "DEFAULT_ZERO" })) });
         return created;
       });
       await writeAudit({ action: "OPS_EVALUATION_DAY_OPENED", user, summary: `Opened daily evaluation ${date}`, metadata: { dayId: day.id, teamSize: team.length } });
@@ -70,7 +75,8 @@ export async function POST(request) {
       const existingIds = new Set(day.evaluations.map((item) => item.employeeId));
       const missing = team.filter((item) => !existingIds.has(item.employeeId));
       const maxScore = day.criteriaVersion.criteria.reduce((sum, item) => sum + Number(item.maxScore), 0);
-      if (missing.length) await prisma.opsEmployeeDailyEvaluation.createMany({ data: missing.map((item) => ({ dailyEvaluationDayId: day.id, employeeId: item.employeeId, maxScore, finalScore: maxScore, status: "DEFAULT_FULL" })) });
+      const fullDefault = rules.defaultScoreMode !== "ZERO_UNREVIEWED";
+      if (missing.length) await prisma.opsEmployeeDailyEvaluation.createMany({ data: missing.map((item) => ({ dailyEvaluationDayId: day.id, employeeId: item.employeeId, maxScore, finalScore: fullDefault ? maxScore : 0, status: fullDefault ? "DEFAULT_FULL" : "DEFAULT_ZERO" })) });
       if (missing.length) await writeAudit({ action: "OPS_EVALUATION_TEAM_SYNCED", user, summary: `Added ${missing.length} scheduled employees to daily evaluation ${date}`, metadata: { dayId: day.id, employeeIds: missing.map((item) => item.employeeId) } });
       return NextResponse.json({ success: true, added: missing.length });
     }
@@ -99,6 +105,7 @@ export async function POST(request) {
             const criterion = criteriaById.get(String(exception.criterionId));
             const deduction = Number(exception.deduction);
             if (!criterion || seen.has(criterion.id) || !Number.isFinite(deduction) || deduction <= 0 || deduction > criterion.maxScore) throw new Error("Invalid or duplicate evaluation deduction");
+            if (rules.requireReasonForDeduction !== false && !exception.reasonId && !String(exception.note || "").trim()) throw new Error("A reason or note is required for every deduction");
             seen.add(criterion.id); totalDeduction += deduction;
           }
           const finalScore = Math.max(0, evaluation.maxScore - totalDeduction);

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
 import { prisma } from "@/lib/db";
 import { authorizeApi } from "@/lib/api-auth";
+import { getSetting } from "@/lib/settings";
 
 const encoder = new TextEncoder();
 const crc32 = (bytes) => { let crc = -1; for (const byte of bytes) { crc ^= byte; for (let bit = 0; bit < 8; bit += 1) crc = (crc >>> 1) ^ (0xedb88320 & -(crc & 1)); } return (crc ^ -1) >>> 0; };
@@ -24,12 +25,12 @@ function pdfColor(hex, fallback = "#ffffff") {
   const value = /^#[0-9a-f]{6}$/i.test(String(hex || "")) ? String(hex) : fallback;
   return rgb(parseInt(value.slice(1, 3), 16) / 255, parseInt(value.slice(3, 5), 16) / 255, parseInt(value.slice(5, 7), 16) / 255);
 }
-function codeColor(value) {
+function codeColor(value, colors = CODE_COLORS) {
   const code = String(value || "").trim().toUpperCase();
-  if (code.startsWith("AM")) return CODE_COLORS.AM;
-  if (code.startsWith("BW")) return CODE_COLORS.BW;
-  if (code.startsWith("PM")) return CODE_COLORS.PM;
-  return CODE_COLORS[code] || "#f7f4ef";
+  if (code.startsWith("AM")) return colors.AM;
+  if (code.startsWith("BW")) return colors.BW;
+  if (code.startsWith("PM")) return colors.PM;
+  return colors[code] || "#f7f4ef";
 }
 function fitText(font, value, maxWidth, size) {
   const text = safeText(value) || "-";
@@ -38,7 +39,8 @@ function fitText(font, value, maxWidth, size) {
   while (output.length > 1 && font.widthOfTextAtSize(`${output}...`, size) > maxWidth) output = output.slice(0, -1);
   return `${output}...`;
 }
-async function schedulePdf(schedule) {
+async function schedulePdf(schedule, options = {}) {
+  const branchCode = options.branchCode || "MOT"; const branchName = options.branchName || `${branchCode} Branch`; const colors = options.colors || CODE_COLORS; const brand = options.brand || {};
   const pdf = await PDFDocument.create();
   const regular = await pdf.embedFont(StandardFonts.Helvetica);
   const bold = await pdf.embedFont(StandardFonts.HelveticaBold);
@@ -59,9 +61,9 @@ async function schedulePdf(schedule) {
   let page; let y;
   const newPage = () => {
     page = pdf.addPage([pageWidth, pageHeight]);
-    page.drawRectangle({ x: 0, y: pageHeight - 8, width: pageWidth, height: 8, color: pdfColor("#31164b") });
-    page.drawText("BILLY BEEZ - MOT", { x: margin, y: pageHeight - 44, size: 12, font: bold, color: pdfColor("#e3173e") });
-    page.drawText(`MONTHLY ROSTER  ${schedule.operationalYear}/${String(schedule.operationalMonth).padStart(2, "0")}  V${schedule.version}  ${schedule.status}`, { x: margin, y: pageHeight - 70, size: 22, font: bold, color: pdfColor("#25113e") });
+    page.drawRectangle({ x: 0, y: pageHeight - 8, width: pageWidth, height: 8, color: pdfColor(brand.primary || "#31164b") });
+    page.drawText(`BILLY BEEZ - ${safeText(branchCode)}`, { x: margin, y: pageHeight - 44, size: 12, font: bold, color: pdfColor(brand.accent || "#e3173e") });
+    page.drawText(`MONTHLY ROSTER  ${schedule.operationalYear}/${String(schedule.operationalMonth).padStart(2, "0")}  V${schedule.version}  ${schedule.status}`, { x: margin, y: pageHeight - 70, size: 22, font: bold, color: pdfColor(brand.text || "#25113e") });
     page.drawText(`${schedule.periodStart} - ${schedule.periodEnd}`, { x: margin, y: pageHeight - 91, size: 10, font: regular, color: pdfColor("#6f6078") });
     y = pageHeight - 125;
   };
@@ -91,21 +93,21 @@ async function schedulePdf(schedule) {
       page.drawText(fitText(regular, row.employee.hrisNumber || row.employee.localEmployeeCode || "", nameWidth - 18, 6), { x: margin + 8, y: y - 24, size: 6, font: regular, color: pdfColor("#74617c") });
       dates.forEach((date, index) => {
         const x = margin + nameWidth + index * dateWidth; const value = row.values.get(date) || "";
-        page.drawRectangle({ x, y: y - rowHeight, width: dateWidth, height: rowHeight, color: pdfColor(codeColor(value)), borderColor: pdfColor("#ffffff"), borderWidth: 0.5 });
+        page.drawRectangle({ x, y: y - rowHeight, width: dateWidth, height: rowHeight, color: pdfColor(codeColor(value, colors)), borderColor: pdfColor("#ffffff"), borderWidth: 0.5 });
         if (value) { const shown = fitText(bold, value, dateWidth - 3, 6.5); const width = bold.widthOfTextAtSize(shown, 6.5); page.drawText(shown, { x: x + Math.max(1.5, (dateWidth - width) / 2), y: y - 19, size: 6.5, font: bold, color: pdfColor("#1f3157") }); }
       });
       y -= rowHeight;
     }
     y -= 16;
   }
-  for (const [index, currentPage] of pdf.getPages().entries()) currentPage.drawText(`Billy Beez MOT  |  Page ${index + 1} of ${pdf.getPageCount()}`, { x: margin, y: 17, size: 7, font: regular, color: pdfColor("#74617c") });
+  for (const [index, currentPage] of pdf.getPages().entries()) currentPage.drawText(`${safeText(branchName)}  |  Page ${index + 1} of ${pdf.getPageCount()}`, { x: margin, y: 17, size: 7, font: regular, color: pdfColor("#74617c") });
   return pdf.save();
 }
 
 export async function GET(request) {
   const { error } = await authorizeApi("OPS_SCHEDULE_READ"); if (error) return error;
   const url = new URL(request.url); const id = String(url.searchParams.get("scheduleId") || ""); const format = String(url.searchParams.get("format") || "xlsx").toLowerCase();
-  const schedule = await prisma.opsSchedule.findUnique({
+  const [schedule, branchRaw, colorsRaw, templateRaw] = await Promise.all([prisma.opsSchedule.findUnique({
     where: { id },
     include: {
       assignments: {
@@ -114,11 +116,14 @@ export async function GET(request) {
         orderBy: [{ employee: { name: "asc" } }, { workDate: "asc" }],
       },
     },
-  });
+  }), getSetting("OPS_BRANCH_CONFIG", "{}"), getSetting("OPS_SCHEDULE_CODE_CONFIG", "{}"), getSetting("DAILY_OPERATIONS_TEMPLATE_CONFIG", "{}")]);
   if (!schedule) return NextResponse.json({ success: false, error: "Schedule not found" }, { status: 404 });
+  const parse = (value) => { try { return JSON.parse(value); } catch { return {}; } }; const branch = parse(branchRaw); const configuredColors = parse(colorsRaw); const template = parse(templateRaw);
+  const colors = { ...CODE_COLORS, ...Object.fromEntries(Object.entries(configuredColors).map(([key, meta]) => [key.toUpperCase(), meta?.color]).filter(([, color]) => color)) }; colors.H = colors.HOLIDAY || colors.H;
+  const branchCode = branch.branchCode || "MOT";
   if (format === "pdf") {
-    const output = await schedulePdf(schedule);
-    return new NextResponse(output, { headers: { "content-type": "application/pdf", "content-disposition": `attachment; filename="MOT-roster-${schedule.operationalYear}-${String(schedule.operationalMonth).padStart(2, "0")}-v${schedule.version}.pdf"`, "cache-control": "no-store" } });
+    const output = await schedulePdf(schedule, { branchCode, branchName: branch.branchName, colors, brand: template });
+    return new NextResponse(output, { headers: { "content-type": "application/pdf", "content-disposition": `attachment; filename="${branchCode}-roster-${schedule.operationalYear}-${String(schedule.operationalMonth).padStart(2, "0")}-v${schedule.version}.pdf"`, "cache-control": "no-store" } });
   }
   const dates = [...new Set(schedule.assignments.map((item) => item.workDate))].sort(); const rows = new Map();
   for (const assignment of schedule.assignments) { const row = rows.get(assignment.employeeId) || { employee: assignment.employee, values: new Map() }; row.values.set(assignment.workDate, assignment.importRawValue || assignment.code); rows.set(assignment.employeeId, row); }
@@ -129,5 +134,5 @@ export async function GET(request) {
   const rootRels = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>`;
   const workbookRels = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/></Relationships>`;
   const output = zip([["[Content_Types].xml", contentTypes], ["_rels/.rels", rootRels], ["xl/workbook.xml", workbook], ["xl/_rels/workbook.xml.rels", workbookRels], ["xl/worksheets/sheet1.xml", sheet]]);
-  return new NextResponse(output, { headers: { "content-type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "content-disposition": `attachment; filename="MOT-roster-${schedule.operationalYear}-${String(schedule.operationalMonth).padStart(2, "0")}-v${schedule.version}.xlsx`, "cache-control": "no-store" } });
+  return new NextResponse(output, { headers: { "content-type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "content-disposition": `attachment; filename="${branchCode}-roster-${schedule.operationalYear}-${String(schedule.operationalMonth).padStart(2, "0")}-v${schedule.version}.xlsx`, "cache-control": "no-store" } });
 }

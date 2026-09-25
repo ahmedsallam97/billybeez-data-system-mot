@@ -237,43 +237,43 @@ model User {
 }
 
 model Employee {
-  id                String           @id @default(cuid())
-  name              String           @unique
-  nameAr            String?
-  nameEn            String?
-  operationalName   String?
-  gender            String?
+  id                   String           @id @default(cuid())
+  name                 String           @unique
+  nameAr               String?
+  nameEn               String?
+  operationalName      String?
+  gender               String?
   operationsTeamLeader Boolean          @default(false)
-  sourceEmployeeId  String?          @unique
-  hrisNumber        String?          @unique
-  localEmployeeCode String?          @unique
-  nationalId        String?          @unique
-  jobTitle          String?
-  employmentType    EmploymentType   @default(OTHER)
-  employmentStatus  EmploymentStatus @default(ACTIVE)
-  hireDate          DateTime?
-  joinDate          DateTime?
-  department        Department       @default(OPERATION)
-  branch            String?
-  dateOfBirth       DateTime?
-  phone             String?
-  address           String?
-  emergencyName     String?
-  emergencyPhone    String?
-  emergencyRelation String?
-  personalNotes     String?
-  supervisorId      String?
-  photoDocumentId   String?
-  active            Boolean          @default(true)
-  createdAt         DateTime         @default(now())
-  updatedAt         DateTime         @updatedAt
+  sourceEmployeeId     String?          @unique
+  hrisNumber           String?          @unique
+  localEmployeeCode    String?          @unique
+  nationalId           String?          @unique
+  jobTitle             String?
+  employmentType       EmploymentType   @default(OTHER)
+  employmentStatus     EmploymentStatus @default(ACTIVE)
+  hireDate             DateTime?
+  joinDate             DateTime?
+  department           Department       @default(OPERATION)
+  branch               String?
+  dateOfBirth          DateTime?
+  phone                String?
+  address              String?
+  emergencyName        String?
+  emergencyPhone       String?
+  emergencyRelation    String?
+  personalNotes        String?
+  supervisorId         String?
+  photoDocumentId      String?
+  active               Boolean          @default(true)
+  createdAt            DateTime         @default(now())
+  updatedAt            DateTime         @updatedAt
 
-  dataOrders           Order[]                    @relation("OrderDataEmployee")
-  deliveryOrders       Order[]                    @relation("OrderDeliveryEmployee")
-  geideaOrders         Order[]                    @relation("OrderGeideaEmployee")
-  paymentOrders        Order[]                    @relation("OrderPaymentEmployee")
-  exitOrders           Order[]                    @relation("OrderExitEmployee")
-  loginUsers           User[]                     @relation("EmployeeLoginUsers")
+  dataOrders           Order[]                      @relation("OrderDataEmployee")
+  deliveryOrders       Order[]                      @relation("OrderDeliveryEmployee")
+  geideaOrders         Order[]                      @relation("OrderGeideaEmployee")
+  paymentOrders        Order[]                      @relation("OrderPaymentEmployee")
+  exitOrders           Order[]                      @relation("OrderExitEmployee")
+  loginUsers           User[]                       @relation("EmployeeLoginUsers")
   employmentPeriods    EmploymentPeriod[]
   assignments          EmploymentAssignment[]
   weeklyOffPatterns    WeeklyOffPattern[]
@@ -288,7 +288,7 @@ model Employee {
   dailyEvaluations     OpsEmployeeDailyEvaluation[]
   monthlyAppraisals    OpsMonthlyAppraisal[]
   competitionEntries   OpsEotmCandidate[]
-  eotmWins             OpsEotmCompetition[]       @relation("OpsEotmWinner")
+  eotmWins             OpsEotmCompetition[]         @relation("OpsEotmWinner")
   successionCandidates OpsSuccessionCandidate[]
   documents            EmployeeDocument[]
   employmentEvents     EmployeeEmploymentEvent[]
@@ -300,72 +300,76 @@ model Employee {
 }
 
 model EmployeeDocument {
-  id String @id @default(cuid())
-  employeeId String
-  documentType String
-  displayName String
-  storageKey String @unique
-  mimeType String
-  sizeBytes Int
-  issueDate DateTime?
-  expiryDate DateTime?
-  status String @default("ACTIVE")
-  classification String @default("INTERNAL")
-  notes String?
-  uploadedBy String?
-  uploadedAt DateTime @default(now())
-  replacedById String?
-  employee Employee @relation(fields: [employeeId], references: [id], onDelete: Restrict)
+  id             String    @id @default(cuid())
+  employeeId     String
+  documentType   String
+  displayName    String
+  storageKey     String    @unique
+  mimeType       String
+  sizeBytes      Int
+  issueDate      DateTime?
+  expiryDate     DateTime?
+  status         String    @default("ACTIVE")
+  classification String    @default("INTERNAL")
+  notes          String?
+  uploadedBy     String?
+  uploadedAt     DateTime  @default(now())
+  replacedById   String?
+  employee       Employee  @relation(fields: [employeeId], references: [id], onDelete: Restrict)
+
   @@index([employeeId, documentType])
   @@index([expiryDate])
 }
 
 model EmployeeEmploymentEvent {
-  id String @id @default(cuid())
-  employeeId String
-  eventType String
+  id            String   @id @default(cuid())
+  employeeId    String
+  eventType     String
   effectiveDate DateTime
   previousValue String?
-  newValue String?
-  reason String?
-  createdBy String?
-  createdAt DateTime @default(now())
-  employee Employee @relation(fields: [employeeId], references: [id], onDelete: Restrict)
+  newValue      String?
+  reason        String?
+  createdBy     String?
+  createdAt     DateTime @default(now())
+  employee      Employee @relation(fields: [employeeId], references: [id], onDelete: Restrict)
+
   @@index([employeeId, effectiveDate])
 }
 
 model EmployeeTrainingRecord {
-  id String @id @default(cuid())
-  employeeId String
-  name String
-  category String?
+  id            String    @id @default(cuid())
+  employeeId    String
+  name          String
+  category      String?
   completedDate DateTime?
-  expiryDate DateTime?
-  status String @default("COMPLETED")
-  provider String?
+  expiryDate    DateTime?
+  status        String    @default("COMPLETED")
+  provider      String?
   certificateId String?
-  notes String?
-  createdBy String?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-  employee Employee @relation(fields: [employeeId], references: [id], onDelete: Restrict)
+  notes         String?
+  createdBy     String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  employee      Employee  @relation(fields: [employeeId], references: [id], onDelete: Restrict)
+
   @@index([employeeId, completedDate])
   @@index([expiryDate])
 }
 
 model EmployeeQualification {
-  id String @id @default(cuid())
-  employeeId String
+  id                    String                 @id @default(cuid())
+  employeeId            String
   operationalPositionId String
-  status String @default("NOT_QUALIFIED")
-  effectiveDate DateTime?
-  expiryDate DateTime?
-  notes String?
-  createdBy String?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-  employee Employee @relation(fields: [employeeId], references: [id], onDelete: Restrict)
-  position OpsOperationalPosition @relation(fields: [operationalPositionId], references: [id], onDelete: Restrict)
+  status                String                 @default("NOT_QUALIFIED")
+  effectiveDate         DateTime?
+  expiryDate            DateTime?
+  notes                 String?
+  createdBy             String?
+  createdAt             DateTime               @default(now())
+  updatedAt             DateTime               @updatedAt
+  employee              Employee               @relation(fields: [employeeId], references: [id], onDelete: Restrict)
+  position              OpsOperationalPosition @relation(fields: [operationalPositionId], references: [id], onDelete: Restrict)
+
   @@unique([employeeId, operationalPositionId])
   @@index([operationalPositionId, status])
 }
@@ -864,16 +868,16 @@ model OrderHistory {
 }
 
 model EmploymentPeriod {
-  id               String                 @id @default(cuid())
-  sourceId         String?                @unique
-  employeeId       String
-  startDate        DateTime
-  endDate          DateTime?
-  exitReason       String?
-  createdAt        DateTime               @default(now())
-  updatedAt        DateTime               @updatedAt
-  employee         Employee               @relation(fields: [employeeId], references: [id], onDelete: Restrict)
-  assignments      EmploymentAssignment[]
+  id          String                 @id @default(cuid())
+  sourceId    String?                @unique
+  employeeId  String
+  startDate   DateTime
+  endDate     DateTime?
+  exitReason  String?
+  createdAt   DateTime               @default(now())
+  updatedAt   DateTime               @updatedAt
+  employee    Employee               @relation(fields: [employeeId], references: [id], onDelete: Restrict)
+  assignments EmploymentAssignment[]
 
   @@index([employeeId, startDate])
 }
@@ -912,22 +916,22 @@ model WeeklyOffPattern {
 }
 
 model OpsSchedule {
-  id               String                     @id @default(cuid())
-  sourceId         String?                    @unique
-  year             Int
-  month            Int
-  operationalYear  Int
-  operationalMonth Int
-  periodStart      String
-  periodEnd        String
-  version          Int
-  status           OpsScheduleStatus          @default(DRAFT)
+  id                String                     @id @default(cuid())
+  sourceId          String?                    @unique
+  year              Int
+  month             Int
+  operationalYear   Int
+  operationalMonth  Int
+  periodStart       String
+  periodEnd         String
+  version           Int
+  status            OpsScheduleStatus          @default(DRAFT)
   basedOnScheduleId String?
-  publishedAt      DateTime?
-  createdAt        DateTime                   @default(now())
-  updatedAt        DateTime                   @updatedAt
-  assignments      OpsScheduleAssignment[]
-  validationRuns   OpsScheduleValidationRun[]
+  publishedAt       DateTime?
+  createdAt         DateTime                   @default(now())
+  updatedAt         DateTime                   @updatedAt
+  assignments       OpsScheduleAssignment[]
+  validationRuns    OpsScheduleValidationRun[]
 
   @@unique([operationalYear, operationalMonth, version])
   @@index([operationalYear, operationalMonth, status])
@@ -959,21 +963,21 @@ model OpsShiftDefinition {
 }
 
 model OpsScheduleAssignment {
-  id             String      @id @default(cuid())
-  sourceId       String?     @unique
-  scheduleId     String
-  employeeId     String
-  workDate       String
-  code           String
-  shiftCode      String?
-  source         String
-  importRawValue String?
-  importMetadata String?
-  manualLock     Boolean     @default(false)
-  createdAt      DateTime    @default(now())
-  updatedAt      DateTime    @updatedAt
-  schedule       OpsSchedule @relation(fields: [scheduleId], references: [id], onDelete: Cascade)
-  employee       Employee    @relation(fields: [employeeId], references: [id], onDelete: Restrict)
+  id                String                @id @default(cuid())
+  sourceId          String?               @unique
+  scheduleId        String
+  employeeId        String
+  workDate          String
+  code              String
+  shiftCode         String?
+  source            String
+  importRawValue    String?
+  importMetadata    String?
+  manualLock        Boolean               @default(false)
+  createdAt         DateTime              @default(now())
+  updatedAt         DateTime              @updatedAt
+  schedule          OpsSchedule           @relation(fields: [scheduleId], references: [id], onDelete: Cascade)
+  employee          Employee              @relation(fields: [employeeId], references: [id], onDelete: Restrict)
   attendanceRecords OpsAttendanceRecord[]
 
   @@unique([scheduleId, employeeId, workDate])
@@ -1012,8 +1016,8 @@ model OpsAttendanceDay {
 }
 
 model OpsAttendanceRecord {
-  id                   String               @id @default(cuid())
-  sourceId             String?              @unique
+  id                   String                    @id @default(cuid())
+  sourceId             String?                   @unique
   attendanceDayId      String
   employeeId           String
   scheduleAssignmentId String?
@@ -1022,17 +1026,17 @@ model OpsAttendanceRecord {
   expectedEnd          String?
   actualIn             String?
   actualOut            String?
-  status               OpsAttendanceStatus  @default(MISSING)
-  lateMinutes          Int                  @default(0)
-  earlyLeaveMinutes    Int                  @default(0)
-  source               OpsAttendanceSource  @default(SYSTEM)
+  status               OpsAttendanceStatus       @default(MISSING)
+  lateMinutes          Int                       @default(0)
+  earlyLeaveMinutes    Int                       @default(0)
+  source               OpsAttendanceSource       @default(SYSTEM)
   note                 String?
-  version              Int                  @default(1)
-  createdAt            DateTime             @default(now())
-  updatedAt            DateTime             @updatedAt
-  attendanceDay        OpsAttendanceDay     @relation(fields: [attendanceDayId], references: [id], onDelete: Cascade)
-  employee             Employee             @relation(fields: [employeeId], references: [id], onDelete: Restrict)
-  scheduleAssignment   OpsScheduleAssignment? @relation(fields: [scheduleAssignmentId], references: [id], onDelete: SetNull)
+  version              Int                       @default(1)
+  createdAt            DateTime                  @default(now())
+  updatedAt            DateTime                  @updatedAt
+  attendanceDay        OpsAttendanceDay          @relation(fields: [attendanceDayId], references: [id], onDelete: Cascade)
+  employee             Employee                  @relation(fields: [employeeId], references: [id], onDelete: Restrict)
+  scheduleAssignment   OpsScheduleAssignment?    @relation(fields: [scheduleAssignmentId], references: [id], onDelete: SetNull)
   corrections          OpsAttendanceCorrection[]
 
   @@unique([attendanceDayId, employeeId])
@@ -1092,20 +1096,20 @@ model OpsLeaveTransaction {
 }
 
 model OpsLeaveBooking {
-  id            String                @id @default(cuid())
-  sourceId      String?               @unique
+  id            String                      @id @default(cuid())
+  sourceId      String?                     @unique
   employeeId    String
   startDate     String
   endDate       String
-  status        OpsLeaveBookingStatus @default(DRAFT)
+  status        OpsLeaveBookingStatus       @default(DRAFT)
   requestedDays Int
   approvedAt    DateTime?
   approvedBy    String?
   note          String?
   createdBy     String?
-  createdAt     DateTime              @default(now())
-  updatedAt     DateTime              @updatedAt
-  employee      Employee              @relation(fields: [employeeId], references: [id], onDelete: Restrict)
+  createdAt     DateTime                    @default(now())
+  updatedAt     DateTime                    @updatedAt
+  employee      Employee                    @relation(fields: [employeeId], references: [id], onDelete: Restrict)
   allocations   OpsLeaveBookingAllocation[]
 
   @@index([employeeId, startDate, endDate])
@@ -1199,15 +1203,15 @@ model OpsOperationsDay {
 }
 
 model OpsOperationalPosition {
-  id                    String                     @id @default(cuid())
-  sourceId              String?                    @unique
-  code                  String                     @unique
+  id                    String                           @id @default(cuid())
+  sourceId              String?                          @unique
+  code                  String                           @unique
   label                 String
   labelAr               String?
-  critical              Boolean                    @default(false)
-  requiresQualification Boolean                    @default(true)
-  active                Boolean                    @default(true)
-  sortOrder             Int                        @default(0)
+  critical              Boolean                          @default(false)
+  requiresQualification Boolean                          @default(true)
+  active                Boolean                          @default(true)
+  sortOrder             Int                              @default(0)
   staffingRequirements  OpsPositionStaffingRequirement[]
   assignments           OpsRotationAssignment[]
   qualifications        EmployeeQualification[]
@@ -1229,20 +1233,20 @@ model OpsPositionStaffingRequirement {
 }
 
 model OpsRotationPlan {
-  id              String                  @id @default(cuid())
-  sourceId        String?                 @unique
-  operationsDayId String
-  version         Int                     @default(1)
-  status          OpsRotationStatus       @default(DRAFT)
-  generatedBy     String?
-  generatedAt     DateTime?
-  createdAt       DateTime                @default(now())
-  updatedAt       DateTime                @updatedAt
-  branch          String                  @default("MOT")
+  id                     String                  @id @default(cuid())
+  sourceId               String?                 @unique
+  operationsDayId        String
+  version                Int                     @default(1)
+  status                 OpsRotationStatus       @default(DRAFT)
+  generatedBy            String?
+  generatedAt            DateTime?
+  createdAt              DateTime                @default(now())
+  updatedAt              DateTime                @updatedAt
+  branch                 String                  @default("MOT")
   generationSnapshotJson String?
-  operationsDay   OpsOperationsDay        @relation(fields: [operationsDayId], references: [id], onDelete: Cascade)
-  assignments     OpsRotationAssignment[]
-  breaks          OpsBreakAssignment[]
+  operationsDay          OpsOperationsDay        @relation(fields: [operationsDayId], references: [id], onDelete: Cascade)
+  assignments            OpsRotationAssignment[]
+  breaks                 OpsBreakAssignment[]
 
   @@unique([operationsDayId, version])
 }
@@ -1289,123 +1293,125 @@ model OpsBreakAssignment {
 }
 
 model OpsDailyTrip {
-  id                String   @id @default(cuid())
-  branch            String   @default("MOT")
-  workDate          String
-  tripPartnerId     String?
-  name              String
-  startTime         String?
-  endTime           String?
-  expectedChildren  Int?
-  supervisors       String?
-  supervisorName    String?
-  supervisorPhone   String?
-  mealType          String?
-  mealIncluded      Boolean?
-  chickenNuggets    Int      @default(0)
-  beefBurgers       Int      @default(0)
-  chickenBurgers    Int      @default(0)
-  braceletType      String?
-  braceletColor     String?
-  braceletMaterial  String?
-  staffingRequired  Int?
-  status            String   @default("PLANNED")
-  notes             String?
-  createdBy         String?
-  updatedBy         String?
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
-  tripPartner       OpsTripPartner? @relation(fields: [tripPartnerId], references: [id], onDelete: SetNull)
+  id               String          @id @default(cuid())
+  branch           String          @default("MOT")
+  workDate         String
+  tripPartnerId    String?
+  name             String
+  startTime        String?
+  endTime          String?
+  expectedChildren Int?
+  supervisors      String?
+  supervisorName   String?
+  supervisorPhone  String?
+  mealType         String?
+  mealIncluded     Boolean?
+  chickenNuggets   Int             @default(0)
+  beefBurgers      Int             @default(0)
+  chickenBurgers   Int             @default(0)
+  braceletType     String?
+  braceletColor    String?
+  braceletMaterial String?
+  staffingRequired Int?
+  status           String          @default("PLANNED")
+  notes            String?
+  createdBy        String?
+  updatedBy        String?
+  createdAt        DateTime        @default(now())
+  updatedAt        DateTime        @updatedAt
+  tripPartner      OpsTripPartner? @relation(fields: [tripPartnerId], references: [id], onDelete: SetNull)
 
   @@index([branch, workDate, status])
   @@index([tripPartnerId])
 }
 
 model OpsDailyEvent {
-  id               String   @id @default(cuid())
-  branch           String   @default("MOT")
-  workDate         String
+  id                 String               @id @default(cuid())
+  branch             String               @default("MOT")
+  workDate           String
   birthdayCustomerId String?
-  name             String
-  startTime        String?
-  endTime          String?
-  eventType        String?
-  customerName     String?
-  customerPhone    String?
-  childName        String?
-  mealType         String?
-  chickenNuggets   Int      @default(0)
-  beefBurgers      Int      @default(0)
-  chickenBurgers   Int      @default(0)
-  partyRoomHours   Float?
-  expectedGuests   Int?
-  braceletType     String?
-  braceletColor    String?
-  braceletMaterial String?
-  location         String?
-  staffingRequired Int?
-  notes            String?
-  status           String   @default("PLANNED")
-  createdBy        String?
-  updatedBy        String?
-  createdAt        DateTime @default(now())
-  updatedAt        DateTime @updatedAt
-  birthdayCustomer OpsBirthdayCustomer? @relation(fields: [birthdayCustomerId], references: [id], onDelete: SetNull)
+  name               String
+  startTime          String?
+  endTime            String?
+  eventType          String?
+  customerName       String?
+  customerPhone      String?
+  childName          String?
+  mealType           String?
+  chickenNuggets     Int                  @default(0)
+  beefBurgers        Int                  @default(0)
+  chickenBurgers     Int                  @default(0)
+  partyRoomHours     Float?
+  expectedGuests     Int?
+  braceletType       String?
+  braceletColor      String?
+  braceletMaterial   String?
+  location           String?
+  staffingRequired   Int?
+  notes              String?
+  status             String               @default("PLANNED")
+  createdBy          String?
+  updatedBy          String?
+  createdAt          DateTime             @default(now())
+  updatedAt          DateTime             @updatedAt
+  birthdayCustomer   OpsBirthdayCustomer? @relation(fields: [birthdayCustomerId], references: [id], onDelete: SetNull)
 
   @@index([branch, workDate, status])
   @@index([birthdayCustomerId])
 }
 
 model OpsDailyOffer {
-  id          String   @id @default(cuid())
-  branch      String   @default("MOT")
-  title       String
-  details     String?
-  priceBefore Float?
-  priceAfter  Float?
-  effectiveFrom String
-  effectiveTo String
-  startTime   String?
-  endTime     String?
-  permanent   Boolean  @default(false)
-  weekdaysJson String?
-  active      Boolean  @default(true)
-  createdBy   String?
-  updatedBy   String?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id              String   @id @default(cuid())
+  branch          String   @default("MOT")
+  title           String
+  details         String?
+  priceBefore     Float?
+  priceAfter      Float?
+  discountPercent Float?
+  childrenCount   Int      @default(1)
+  effectiveFrom   String
+  effectiveTo     String
+  startTime       String?
+  endTime         String?
+  permanent       Boolean  @default(false)
+  weekdaysJson    String?
+  active          Boolean  @default(true)
+  createdBy       String?
+  updatedBy       String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
 
   @@index([branch, effectiveFrom, effectiveTo, active])
 }
 
 model OpsTripPartner {
-  id                String   @id @default(cuid())
-  branch            String   @default("MOT")
-  name              String
-  supervisorName    String?
-  supervisorPhone   String?
-  notes             String?
-  createdBy         String?
-  updatedBy         String?
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
-  trips             OpsDailyTrip[]
+  id              String         @id @default(cuid())
+  branch          String         @default("MOT")
+  name            String
+  supervisorName  String?
+  supervisorPhone String?
+  notes           String?
+  createdBy       String?
+  updatedBy       String?
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+  trips           OpsDailyTrip[]
 
   @@unique([branch, name])
   @@index([branch, name])
 }
 
 model OpsBirthdayCustomer {
-  id           String   @id @default(cuid())
-  branch       String   @default("MOT")
+  id           String          @id @default(cuid())
+  branch       String          @default("MOT")
   customerName String
   phone        String
   childName    String?
   notes        String?
   createdBy    String?
   updatedBy    String?
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  createdAt    DateTime        @default(now())
+  updatedAt    DateTime        @updatedAt
   events       OpsDailyEvent[]
 
   @@unique([branch, phone])
@@ -1432,27 +1438,28 @@ model OpsOperationalNotice {
 }
 
 model OpsWristbandStock {
-  id             String   @id @default(cuid())
-  branch         String   @default("MOT")
-  workDate       String
-  wristbandType  String
-  stockCategory  String   @default("BRACELET")
-  unit           String   @default("ITEM")
-  color          String?
-  usageType      String?
-  material       String?
-  size           String?
-  rollStyle      String?
-  cashierQuantity Int     @default(0)
-  warehouseQuantity Int   @default(0)
-  availableStock Int
-  allocated      Int      @default(0)
-  issued         Int      @default(0)
-  notes          String?
-  createdBy      String?
-  updatedBy      String?
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  id                String   @id @default(cuid())
+  branch            String   @default("MOT")
+  workDate          String
+  wristbandType     String
+  stockCategory     String   @default("BRACELET")
+  unit              String   @default("ITEM")
+  color             String?
+  colorName         String?
+  usageType         String?
+  material          String?
+  size              String?
+  rollStyle         String?
+  cashierQuantity   Int      @default(0)
+  warehouseQuantity Int      @default(0)
+  availableStock    Int
+  allocated         Int      @default(0)
+  issued            Int      @default(0)
+  notes             String?
+  createdBy         String?
+  updatedBy         String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
 
   @@unique([branch, workDate, wristbandType])
   @@index([branch, workDate])
@@ -1472,17 +1479,17 @@ model OpsEvaluationCriteriaVersion {
 }
 
 model OpsEvaluationCriterion {
-  id                String                       @id @default(cuid())
-  sourceId          String?                      @unique
+  id                String                         @id @default(cuid())
+  sourceId          String?                        @unique
   criteriaVersionId String
   code              String
   label             String
   labelAr           String?
   category          String
   maxScore          Float
-  active            Boolean                      @default(true)
-  sortOrder         Int                          @default(0)
-  criteriaVersion   OpsEvaluationCriteriaVersion @relation(fields: [criteriaVersionId], references: [id], onDelete: Cascade)
+  active            Boolean                        @default(true)
+  sortOrder         Int                            @default(0)
+  criteriaVersion   OpsEvaluationCriteriaVersion   @relation(fields: [criteriaVersionId], references: [id], onDelete: Cascade)
   reasons           OpsEvaluationDeductionReason[]
   exceptions        OpsEvaluationException[]
 
@@ -1548,17 +1555,17 @@ model OpsEmployeeDailyEvaluation {
 }
 
 model OpsEvaluationException {
-  id                        String                      @id @default(cuid())
-  sourceId                  String?                     @unique
+  id                        String                        @id @default(cuid())
+  sourceId                  String?                       @unique
   employeeDailyEvaluationId String
   criterionId               String
   reasonId                  String?
   deduction                 Float
   note                      String?
   createdBy                 String?
-  createdAt                 DateTime                    @default(now())
-  employeeDailyEvaluation   OpsEmployeeDailyEvaluation @relation(fields: [employeeDailyEvaluationId], references: [id], onDelete: Cascade)
-  criterion                 OpsEvaluationCriterion      @relation(fields: [criterionId], references: [id], onDelete: Restrict)
+  createdAt                 DateTime                      @default(now())
+  employeeDailyEvaluation   OpsEmployeeDailyEvaluation    @relation(fields: [employeeDailyEvaluationId], references: [id], onDelete: Cascade)
+  criterion                 OpsEvaluationCriterion        @relation(fields: [criterionId], references: [id], onDelete: Restrict)
   reason                    OpsEvaluationDeductionReason? @relation(fields: [reasonId], references: [id], onDelete: SetNull)
 
   @@unique([employeeDailyEvaluationId, criterionId])
@@ -1628,25 +1635,25 @@ model OpsMonthClose {
 }
 
 model OpsEotmFormulaVersion {
-  id           String               @id @default(cuid())
-  sourceId     String?              @unique
-  code         String               @unique
-  label        String
+  id            String               @id @default(cuid())
+  sourceId      String?              @unique
+  code          String               @unique
+  label         String
   effectiveFrom String
-  effectiveTo String?
-  active       Boolean              @default(true)
-  configJson   String
-  createdAt    DateTime             @default(now())
-  competitions OpsEotmCompetition[]
+  effectiveTo   String?
+  active        Boolean              @default(true)
+  configJson    String
+  createdAt     DateTime             @default(now())
+  competitions  OpsEotmCompetition[]
 }
 
 model OpsEotmCompetition {
-  id               String                 @id @default(cuid())
-  sourceId         String?                @unique
+  id               String                @id @default(cuid())
+  sourceId         String?               @unique
   year             Int
   month            Int
-  version          Int                    @default(1)
-  status           OpsCompetitionStatus   @default(DRAFT)
+  version          Int                   @default(1)
+  status           OpsCompetitionStatus  @default(DRAFT)
   formulaVersionId String
   winnerEmployeeId String?
   approvedBy       String?
@@ -1656,10 +1663,10 @@ model OpsEotmCompetition {
   reopenedBy       String?
   reopenedAt       DateTime?
   reopenReason     String?
-  createdAt        DateTime               @default(now())
-  updatedAt        DateTime               @updatedAt
-  formulaVersion   OpsEotmFormulaVersion  @relation(fields: [formulaVersionId], references: [id], onDelete: Restrict)
-  winner           Employee?              @relation("OpsEotmWinner", fields: [winnerEmployeeId], references: [id], onDelete: Restrict)
+  createdAt        DateTime              @default(now())
+  updatedAt        DateTime              @updatedAt
+  formulaVersion   OpsEotmFormulaVersion @relation(fields: [formulaVersionId], references: [id], onDelete: Restrict)
+  winner           Employee?             @relation("OpsEotmWinner", fields: [winnerEmployeeId], references: [id], onDelete: Restrict)
   candidates       OpsEotmCandidate[]
 
   @@unique([year, month, version])
@@ -1686,21 +1693,21 @@ model OpsEotmCandidate {
 }
 
 model OpsSuccessionCandidate {
-  id                  String                       @id @default(cuid())
-  sourceId            String?                      @unique
+  id                  String                           @id @default(cuid())
+  sourceId            String?                          @unique
   employeeId          String
   currentRole         String
   targetRole          String
-  readinessStatus     OpsSuccessionReadiness       @default(NOT_ASSESSED)
+  readinessStatus     OpsSuccessionReadiness           @default(NOT_ASSESSED)
   readinessReviewDate DateTime?
   targetReadinessDate String?
   managementNotes     String?
-  active              Boolean                      @default(true)
+  active              Boolean                          @default(true)
   createdBy           String?
   updatedBy           String?
-  createdAt           DateTime                     @default(now())
-  updatedAt           DateTime                     @updatedAt
-  employee            Employee                     @relation(fields: [employeeId], references: [id], onDelete: Restrict)
+  createdAt           DateTime                         @default(now())
+  updatedAt           DateTime                         @updatedAt
+  employee            Employee                         @relation(fields: [employeeId], references: [id], onDelete: Restrict)
   developmentActions  OpsSuccessionDevelopmentAction[]
   reviews             OpsSuccessionReview[]
 
@@ -1709,18 +1716,18 @@ model OpsSuccessionCandidate {
 }
 
 model OpsSuccessionDevelopmentAction {
-  id             String               @id @default(cuid())
-  sourceId       String?              @unique
+  id             String                 @id @default(cuid())
+  sourceId       String?                @unique
   candidateId    String
   competency     String
   note           String?
-  status         OpsDevelopmentStatus @default(NOT_STARTED)
+  status         OpsDevelopmentStatus   @default(NOT_STARTED)
   targetDate     String?
   completionDate String?
   createdBy      String?
   updatedBy      String?
-  createdAt      DateTime             @default(now())
-  updatedAt      DateTime             @updatedAt
+  createdAt      DateTime               @default(now())
+  updatedAt      DateTime               @updatedAt
   candidate      OpsSuccessionCandidate @relation(fields: [candidateId], references: [id], onDelete: Restrict)
 }
 

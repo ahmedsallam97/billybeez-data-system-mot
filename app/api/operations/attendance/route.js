@@ -4,20 +4,25 @@ import { authorizeApi } from "@/lib/api-auth";
 import { writeAudit } from "@/lib/audit";
 import { defaultAttendanceStatus } from "@/lib/operations/attendance";
 import { attendanceStatusForLeaveType } from "@/lib/operations/leave";
+import { getSetting } from "@/lib/settings";
 
 const WORKING_CODES = ["AM", "PM", "BW", "MISSION"];
 const ATTENDANCE_STATUSES = ["PRESENT", "LATE", "ABSENT", "MISSING", "EARLY_LEAVE", "LEAVE", "REPLACEMENT_LEAVE", "SICK_LEAVE", "HOLIDAY", "OFF", "UNEXPECTED_PRESENT"];
 
 async function publishedAssignments(date) {
+  const parse = (value, fallback = {}) => { try { return JSON.parse(value); } catch { return fallback; } };
+  const [branchConfig, rotationRules] = await Promise.all([getSetting("OPS_BRANCH_CONFIG", "{}").then((value) => parse(value)), getSetting("OPS_ROTATION_RULES", "{}").then((value) => parse(value))]);
+  const branch = branchConfig.branchCode || "MOT"; const earlyRule = rotationRules.earlyTripRule || {};
   const schedule = await prisma.opsSchedule.findFirst({ where: { status: "PUBLISHED", periodStart: { lte: date }, periodEnd: { gte: date } }, orderBy: { version: "desc" } });
   if (!schedule) return { schedule: null, assignments: [] };
   const [assignments, shiftRows, trips] = await Promise.all([
     prisma.opsScheduleAssignment.findMany({ where: { scheduleId: schedule.id, workDate: date, code: { in: WORKING_CODES }, employee: { department: { in: ["OPERATION", "CASHIER"] } } }, include: { employee: { select: { id: true, name: true, nameEn: true, hrisNumber: true, localEmployeeCode: true, department: true } } }, orderBy: { employee: { name: "asc" } } }),
     prisma.opsShiftDefinition.findMany({ where: { active: true }, select: { code: true, startTime: true, endTime: true } }),
-    prisma.opsDailyTrip.findMany({ where: { branch: "MOT", workDate: date, status: { not: "CANCELLED" } }, select: { startTime: true } }),
+    prisma.opsDailyTrip.findMany({ where: { branch, workDate: date, status: { not: "CANCELLED" } }, select: { startTime: true } }),
   ]);
-  const startsAtNine = trips.some((trip) => String(trip.startTime || "").startsWith("09:"));
-  const shiftTimes = Object.fromEntries(shiftRows.map((shift) => [shift.code, shift.code === "AM" && startsAtNine ? { startTime: "09:00", endTime: "17:00" } : shift]));
+  const earlyShift = earlyRule.shiftCode || "AM"; const earlyTrigger = earlyRule.triggerTime || "09:00";
+  const hasEarlyTrip = earlyRule.enabled !== false && trips.some((trip) => String(trip.startTime || "").startsWith(earlyTrigger.slice(0, 3)));
+  const shiftTimes = Object.fromEntries(shiftRows.map((shift) => [shift.code, shift.code === earlyShift && hasEarlyTrip ? { startTime: earlyRule.startTime || "09:00", endTime: earlyRule.endTime || "17:00" } : shift]));
   return { schedule, assignments, shiftTimes };
 }
 
@@ -59,6 +64,7 @@ export async function POST(request) {
 
 export async function PATCH(request) {
   const body = await request.json();
+  let attendanceRules = {}; try { attendanceRules = JSON.parse(await getSetting("OPS_ATTENDANCE_RULES", "{}")); } catch {}
   const permission = body.action === "finalize" ? "OPS_ATTENDANCE_FINALIZE" : body.action === "correct" ? "OPS_ATTENDANCE_CORRECT" : "OPS_ATTENDANCE_MANAGE";
   const { user, error } = await authorizeApi(permission);
   if (error) return error;
@@ -71,6 +77,7 @@ export async function PATCH(request) {
     return NextResponse.json({ success: true, day: updated });
   }
   if (body.action === "applyExpectedDefaults") {
+    if (attendanceRules.allowBulkExpectedTimes === false) return NextResponse.json({ success: false, error: "Bulk expected attendance defaults are disabled in Settings" }, { status: 409 });
     const day = await prisma.opsAttendanceDay.findUnique({ where: { id: String(body.dayId || "") }, include: { records: true } });
     if (!day) return NextResponse.json({ success: false, error: "Attendance day not found" }, { status: 404 });
     if (day.status !== "OPEN") return NextResponse.json({ success: false, error: "Only open attendance can receive expected defaults" }, { status: 409 });
@@ -105,10 +112,10 @@ export async function PATCH(request) {
   if (!record) return NextResponse.json({ success: false, error: "Attendance record not found" }, { status: 404 });
   if (!ATTENDANCE_STATUSES.includes(body.status)) return NextResponse.json({ success: false, error: "Invalid attendance status" }, { status: 400 });
   if (record.attendanceDay.status === "FINALIZED" && body.action !== "correct") return NextResponse.json({ success: false, error: "Finalized attendance requires a correction" }, { status: 409 });
-  if (body.action === "correct" && !String(body.reason || "").trim()) return NextResponse.json({ success: false, error: "Correction reason is required" }, { status: 400 });
+  if (body.action === "correct" && attendanceRules.requireReasonAfterClose !== false && !String(body.reason || "").trim()) return NextResponse.json({ success: false, error: "Correction reason is required" }, { status: 400 });
   const update = { status: body.status, actualIn: body.actualIn || null, actualOut: body.actualOut || null, lateMinutes: Math.max(0, Number(body.lateMinutes || 0)), earlyLeaveMinutes: Math.max(0, Number(body.earlyLeaveMinutes || 0)), note: String(body.note || "").trim() || null, source: body.action === "correct" ? "CORRECTION" : "MANUAL" };
   const result = await prisma.$transaction(async (tx) => {
-    if (body.action === "correct") await tx.opsAttendanceCorrection.create({ data: { attendanceRecordId: record.id, oldSnapshotJson: JSON.stringify({ status: record.status, actualIn: record.actualIn, actualOut: record.actualOut, lateMinutes: record.lateMinutes, earlyLeaveMinutes: record.earlyLeaveMinutes, note: record.note }), newSnapshotJson: JSON.stringify(update), reason: String(body.reason).trim(), createdBy: user.id } });
+    if (body.action === "correct") await tx.opsAttendanceCorrection.create({ data: { attendanceRecordId: record.id, oldSnapshotJson: JSON.stringify({ status: record.status, actualIn: record.actualIn, actualOut: record.actualOut, lateMinutes: record.lateMinutes, earlyLeaveMinutes: record.earlyLeaveMinutes, note: record.note }), newSnapshotJson: JSON.stringify(update), reason: String(body.reason || "Manager correction").trim(), createdBy: user.id } });
     return tx.opsAttendanceRecord.update({ where: { id: record.id }, data: update });
   });
   await writeAudit({ action: body.action === "correct" ? "OPS_ATTENDANCE_CORRECTED" : "OPS_ATTENDANCE_UPDATED", user, summary: `Updated attendance for ${record.attendanceDay.workDate}`, metadata: { recordId: record.id, employeeId: record.employeeId, status: update.status }, reason: body.reason });

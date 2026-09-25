@@ -1,13 +1,11 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useI18n } from "../i18n";
-import OperationsDashboard from "./OperationsDashboard";
 import ScheduleWorkspace from "./ScheduleWorkspace";
 import DailyWorkspace from "./DailyWorkspace";
 import LeaveTimeWorkspace from "./LeaveTimeWorkspace";
 import PerformanceWorkspace from "./PerformanceWorkspace";
-import AdminHealthWorkspace from "./AdminHealthWorkspace";
 import Employee360View from "./Employee360View";
 import DailyApprovalPreview from "./daily-preview/DailyApprovalPreview";
 import DailySetupWorkspace from "./DailySetupWorkspace";
@@ -25,8 +23,9 @@ export default function OperationsClient() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [tab, setTab] = useState("roster");
-  const [navigationOpen, setNavigationOpen] = useState(true);
-  const tabKeys = ["roster", "daily", "evaluation", "schedule", "trips", "birthdays", "offers", "stock", "time", "employees", "performance", "dashboard", "rosterSettings", "admin"];
+  const [navigationOpen, setNavigationOpen] = useState(false);
+  const employeeRequest = useRef(0);
+  const tabKeys = ["roster", "daily", "evaluation", "schedule", "trips", "birthdays", "offers", "stock", "time", "employees", "performance"];
 
   useEffect(() => {
     const requestedTab = new URLSearchParams(window.location.search).get("tab");
@@ -88,9 +87,11 @@ export default function OperationsClient() {
   }, [query, status]);
 
   async function openEmployee(id) {
+    const requestNumber = ++employeeRequest.current;
     setError("");
     const response = await fetch(`/api/operations/employees/${id}/360`);
     const payload = await response.json();
+    if (requestNumber !== employeeRequest.current) return;
     if (!response.ok) return setError(payload.error || "Request failed");
     setSelected(payload.employee);
   }
@@ -111,17 +112,14 @@ export default function OperationsClient() {
       {tab === "birthdays" && <DailySetupWorkspace section="birthdays" />}
       {tab === "offers" && <DailySetupWorkspace section="offers" />}
       {tab === "stock" && <DailySetupWorkspace section="stock" />}
-      {tab === "rosterSettings" && <DailySetupWorkspace section="rosterSettings" />}
-      {tab === "dashboard" && <OperationsDashboard onNavigate={navigate} />}
       {tab === "schedule" && <ScheduleWorkspace />}
       {tab === "daily" && <DailyWorkspace initialView="attendance" />}
       {tab === "evaluation" && <DailyWorkspace initialView="evaluation" />}
       {tab === "time" && <LeaveTimeWorkspace />}
       {tab === "performance" && <PerformanceWorkspace />}
-      {tab === "admin" && <AdminHealthWorkspace />}
       {tab === "employees" && <>
-      <section className="panel operations-toolbar">
-        <div><h2>{text.employees}</h2><span className="muted">{employees.length}</span></div>
+      <section className="panel operations-toolbar employee-directory-toolbar">
+        <div><span className="employee-directory-eyebrow">TEAM DIRECTORY</span><h2>{text.employees}</h2><p className="muted">{employees.length} {isArabic ? "ملف موظف" : "employee profiles"}</p></div>
         <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder={text.search} />
         <select aria-label={text.all} value={status} onChange={(event) => setStatus(event.target.value)}>
           <option value="ALL">{text.all}</option><option value="ACTIVE">{text.active}</option>
@@ -130,17 +128,16 @@ export default function OperationsClient() {
         <button onClick={loadEmployees}>{text.refresh}</button>
       </section>
       {error && <div className="alert danger">{error}</div>}
-      <div className="operations-workspace">
+      <div className="operations-workspace employee-directory-workspace">
         <section className="panel operations-employee-list">
           {loading ? <div className="muted">{text.loading}</div> : employees.length ? employees.map((employee) => (
             <button className={`operations-employee-row ${selected?.id === employee.id ? "active" : ""}`} key={employee.id} onClick={() => openEmployee(employee.id)}>
-              <b>{employee.name}</b><span>{employee.nameAr || "—"}</span>
-              <small>{employee.hrisNumber || employee.localEmployeeCode || "—"} · {employee.jobTitle || "—"}</small>
+              <i>{String(employee.name || "?").split(/\s+/).slice(0, 2).map((part) => part[0]).join("")}</i><span><b>{employee.name}</b><small>{employee.hrisNumber || employee.localEmployeeCode || "—"} · {employee.jobTitle || "—"}</small></span><em>{employee.employmentStatus}</em>
             </button>
           )) : <div className="muted">{text.noData}</div>}
         </section>
         <section className="operations-profile">
-          {selected && <Employee360View employee={selected} onReload={() => openEmployee(selected.id)} />}
+          {selected && <Employee360View key={selected.id} employee={selected} onReload={() => openEmployee(selected.id)} />}
           {!selected && <div className="muted">{text.select}</div>}
         </section>
       </div>

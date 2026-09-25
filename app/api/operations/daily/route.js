@@ -4,12 +4,12 @@ import { authorizeApi } from "@/lib/api-auth";
 import { writeAudit } from "@/lib/audit";
 import { getSetting } from "@/lib/settings";
 import { buildExpectedTeam, mergeExpectedActual, canAssign, overlaps, generateRotation, normalizeRotationRules, coverageFor, buildReadiness, needsAttention, closeDayValidation } from "@/lib/operations/live-daily";
-import { normalizeWeekdays, offerAppliesOnDate, selectBraceletStock, stockAvailable, stockCanDelete, stockIssueUpdate, stockKey } from "@/lib/operations/planning";
+import { colorNameFor, normalizeWeekdays, offerAppliesOnDate, selectBraceletStock, stockAvailable, stockCanDelete, stockIssueUpdate, stockKey } from "@/lib/operations/planning";
 import { applyCashierFallbacks } from "@/lib/operations/cashiers";
 
 const validDate = (value) => /^\d{4}-\d{2}-\d{2}$/.test(String(value || ""));
 const parseJson = (value) => { try { return JSON.parse(value || "{}"); } catch { return {}; } };
-const isToday = (date) => date === new Intl.DateTimeFormat("en-CA", { timeZone: "Africa/Cairo", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
+const isToday = (date, timezone = "Africa/Cairo") => date === new Intl.DateTimeFormat("en-CA", { timeZone: timezone, year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
 function hourlySlots(shifts, team = [], slotCount = 8) { return ["AM", "BW", "PM"].flatMap((shiftCode) => { const shift = shifts[shiftCode]; if (!shift?.startTime || !shift?.endTime || !team.some((item) => item.shiftCode === shiftCode && item.working)) return []; const start = Number(shift.startTime.slice(0, 2)); return Array.from({ length: Math.max(1, Number(slotCount) || 8) }, (_, index) => ({ shiftCode, startTime: `${String((start + index) % 24).padStart(2, "0")}:00`, endTime: `${String((start + index + 1) % 24).padStart(2, "0")}:00` })); }); }
 
 function offerValues(body, userId) {
@@ -20,11 +20,18 @@ function offerValues(body, userId) {
   if (from > to) throw new Error("Offer end date must be on or after its start date");
   const weekdays = normalizeWeekdays(body.weekdays);
   const permanent = body.offerMode === "PERMANENT" || (!validDate(body.effectiveFrom) && !validDate(body.effectiveTo));
+  const priceBefore = body.priceBefore === "" || body.priceBefore == null ? null : Number(body.priceBefore);
+  const priceAfter = body.priceAfter === "" || body.priceAfter == null ? null : Number(body.priceAfter);
+  const calculatedDiscount = Number.isFinite(priceBefore) && priceBefore > 0 && Number.isFinite(priceAfter)
+    ? Math.max(0, Math.min(100, Math.round(((priceBefore - priceAfter) / priceBefore) * 10000) / 100)) : null;
+  const discountPercent = body.discountPercent === "" || body.discountPercent == null ? calculatedDiscount : Math.max(0, Math.min(100, Number(body.discountPercent)));
   return {
     title,
     details: String(body.details || "").trim() || null,
-    priceBefore: body.priceBefore === "" || body.priceBefore == null ? null : Number(body.priceBefore),
-    priceAfter: body.priceAfter === "" || body.priceAfter == null ? null : Number(body.priceAfter),
+    priceBefore,
+    priceAfter,
+    discountPercent: Number.isFinite(discountPercent) ? discountPercent : null,
+    childrenCount: Math.max(1, Math.round(Number(body.childrenCount || 1))),
     permanent,
     effectiveFrom: permanent ? "2000-01-01" : from,
     effectiveTo: permanent ? "2999-12-31" : to,
@@ -45,6 +52,7 @@ function stockValues(body) {
   const rollStyle = String(body.rollStyle || "").trim().toUpperCase() || null;
   const material = String(body.material || "").trim().toUpperCase() || null;
   const color = String(body.color || "").trim() || null;
+  const colorName = String(body.colorName || "").trim() || (color ? colorNameFor(color) : null);
   if (stockCategory === "BRACELET" && !usageType) throw new Error("Bracelet usage is required");
   if (stockCategory === "SOCKS" && !size) throw new Error("Sock size is required");
   if (["CASH_ROLL", "VISA_ROLL"].includes(stockCategory) && !rollStyle) throw new Error("Roll style is required");
@@ -56,6 +64,7 @@ function stockValues(body) {
       stockCategory,
       unit: String(body.unit || "ITEM").trim().toUpperCase(),
       color,
+      colorName,
       usageType,
       material,
       size,
@@ -127,7 +136,7 @@ async function loadDaily(date, branch = "MOT") {
   const timelineStart = new Date(`${date}T00:00:00.000Z`);
   const timelineEnd = new Date(`${date}T00:00:00.000Z`);
   timelineEnd.setUTCDate(timelineEnd.getUTCDate() + 1);
-  const [schedule, attendanceDay, day, shiftRows, positions, trips, events, offerRows, notices, stockRows, tripPartners, birthdayCustomers, timeline, cashierConfigRaw] = await Promise.all([
+  const [schedule, attendanceDay, day, shiftRows, positions, trips, events, offerRows, notices, stockRows, tripPartners, birthdayCustomers, timeline, cashierConfigRaw, branchConfigRaw, rotationRulesRaw] = await Promise.all([
     prisma.opsSchedule.findFirst({ where: { status: "PUBLISHED", periodStart: { lte: date }, periodEnd: { gte: date } }, orderBy: { version: "desc" } }),
     prisma.opsAttendanceDay.findFirst({ where: { workDate: date }, include: { records: true }, orderBy: { version: "desc" } }),
     prisma.opsOperationsDay.findFirst({ where: { workDate: date, branch }, include: { rotationPlans: { orderBy: { version: "desc" }, include: { assignments: { include: { employee: { select: { id: true, name: true, jobTitle: true } }, position: true }, orderBy: [{ startTime: "asc" }, { employee: { name: "asc" } }] }, breaks: { include: { employee: { select: { id: true, name: true } } }, orderBy: { startTime: "asc" } } } } }, orderBy: { version: "desc" } }),
@@ -142,36 +151,40 @@ async function loadDaily(date, branch = "MOT") {
     prisma.opsBirthdayCustomer.findMany({ where: { branch }, orderBy: [{ customerName: "asc" }, { childName: "asc" }] }),
     prisma.auditLog.findMany({ where: { action: { startsWith: "OPS_" }, createdAt: { gte: timelineStart, lt: timelineEnd } }, include: { user: { select: { name: true } } }, orderBy: { createdAt: "desc" }, take: 30 }),
     getSetting("OPS_CASHIER_CONFIG", "{}"),
+    getSetting("OPS_BRANCH_CONFIG", "{}"),
+    getSetting("OPS_ROTATION_RULES", "{}"),
   ]);
   const offers = offerRows.filter((offer) => offerAppliesOnDate(offer, date));
   const globalStock = stockRows.filter((item) => item.workDate === "ALL");
   const wristbands = globalStock.length ? globalStock : stockRows.filter((item) => item.workDate === date);
-  const amStartsAtNine = trips.some((trip) => String(trip.startTime || "").startsWith("09:"));
-  const shifts = Object.fromEntries(shiftRows.map((item) => [item.code, item.code === "AM" && amStartsAtNine ? { ...item, startTime: "09:00", endTime: "17:00" } : item]));
+  const branchConfig = parseJson(branchConfigRaw); const rotationRules = parseJson(rotationRulesRaw); const earlyRule = rotationRules.earlyTripRule || {};
+  const earlyShift = earlyRule.shiftCode || "AM"; const earlyTrigger = earlyRule.triggerTime || "09:00";
+  const hasEarlyTrip = earlyRule.enabled !== false && trips.some((trip) => String(trip.startTime || "").startsWith(earlyTrigger.slice(0, 3)));
+  const shifts = Object.fromEntries(shiftRows.map((item) => [item.code, item.code === earlyShift && hasEarlyTrip ? { ...item, startTime: earlyRule.startTime || "09:00", endTime: earlyRule.endTime || "17:00" } : item]));
   const rawScheduleAssignments = schedule ? await prisma.opsScheduleAssignment.findMany({ where: { scheduleId: schedule.id, workDate: date }, include: { employee: { select: { id: true, name: true, nameEn: true, operationalName: true, gender: true, operationsTeamLeader: true, hrisNumber: true, localEmployeeCode: true, jobTitle: true, department: true, employmentType: true, employmentStatus: true, active: true } } }, orderBy: [{ shiftCode: "asc" }, { employee: { name: "asc" } }] }) : [];
   const scheduleAssignments = applyCashierFallbacks(rawScheduleAssignments, parseJson(cashierConfigRaw));
   const expected = buildExpectedTeam(scheduleAssignments, shifts);
-  const live = isToday(date);
+  const live = isToday(date, branchConfig.timezone || "Africa/Cairo");
   const team = mergeExpectedActual(expected, attendanceDay?.records || [], live).map((item) => ({ ...item, liveDay: live }));
   const employeeIds = team.map((item) => item.employeeId);
   const qualifications = employeeIds.length ? await prisma.employeeQualification.findMany({ where: { employeeId: { in: employeeIds } }, include: { position: true } }) : [];
   const plan = day?.rotationPlans?.find((item) => ["ACTIVE", "DRAFT"].includes(item.status)) || day?.rotationPlans?.[0] || null;
   const assignments = plan?.assignments || [];
   const breaks = plan?.breaks || [];
-  const coverage = coverageFor({ workDate: date, team, positions, qualifications, assignments });
+  const coverage = coverageFor({ workDate: date, team, positions, qualifications, assignments, rules: rotationRules });
   const readiness = buildReadiness({ schedule, team, liveDay: live, attendanceDay, coverage, rotationAssignments: assignments, breaks, trips, wristbands, notices });
   const attention = needsAttention({ readiness, team, coverage, qualifications, breaks, trips, wristbands, notices });
   const close = closeDayValidation({ attendanceDay, alerts: attention, rotationAssignments: assignments, breaks });
-  return { date, branch, liveMode: live ? "LIVE" : "PLANNING", schedule, attendanceDay, day, shifts, positions, expected, team, qualifications, plan, assignments, breaks, coverage, readiness, attention, close, trips, events, offers, offerCatalog: offerRows, notices, wristbands, tripPartners, birthdayCustomers, timeline };
+  return { date, branch, branchConfig, liveMode: live ? "LIVE" : "PLANNING", schedule, attendanceDay, day, shifts, positions, expected, team, qualifications, plan, assignments, breaks, coverage, readiness, attention, close, trips, events, offers, offerCatalog: offerRows, notices, wristbands, tripPartners, birthdayCustomers, timeline };
 }
 
 function serialize(data) {
-  return { success: true, date: data.date, branch: data.branch, liveMode: data.liveMode, source: "PUBLISHED_MONTHLY_SCHEDULE", schedule: data.schedule ? { id: data.schedule.id, version: data.schedule.version, status: data.schedule.status, periodStart: data.schedule.periodStart, periodEnd: data.schedule.periodEnd, publishedAt: data.schedule.publishedAt } : null, attendanceDay: data.attendanceDay, day: data.day ? { ...data.day, rotationPlans: undefined } : null, shifts: data.shifts, positions: data.positions, expected: data.expected, team: data.team, qualifications: data.qualifications, rotation: data.plan ? { id: data.plan.id, version: data.plan.version, status: data.plan.status, assignments: data.assignments, breaks: data.breaks } : null, coverage: data.coverage, readiness: data.readiness, attention: data.attention, close: data.close, trips: data.trips, events: data.events, offers: data.offers, offerCatalog: data.offerCatalog, notices: data.notices, wristbands: data.wristbands, tripPartners: data.tripPartners, birthdayCustomers: data.birthdayCustomers, timeline: data.timeline.map((item) => ({ id: item.id, action: item.action, summary: item.summary, createdAt: item.createdAt, user: item.user?.name || "System" })) };
+  return { success: true, date: data.date, branch: data.branch, branchConfig: data.branchConfig, liveMode: data.liveMode, source: "PUBLISHED_MONTHLY_SCHEDULE", schedule: data.schedule ? { id: data.schedule.id, version: data.schedule.version, status: data.schedule.status, periodStart: data.schedule.periodStart, periodEnd: data.schedule.periodEnd, publishedAt: data.schedule.publishedAt } : null, attendanceDay: data.attendanceDay, day: data.day ? { ...data.day, rotationPlans: undefined } : null, shifts: data.shifts, positions: data.positions, expected: data.expected, team: data.team, qualifications: data.qualifications, rotation: data.plan ? { id: data.plan.id, version: data.plan.version, status: data.plan.status, assignments: data.assignments, breaks: data.breaks } : null, coverage: data.coverage, readiness: data.readiness, attention: data.attention, close: data.close, trips: data.trips, events: data.events, offers: data.offers, offerCatalog: data.offerCatalog, notices: data.notices, wristbands: data.wristbands, tripPartners: data.tripPartners, birthdayCustomers: data.birthdayCustomers, timeline: data.timeline.map((item) => ({ id: item.id, action: item.action, summary: item.summary, createdAt: item.createdAt, user: item.user?.name || "System" })) };
 }
 
 export async function GET(request) {
   const { error } = await authorizeApi("OPS_SCHEDULE_READ"); if (error) return error;
-  const url = new URL(request.url); const date = String(url.searchParams.get("date") || ""); const branch = String(url.searchParams.get("branch") || "MOT");
+  const url = new URL(request.url); const date = String(url.searchParams.get("date") || ""); const configuredBranch = parseJson(await getSetting("OPS_BRANCH_CONFIG", "{}")); const branch = String(url.searchParams.get("branch") || configuredBranch.branchCode || "MOT");
   if (!validDate(date)) return NextResponse.json({ success: false, error: "Invalid date" }, { status: 400 });
   return NextResponse.json(serialize(await loadDaily(date, branch)));
 }
@@ -188,7 +201,7 @@ async function ensureDay(date, branch, user, teamNote = "") {
 
 export async function POST(request) {
   const { user, error } = await authorizeApi("OPS_DAILY_MANAGE"); if (error) return error;
-  const body = await request.json(); const date = String(body.date || ""); const branch = String(body.branch || "MOT");
+  const body = await request.json(); const date = String(body.date || ""); const configuredBranch = parseJson(await getSetting("OPS_BRANCH_CONFIG", "{}")); const branch = String(body.branch || configuredBranch.branchCode || "MOT");
   if (!validDate(date)) return NextResponse.json({ success: false, error: "Invalid date" }, { status: 400 });
   try {
     if (body.action === "open") return NextResponse.json({ success: true, day: await ensureDay(date, branch, user, body.teamNote) }, { status: 201 });
@@ -284,8 +297,10 @@ export async function POST(request) {
 export async function PATCH(request) {
   const { user, error } = await authorizeApi("OPS_DAILY_MANAGE"); if (error) return error; const body = await request.json();
   try {
+    const branchConfig = parseJson(await getSetting("OPS_BRANCH_CONFIG", "{}"));
+    const defaultBranch = String(branchConfig.branchCode || "MOT");
     if (body.action === "updateStock") {
-      const branch = String(body.branch || "MOT");
+      const branch = String(body.branch || defaultBranch);
       const current = await prisma.opsWristbandStock.findFirst({ where: { id: String(body.stockId || ""), branch, workDate: "ALL" } });
       if (!current) throw new Error("Stock row not found");
       const { wristbandType, values } = stockValues(body);
@@ -303,7 +318,7 @@ export async function PATCH(request) {
       return NextResponse.json({ success: true, record });
     }
     if (body.action === "issueStock") {
-      const branch = String(body.branch || "MOT");
+      const branch = String(body.branch || defaultBranch);
       const current = await prisma.opsWristbandStock.findFirst({ where: { id: String(body.stockId || ""), branch, workDate: "ALL" } });
       if (!current) throw new Error("Stock row not found");
       const quantity = Math.max(0, Number(body.quantity || 0));
@@ -313,7 +328,7 @@ export async function PATCH(request) {
       return NextResponse.json({ success: true, record });
     }
     if (body.action === "deleteStock") {
-      const branch = String(body.branch || "MOT");
+      const branch = String(body.branch || defaultBranch);
       const current = await prisma.opsWristbandStock.findFirst({ where: { id: String(body.stockId || ""), branch, workDate: "ALL" } });
       if (!current) throw new Error("Stock row not found");
       if (!stockCanDelete(current)) throw new Error("Stock with reservations or issue history cannot be deleted");
@@ -322,7 +337,7 @@ export async function PATCH(request) {
       return NextResponse.json({ success: true });
     }
     if (body.action === "updateTrip") {
-      const current = await prisma.opsDailyTrip.findFirst({ where: { id: String(body.tripId || ""), branch: String(body.branch || "MOT") } });
+      const current = await prisma.opsDailyTrip.findFirst({ where: { id: String(body.tripId || ""), branch: String(body.branch || defaultBranch) } });
       if (!current) throw new Error("Trip not found");
       const expectedChildren = Math.max(0, Number(body.expectedChildren || 0));
       const record = await prisma.$transaction(async (tx) => {
@@ -343,7 +358,7 @@ export async function PATCH(request) {
       return NextResponse.json({ success: true, record });
     }
     if (body.action === "updateEvent") {
-      const current = await prisma.opsDailyEvent.findFirst({ where: { id: String(body.eventId || ""), branch: String(body.branch || "MOT") } });
+      const current = await prisma.opsDailyEvent.findFirst({ where: { id: String(body.eventId || ""), branch: String(body.branch || defaultBranch) } });
       if (!current) throw new Error("Birthday not found");
       const expectedGuests = Math.max(0, Number(body.expectedGuests || 0));
       const record = await prisma.$transaction(async (tx) => {
@@ -364,14 +379,14 @@ export async function PATCH(request) {
       return NextResponse.json({ success: true, record });
     }
     if (body.action === "updateOffer") {
-      const current = await prisma.opsDailyOffer.findFirst({ where: { id: String(body.offerId || ""), branch: String(body.branch || "MOT") } });
+      const current = await prisma.opsDailyOffer.findFirst({ where: { id: String(body.offerId || ""), branch: String(body.branch || defaultBranch) } });
       if (!current) throw new Error("Offer not found");
       const record = await prisma.opsDailyOffer.update({ where: { id: current.id }, data: offerValues(body, user.id) });
       await writeAudit({ action: "OPS_UPDATEOFFER", user, summary: `Updated offer ${record.title}`, metadata: { id: record.id, branch: record.branch } });
       return NextResponse.json({ success: true, record });
     }
     if (body.action === "deleteOffer") {
-      const current = await prisma.opsDailyOffer.findFirst({ where: { id: String(body.offerId || ""), branch: String(body.branch || "MOT") } });
+      const current = await prisma.opsDailyOffer.findFirst({ where: { id: String(body.offerId || ""), branch: String(body.branch || defaultBranch) } });
       if (!current) throw new Error("Offer not found");
       const record = await prisma.opsDailyOffer.update({ where: { id: current.id }, data: { active: false, updatedBy: user.id } });
       await writeAudit({ action: "OPS_DELETEOFFER", user, summary: `Removed offer ${record.title}`, metadata: { id: record.id, branch: record.branch } });

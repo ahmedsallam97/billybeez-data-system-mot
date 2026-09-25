@@ -3,6 +3,7 @@ import { prisma } from "@/lib/db";
 import { authorizeApi } from "@/lib/api-auth";
 import { writeAudit } from "@/lib/audit";
 import { assertSuccessionPath } from "@/lib/operations/succession";
+import { getSetting } from "@/lib/settings";
 
 const READINESS = ["NOT_ASSESSED", "DEVELOPING", "READY_SOON", "READY_NOW", "ON_HOLD", "PROMOTED", "COMPLETED", "CLOSED"];
 
@@ -14,14 +15,20 @@ export async function GET(request) {
   const month = Number(params.get("month") || new Date().getMonth() + 1);
   const previousMonth = month === 1 ? 12 : month - 1;
   const previousYear = month === 1 ? year - 1 : year;
-  const [appraisals, previousAppraisals, competitions, succession, employees] = await Promise.all([
+  const [appraisals, previousAppraisals, competitions, succession, employees, artworkRaw, branchRaw] = await Promise.all([
     prisma.opsMonthlyAppraisal.findMany({ where: { year, month }, include: { employee: { select: { id: true, name: true, nameEn: true, hrisNumber: true, localEmployeeCode: true, jobTitle: true } }, formulaVersion: { select: { code: true, label: true } } }, orderBy: [{ totalScore: "desc" }, { employee: { name: "asc" } }] }),
     prisma.opsMonthlyAppraisal.findMany({ where: { year: previousYear, month: previousMonth, status: "APPROVED" }, select: { totalScore: true } }),
-    prisma.opsEotmCompetition.findMany({ where: { year, month }, include: { winner: { select: { id: true, name: true } }, candidates: { include: { employee: { select: { id: true, name: true } } }, orderBy: { rank: "asc" } }, formulaVersion: true }, orderBy: { version: "desc" } }),
+    prisma.opsEotmCompetition.findMany({ where: { year, month }, include: { winner: { select: { id: true, name: true, nameAr: true, nameEn: true, operationalName: true, documents: { where: { documentType: "EMPLOYEE_PHOTO", status: "ACTIVE" }, orderBy: { uploadedAt: "desc" }, take: 1 } } }, candidates: { include: { employee: { select: { id: true, name: true } } }, orderBy: { rank: "asc" } }, formulaVersion: true }, orderBy: { version: "desc" } }),
     prisma.opsSuccessionCandidate.findMany({ where: { active: true }, include: { employee: { select: { id: true, name: true, jobTitle: true } }, developmentActions: true, reviews: { orderBy: { reviewDate: "desc" } } }, orderBy: { updatedAt: "desc" } }),
     prisma.employee.findMany({ where: { active: true }, select: { id: true, name: true, jobTitle: true }, orderBy: { name: "asc" } }),
+    getSetting("RECOGNITION_ARTWORK_CONFIG", "{}"),
+    getSetting("OPS_BRANCH_CONFIG", "{}"),
   ]);
-  return NextResponse.json({ success: true, year, month, previousPeriod: { year: previousYear, month: previousMonth }, appraisals, previousAppraisals, competitions, succession, employees });
+  let artworkConfig = {}; let branch = {};
+  try { artworkConfig = JSON.parse(artworkRaw); } catch {}
+  try { branch = JSON.parse(branchRaw); } catch {}
+  const serializedCompetitions = competitions.map((competition) => ({ ...competition, winner: competition.winner ? { ...competition.winner, photoUrl: competition.winner.documents?.[0] ? `/api/operations/employees/${competition.winner.id}/documents/${competition.winner.documents[0].id}` : null, documents: undefined } : null }));
+  return NextResponse.json({ success: true, year, month, previousPeriod: { year: previousYear, month: previousMonth }, appraisals, previousAppraisals, competitions: serializedCompetitions, succession, employees, artworkConfig, branch });
 }
 
 export async function POST(request) {

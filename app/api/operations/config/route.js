@@ -7,6 +7,7 @@ import { ensureDefaultSettings, getSetting } from "@/lib/settings";
 const OPS_KEYS = [
   "DAILY_OPERATIONS_TEMPLATE_CONFIG", "OPS_MOTIVATION_PHRASES", "OPS_CASHIER_CONFIG", "OPS_BRANCH_CONFIG",
   "OPS_SCHEDULE_CODE_CONFIG", "OPS_ROTATION_RULES", "OPS_ATTENDANCE_RULES", "OPS_EVALUATION_RULES", "OPS_LEAVE_RULES", "OPS_PLANNING_CATALOGS",
+  "OPS_STOCK_RULES",
   "RECOGNITION_ARTWORK_CONFIG",
 ];
 
@@ -89,7 +90,20 @@ export async function POST(request) {
     } else if (body.action === "saveNotice") {
       const title = String(body.title || "").trim(); const message = String(body.message || "").trim(); const effectiveFrom = String(body.effectiveFrom || "");
       if (!title || !message || !effectiveFrom) throw new Error("Notice title, message and start date are required");
-      record = await prisma.opsOperationalNotice.create({ data: { branch: defaultBranch, title, message, priority: String(body.priority || "INFO"), effectiveFrom, effectiveTo: String(body.effectiveTo || "") || null, active: true, createdBy: user.id, updatedBy: user.id } });
+      const values = { title, message, priority: String(body.priority || "INFO"), effectiveFrom, effectiveTo: String(body.effectiveTo || "") || null, startTime: String(body.startTime || "") || null, endTime: String(body.endTime || "") || null, active: body.active !== false, updatedBy: user.id };
+      if (body.noticeId) {
+        const current = await prisma.opsOperationalNotice.findFirst({ where: { id: String(body.noticeId), branch: defaultBranch } });
+        if (!current) throw new Error("Operational notice not found");
+        record = await prisma.opsOperationalNotice.update({ where: { id: current.id }, data: values });
+      } else record = await prisma.opsOperationalNotice.create({ data: { branch: defaultBranch, ...values, createdBy: user.id } });
+    } else if (body.action === "deleteNotice") {
+      const current = await prisma.opsOperationalNotice.findFirst({ where: { id: String(body.noticeId || ""), branch: defaultBranch } });
+      if (!current) throw new Error("Operational notice not found");
+      record = await prisma.opsOperationalNotice.update({ where: { id: current.id }, data: { active: false, updatedBy: user.id } });
+    } else if (body.action === "restoreNotice") {
+      const current = await prisma.opsOperationalNotice.findFirst({ where: { id: String(body.noticeId || ""), branch: defaultBranch } });
+      if (!current) throw new Error("Operational notice not found");
+      record = await prisma.opsOperationalNotice.update({ where: { id: current.id }, data: { active: true, updatedBy: user.id } });
     } else {
       throw new Error("Unknown settings action");
     }

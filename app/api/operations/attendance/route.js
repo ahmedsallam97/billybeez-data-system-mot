@@ -28,6 +28,30 @@ async function publishedAssignments(date) {
 
 function validDate(value) { return /^\d{4}-\d{2}-\d{2}$/.test(String(value || "")); }
 
+function timeMinutes(value) {
+  const match = String(value || "").match(/^(\d{1,2}):(\d{2})/);
+  if (!match) return null;
+  return Number(match[1]) * 60 + Number(match[2]);
+}
+
+function attendanceTiming(record, body, rules) {
+  const actualIn = body.actualIn || null;
+  const actualOut = body.actualOut || null;
+  const expectedIn = timeMinutes(record.expectedStart);
+  const expectedOut = timeMinutes(record.expectedEnd);
+  const inMinutes = timeMinutes(actualIn);
+  const outMinutes = timeMinutes(actualOut);
+  const rawLate = expectedIn === null || inMinutes === null ? 0 : Math.max(0, inMinutes - expectedIn);
+  const rawEarly = expectedOut === null || outMinutes === null ? 0 : Math.max(0, expectedOut - outMinutes);
+  const lateMinutes = rawLate > Math.max(0, Number(rules.lateGraceMinutes || 0)) ? rawLate : 0;
+  const earlyLeaveMinutes = rawEarly > Math.max(0, Number(rules.earlyLeaveGraceMinutes || 0)) ? rawEarly : 0;
+  let status = body.status;
+  if (["PRESENT", "LATE", "EARLY_LEAVE"].includes(status)) {
+    status = lateMinutes > 0 ? "LATE" : earlyLeaveMinutes > 0 ? "EARLY_LEAVE" : "PRESENT";
+  }
+  return { status, actualIn, actualOut, lateMinutes, earlyLeaveMinutes };
+}
+
 export async function GET(request) {
   const { error } = await authorizeApi("OPS_ATTENDANCE_READ");
   if (error) return error;
@@ -113,7 +137,8 @@ export async function PATCH(request) {
   if (!ATTENDANCE_STATUSES.includes(body.status)) return NextResponse.json({ success: false, error: "Invalid attendance status" }, { status: 400 });
   if (record.attendanceDay.status === "FINALIZED" && body.action !== "correct") return NextResponse.json({ success: false, error: "Finalized attendance requires a correction" }, { status: 409 });
   if (body.action === "correct" && attendanceRules.requireReasonAfterClose !== false && !String(body.reason || "").trim()) return NextResponse.json({ success: false, error: "Correction reason is required" }, { status: 400 });
-  const update = { status: body.status, actualIn: body.actualIn || null, actualOut: body.actualOut || null, lateMinutes: Math.max(0, Number(body.lateMinutes || 0)), earlyLeaveMinutes: Math.max(0, Number(body.earlyLeaveMinutes || 0)), note: String(body.note || "").trim() || null, source: body.action === "correct" ? "CORRECTION" : "MANUAL" };
+  const timing = attendanceTiming(record, body, attendanceRules);
+  const update = { ...timing, note: String(body.note || "").trim() || null, source: body.action === "correct" ? "CORRECTION" : "MANUAL" };
   const result = await prisma.$transaction(async (tx) => {
     if (body.action === "correct") await tx.opsAttendanceCorrection.create({ data: { attendanceRecordId: record.id, oldSnapshotJson: JSON.stringify({ status: record.status, actualIn: record.actualIn, actualOut: record.actualOut, lateMinutes: record.lateMinutes, earlyLeaveMinutes: record.earlyLeaveMinutes, note: record.note }), newSnapshotJson: JSON.stringify(update), reason: String(body.reason || "Manager correction").trim(), createdBy: user.id } });
     return tx.opsAttendanceRecord.update({ where: { id: record.id }, data: update });

@@ -171,6 +171,8 @@ enum OpsEvaluationDayStatus {
 
 enum OpsEmployeeEvaluationStatus {
   DEFAULT_FULL
+  DEFAULT_ZERO
+  REVIEWED
   EXCEPTION
   MODIFIED
   CLOSED
@@ -294,6 +296,8 @@ model Employee {
   employmentEvents     EmployeeEmploymentEvent[]
   trainingRecords      EmployeeTrainingRecord[]
   qualifications       EmployeeQualification[]
+  guestFeedback        EmployeeGuestFeedback[]
+  guidanceRecords      EmployeeGuidanceRecord[]
 
   @@index([employmentType, employmentStatus])
   @@index([jobTitle])
@@ -372,6 +376,47 @@ model EmployeeQualification {
 
   @@unique([employeeId, operationalPositionId])
   @@index([operationalPositionId, status])
+}
+
+model EmployeeGuestFeedback {
+  id           String   @id @default(cuid())
+  employeeId   String
+  feedbackDate DateTime
+  source       String   @default("GUEST")
+  guestName    String?
+  guestPhone   String?
+  rating       Int?
+  category     String?
+  comment      String
+  followUp     String?
+  status       String   @default("OPEN")
+  createdBy    String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  employee     Employee @relation(fields: [employeeId], references: [id], onDelete: Restrict)
+
+  @@index([employeeId, feedbackDate])
+  @@index([status])
+}
+
+model EmployeeGuidanceRecord {
+  id           String    @id @default(cuid())
+  employeeId   String
+  recordDate   DateTime
+  recordType   String
+  title        String
+  details      String?
+  points       Float?
+  actionTaken  String?
+  followUpDate DateTime?
+  status       String    @default("OPEN")
+  createdBy    String?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  employee     Employee  @relation(fields: [employeeId], references: [id], onDelete: Restrict)
+
+  @@index([employeeId, recordDate])
+  @@index([recordType, status])
 }
 
 model Category {
@@ -1309,6 +1354,7 @@ model OpsDailyTrip {
   chickenNuggets   Int             @default(0)
   beefBurgers      Int             @default(0)
   chickenBurgers   Int             @default(0)
+  mealCountsJson   String          @default("{}")
   braceletType     String?
   braceletColor    String?
   braceletMaterial String?
@@ -1341,6 +1387,7 @@ model OpsDailyEvent {
   chickenNuggets     Int                  @default(0)
   beefBurgers        Int                  @default(0)
   chickenBurgers     Int                  @default(0)
+  mealCountsJson     String               @default("{}")
   partyRoomHours     Float?
   expectedGuests     Int?
   braceletType       String?

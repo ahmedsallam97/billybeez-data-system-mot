@@ -17,18 +17,18 @@ async function employeeAccounts(tx, employeeId, year) {
   return accounts.map((account) => ({ ...account, balance: account.transactions.reduce((sum, item) => sum + item.amount, 0) }));
 }
 
-async function reverseBookingLedger(tx, allocations, userId, reason, referencePrefix) {
+async function reverseBookingLedger(tx, allocations, userId, reason, referencePrefix, preventNegativeBalance = true) {
   const transactionIds = [...new Set(allocations.map((item) => item.leaveTransactionId).filter(Boolean))];
   for (const transactionId of transactionIds) {
     const source = await tx.opsLeaveTransaction.findUnique({ where: { id: transactionId } });
     if (!source || await tx.opsLeaveTransaction.findUnique({ where: { reversesTransactionId: source.id } })) continue;
     const current = await tx.opsLeaveTransaction.aggregate({ where: { leaveAccountId: source.leaveAccountId, status: "VALID" }, _sum: { amount: true } });
-    assertNonNegativeLeaveBalance(current._sum.amount || 0, -source.amount);
+    if (preventNegativeBalance) assertNonNegativeLeaveBalance(current._sum.amount || 0, -source.amount);
     await tx.opsLeaveTransaction.create({ data: { leaveAccountId: source.leaveAccountId, amount: -source.amount, effectiveDate: localDate(), transactionType: "REVERSAL", sourceType: "LEAVE_BOOKING_REVERSAL", sourceReferenceId: `${referencePrefix}:${source.id}`, note: reason, reversesTransactionId: source.id, createdBy: userId } });
   }
 }
 
-async function applyBookingLedger(tx, booking, plan, userId, reason, sourceType) {
+async function applyBookingLedger(tx, booking, plan, userId, reason, sourceType, preventNegativeBalance = true) {
   const year = Number(booking.startDate.slice(0, 4));
   const transactionByType = new Map();
   const revision = `${Date.now()}`;
@@ -36,11 +36,25 @@ async function applyBookingLedger(tx, booking, plan, userId, reason, sourceType)
     const account = await tx.opsLeaveAccount.upsert({ where: { employeeId_leaveType_leaveYear: { employeeId: booking.employeeId, leaveType, leaveYear: year } }, update: {}, create: { employeeId: booking.employeeId, leaveType, leaveYear: year, entitlement: null, policyVersion: "LEDGER" } });
     const amount = -plan.filter((item) => item.leaveType === leaveType).reduce((sum, item) => sum + item.amount, 0);
     const current = await tx.opsLeaveTransaction.aggregate({ where: { leaveAccountId: account.id, status: "VALID" }, _sum: { amount: true } });
-    assertNonNegativeLeaveBalance(current._sum.amount || 0, amount);
+    if (preventNegativeBalance) assertNonNegativeLeaveBalance(current._sum.amount || 0, amount);
     const transaction = await tx.opsLeaveTransaction.create({ data: { leaveAccountId: account.id, amount, effectiveDate: booking.startDate, transactionType: "LEAVE_BOOKING_DEBIT", sourceType, sourceReferenceId: `${booking.id}:${revision}:${leaveType}`, note: reason, createdBy: userId } });
     transactionByType.set(leaveType, transaction.id);
   }
   await tx.opsLeaveBookingAllocation.createMany({ data: plan.map((item) => ({ leaveBookingId: booking.id, leaveDate: item.leaveDate, leaveType: item.leaveType, amount: item.amount, leaveTransactionId: transactionByType.get(item.leaveType) })) });
+}
+
+async function assertPublishedScheduleCoverage(tx, employeeId, dates) {
+  for (const workDate of dates) {
+    const schedule = await tx.opsSchedule.findFirst({ where: { status: "PUBLISHED", periodStart: { lte: workDate }, periodEnd: { gte: workDate } }, orderBy: { version: "desc" } });
+    if (!schedule) continue;
+    const assigned = await tx.opsScheduleAssignment.findFirst({ where: { scheduleId: schedule.id, employeeId, workDate, code: { in: ["AM", "PM", "BW", "MISSION"] } }, include: { employee: { select: { department: true } } } });
+    if (!assigned) continue;
+    const colleagues = await tx.opsScheduleAssignment.findMany({ where: { scheduleId: schedule.id, workDate, shiftCode: assigned.shiftCode, code: { in: ["AM", "PM", "BW", "MISSION"] }, employeeId: { not: employeeId } }, include: { employee: { select: { department: true } } } });
+    if (!colleagues.length) throw new Error(`Coverage check failed for ${workDate}: the shift would have no employee`);
+    if (assigned.employee?.department === "CASHIER" && !colleagues.some((item) => item.employee?.department === "CASHIER")) {
+      throw new Error(`Coverage check failed for ${workDate}: no other cashier is scheduled in ${assigned.shiftCode}`);
+    }
+  }
 }
 
 async function syncBookingAttendance(tx, booking, oldAllocations, newPlan, userId, reason) {
@@ -79,6 +93,8 @@ export async function POST(request) {
   const { user, error } = await authorizeApi(permission);
   if (error) return error;
   try {
+    let leaveRules = {}; try { leaveRules = JSON.parse(await getSetting("OPS_LEAVE_RULES", "{}")); } catch {}
+    const preventNegativeBalance = leaveRules.preventNegativeBalance !== false;
     if (body.action === "createBooking") {
       const reason = requiredReason(body);
       const employee = await prisma.employee.findUnique({ where: { id: String(body.employeeId || "") } });
@@ -108,7 +124,7 @@ export async function POST(request) {
         if (body.action === "correctBooking" && booking.status !== "APPROVED") throw new Error("Only approved leave requests can be corrected");
         if (body.action === "cancelBooking" && booking.status === "CANCELLED") throw new Error("Leave request is already cancelled");
         const oldAllocations = booking.allocations;
-        if (booking.status === "APPROVED" && body.action !== "approveBooking") await reverseBookingLedger(tx, oldAllocations, user.id, reason, `${booking.id}:${body.action}`);
+        if (booking.status === "APPROVED" && body.action !== "approveBooking") await reverseBookingLedger(tx, oldAllocations, user.id, reason, `${booking.id}:${body.action}`, preventNegativeBalance);
         if (body.action === "cancelBooking") {
           await syncBookingAttendance(tx, booking, oldAllocations, [], user.id, reason);
           return tx.opsLeaveBooking.update({ where: { id: booking.id }, data: { status: "CANCELLED", note: reason } });
@@ -117,12 +133,13 @@ export async function POST(request) {
         if (dates[0].slice(0, 4) !== dates.at(-1).slice(0, 4)) throw new Error("A leave request must stay within one balance year");
         if (body.action === "correctBooking" && await tx.opsLeaveBooking.findFirst({ where: { id: { not: booking.id }, employeeId: booking.employeeId, status: { in: ["DRAFT", "APPROVED"] }, startDate: { lte: dates.at(-1) }, endDate: { gte: dates[0] } } })) throw new Error("Employee already has an overlapping leave request");
         const requestedType = String(body.requestedType || oldAllocations[0]?.leaveType || "SMART").toUpperCase();
+        if (leaveRules.requireCoverageCheck !== false) await assertPublishedScheduleCoverage(tx, booking.employeeId, dates);
         const year = Number(dates[0].slice(0, 4));
         const accounts = await employeeAccounts(tx, booking.employeeId, year);
         const plan = allocateLeaveDates(dates, accounts, booking.employee, requestedType);
         await tx.opsLeaveBookingAllocation.deleteMany({ where: { leaveBookingId: booking.id } });
         const updated = await tx.opsLeaveBooking.update({ where: { id: booking.id }, data: { startDate: dates[0], endDate: dates.at(-1), requestedDays: dates.length, status: "APPROVED", approvedAt: new Date(), approvedBy: user.id, note: reason } });
-        await applyBookingLedger(tx, updated, plan, user.id, reason, body.action === "correctBooking" ? "LEAVE_BOOKING_CORRECTION" : "LEAVE_BOOKING");
+        await applyBookingLedger(tx, updated, plan, user.id, reason, body.action === "correctBooking" ? "LEAVE_BOOKING_CORRECTION" : "LEAVE_BOOKING", preventNegativeBalance);
         await syncBookingAttendance(tx, booking, oldAllocations, plan, user.id, reason);
         return updated;
       }, { timeout: 30000 });
@@ -143,7 +160,7 @@ export async function POST(request) {
       const result = await prisma.$transaction(async (tx) => {
         const account = await tx.opsLeaveAccount.upsert({ where: { employeeId_leaveType_leaveYear: { employeeId: employee.id, leaveType, leaveYear: year } }, update: {}, create: { employeeId: employee.id, leaveType, leaveYear: year, entitlement: null, policyVersion: "MANUAL" } });
         const current = await tx.opsLeaveTransaction.aggregate({ where: { leaveAccountId: account.id, status: "VALID" }, _sum: { amount: true } });
-        assertNonNegativeLeaveBalance(current._sum.amount || 0, amount);
+        if (preventNegativeBalance) assertNonNegativeLeaveBalance(current._sum.amount || 0, amount);
         return tx.opsLeaveTransaction.create({ data: { leaveAccountId: account.id, amount, effectiveDate: String(body.date || localDate()), transactionType: amount > 0 ? "MANUAL_CREDIT" : "MANUAL_DEBIT", sourceType: "MANUAL_ADJUSTMENT", note: reason, createdBy: user.id } });
       });
       await writeAudit({ action: "OPS_LEAVE_ADJUSTED", user, summary: `Adjusted ${leaveType} balance for ${employee.name}`, metadata: { employeeId: employee.id, leaveType, amount, transactionId: result.id }, reason });
@@ -156,7 +173,7 @@ export async function POST(request) {
       const result = await prisma.$transaction(async (tx) => {
         if (await tx.opsLeaveTransaction.findUnique({ where: { reversesTransactionId: source.id } })) throw new Error("Leave transaction is already reversed");
         const current = await tx.opsLeaveTransaction.aggregate({ where: { leaveAccountId: source.leaveAccountId, status: "VALID" }, _sum: { amount: true } });
-        assertNonNegativeLeaveBalance(current._sum.amount || 0, -source.amount);
+        if (preventNegativeBalance) assertNonNegativeLeaveBalance(current._sum.amount || 0, -source.amount);
         return tx.opsLeaveTransaction.create({ data: { leaveAccountId: source.leaveAccountId, amount: -source.amount, effectiveDate: String(body.date || localDate()), transactionType: "REVERSAL", sourceType: "MANUAL_REVERSAL", sourceReferenceId: source.id, note: reason, reversesTransactionId: source.id, createdBy: user.id } });
       });
       await writeAudit({ action: "OPS_LEAVE_TRANSACTION_REVERSED", user, summary: `Reversed leave transaction ${source.id}`, metadata: { transactionId: source.id, reversalId: result.id }, reason });
@@ -219,7 +236,7 @@ export async function POST(request) {
         for (const source of existingCredits.filter((item) => !eligibleRefs.has(item.sourceReferenceId))) {
           if (await tx.opsLeaveTransaction.findUnique({ where: { reversesTransactionId: source.id } })) continue;
           const current = await tx.opsLeaveTransaction.aggregate({ where: { leaveAccountId: source.leaveAccountId, status: "VALID" }, _sum: { amount: true } });
-          assertNonNegativeLeaveBalance(current._sum.amount || 0, -source.amount);
+          if (preventNegativeBalance) assertNonNegativeLeaveBalance(current._sum.amount || 0, -source.amount);
           await tx.opsLeaveTransaction.create({ data: { leaveAccountId: source.leaveAccountId, amount: -source.amount, effectiveDate: localDate(), transactionType: "REVERSAL", sourceType: "OFFICIAL_HOLIDAY_REVERSAL", sourceReferenceId: source.id, note: reason, reversesTransactionId: source.id, createdBy: user.id } });
           reversed += 1;
         }

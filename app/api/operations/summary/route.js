@@ -11,6 +11,8 @@ export async function GET() {
   const { error } = await authorizeApi("OPERATIONS_DASHBOARD_READ");
   if (error) return error;
   let branchConfig = {}; try { branchConfig = JSON.parse(await getSetting("OPS_BRANCH_CONFIG", "{}")); } catch {}
+  let stockRules = {}; try { stockRules = JSON.parse(await getSetting("OPS_STOCK_RULES", "{}")); } catch {}
+  const lowStockThreshold = Math.max(0, Number(stockRules.lowStockThreshold ?? 10));
   const today = todayInTimezone(branchConfig.timezone || "Africa/Cairo");
   const nextWeek = new Date(`${today}T00:00:00Z`); nextWeek.setUTCDate(nextWeek.getUTCDate() + 7); const nextWeekDate = nextWeek.toISOString().slice(0, 10);
   const [activeEmployees, hrisEmployees, partTimeEmployees, schedules, attendanceDay, draftAppraisals, draftLeaveRequests, latestApproved, activeMismatch, missingRosterNames, upcomingTrips, upcomingEvents, lowStock] = await Promise.all([
@@ -26,7 +28,7 @@ export async function GET() {
     prisma.employee.count({ where: { active: true, OR: [{ operationalName: null }, { operationalName: "" }] } }),
     prisma.opsDailyTrip.count({ where: { workDate: { gte: today, lte: nextWeekDate }, status: { not: "CANCELLED" } } }),
     prisma.opsDailyEvent.count({ where: { workDate: { gte: today, lte: nextWeekDate }, status: { not: "CANCELLED" } } }),
-    prisma.opsWristbandStock.count({ where: { workDate: { in: ["ALL", today] }, availableStock: { lte: 10 } } }),
+    prisma.opsWristbandStock.count({ where: { workDate: { in: ["ALL", today] }, availableStock: { lte: lowStockThreshold } } }),
   ]);
   const currentSchedule = schedules.find((schedule) => schedule.periodStart <= today && schedule.periodEnd >= today) || null;
   const attention = [];

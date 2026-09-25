@@ -108,6 +108,14 @@ export async function POST(request) {
   const permission = body.action === "publish" ? "OPS_SCHEDULE_PUBLISH" : "OPS_SCHEDULE_MANAGE";
   const { user, error } = await authorizeApi(permission);
   if (error) return error;
+  if (body.action === "createBlankDraft") {
+    const year = Number(body.year); const month = Number(body.month);
+    const period = getOperationalSchedulePeriod(year, month);
+    const latest = await prisma.opsSchedule.findFirst({ where: { operationalYear: year, operationalMonth: month }, orderBy: { version: "desc" } });
+    const created = await prisma.opsSchedule.create({ data: { year, month, operationalYear: year, operationalMonth: month, periodStart: period.startDate, periodEnd: period.endDate, version: (latest?.version || 0) + 1, status: "DRAFT", basedOnScheduleId: latest?.id || null } });
+    await writeAudit({ action: "OPS_SCHEDULE_DRAFT_CREATED", user, summary: `Created blank schedule draft ${year}-${month} v${created.version}`, metadata: { scheduleId: created.id } });
+    return NextResponse.json({ success: true, schedule: created }, { status: 201 });
+  }
   const sourceSchedule = await prisma.opsSchedule.findUnique({ where: { id: String(body.scheduleId || "") }, include: { assignments: true } });
   if (!sourceSchedule) return NextResponse.json({ success: false, error: "Schedule not found" }, { status: 404 });
   if (body.action === "createRevision") {

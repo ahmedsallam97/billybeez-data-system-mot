@@ -201,7 +201,7 @@ export default function DailySetupWorkspace({ section = "trips" }) {
     </section>}
 
     <div className="ops-setup-grid">
-      {section === "trips" && <TripForm key={editingTrip?.id || "new"} trip={editingTrip} daily={daily} submit={submit} cancel={() => setEditingTrip(null)} isArabic={isArabic} />}
+      {section === "trips" && <TripForm key={editingTrip?.id || "new"} trip={editingTrip} daily={daily} catalogues={catalogues} submit={submit} cancel={() => setEditingTrip(null)} isArabic={isArabic} />}
       {section === "birthdays" && <BirthdayForm key={editingEvent?.id || "new"} event={editingEvent} daily={daily} catalogues={catalogues} submit={submit} cancel={() => setEditingEvent(null)} isArabic={isArabic} />}
       {section === "offers" && <OfferForm key={editingOffer?.id || "new"} offer={editingOffer} busy={busy} isArabic={isArabic} submit={submit} cancel={() => setEditingOffer(null)} />}
       {section === "stock" && <>
@@ -221,13 +221,27 @@ export default function DailySetupWorkspace({ section = "trips" }) {
   </section>;
 }
 
-function TripForm({ trip, daily, submit, cancel, isArabic }) {
+function storedMealCounts(item) {
+  let values = {};
+  try { values = JSON.parse(item?.mealCountsJson || "{}"); } catch { values = {}; }
+  if (item?.chickenNuggets && values["Chicken Nuggets"] == null) values["Chicken Nuggets"] = item.chickenNuggets;
+  if (item?.beefBurgers && values["Beef Burger"] == null) values["Beef Burger"] = item.beefBurgers;
+  if (item?.chickenBurgers && values["Chicken Burger"] == null) values["Chicken Burger"] = item.chickenBurgers;
+  return values;
+}
+function MealCountFields({ item, meals = [], isArabic }) {
+  const values = storedMealCounts(item);
+  const configured = meals.length ? meals : ["Chicken Nuggets", "Beef Burger", "Chicken Burger"];
+  return <fieldset className="ops-meal-counts"><legend>{isArabic ? "أعداد الوجبات" : "Meal quantities"}</legend>{configured.map((meal) => <label key={meal}>{meal}<input name={`meal__${encodeURIComponent(meal)}`} type="number" min="0" defaultValue={values[meal] ?? 0} /></label>)}</fieldset>;
+}
+
+function TripForm({ trip, daily, catalogues, submit, cancel, isArabic }) {
   return <FormCard title={trip ? (isArabic ? "تعديل الرحلة" : "Edit trip") : (isArabic ? "رحلة جديدة" : "New trip")} hint={isArabic ? "سجل المدرسة والموعد والأعداد والوجبة؛ لون البريسلت يختار تلقائيًا من الستوك." : "School, timing, headcount and meals; bracelet stock is assigned automatically."} button={isArabic ? "حفظ الرحلة" : "Save trip"} onSubmit={(event) => submit(trip ? "updateTrip" : "createTrip", event, trip ? { tripId: trip.id, branch: trip.branch || "MOT" } : {}, trip ? "PATCH" : "POST")} secondary={trip && <button type="button" className="secondary" onClick={cancel}>{isArabic ? "إلغاء التعديل" : "Cancel edit"}</button>}>
     <select name="tripPartnerId" aria-label={isArabic ? "أكاديمية مسجلة" : "Saved academy"} defaultValue="" onChange={(event) => { const item = daily?.tripPartners?.find((row) => row.id === event.target.value); const form = event.currentTarget.form; if (item && form) { form.elements.name.value = item.name; form.elements.supervisorName.value = item.supervisorName || ""; form.elements.supervisorPhone.value = item.supervisorPhone || ""; } }}><option value="">{isArabic ? "أكاديمية جديدة" : "New academy"}</option>{(daily?.tripPartners || []).map((item) => <option key={item.id} value={item.id}>{item.name}{item.supervisorName ? ` · ${item.supervisorName}` : ""}</option>)}</select>
     <input name="name" defaultValue={trip?.name || ""} placeholder={isArabic ? "اسم المدرسة أو الأكاديمية الجديدة" : "New school / academy name"} /><label>{isArabic ? "من" : "From"}<input name="startTime" type="time" required defaultValue={trip?.startTime || ""} /></label><label>{isArabic ? "إلى" : "To"}<input name="endTime" type="time" defaultValue={trip?.endTime || ""} /></label>
     <input name="expectedChildren" type="number" min="0" defaultValue={trip?.expectedChildren ?? ""} placeholder={isArabic ? "عدد الأطفال" : "Children"} /><input name="supervisorName" defaultValue={trip?.supervisorName || ""} placeholder={isArabic ? "اسم المشرف" : "Supervisor name"} /><input name="supervisorPhone" type="tel" defaultValue={trip?.supervisorPhone || ""} placeholder={isArabic ? "تليفون المشرف" : "Supervisor phone"} />
     <label className="ops-check-line"><input name="mealIncluded" type="checkbox" defaultChecked={trip?.mealIncluded === true} /> {isArabic ? "الرحلة تشمل وجبة" : "Meal included"}</label>
-    <input name="chickenNuggets" type="number" min="0" defaultValue={trip?.chickenNuggets ?? ""} placeholder={isArabic ? "عدد تشيكن ناجتس" : "Chicken nuggets meals"} /><input name="beefBurgers" type="number" min="0" defaultValue={trip?.beefBurgers ?? ""} placeholder={isArabic ? "عدد بيف برجر" : "Beef burger meals"} /><input name="chickenBurgers" type="number" min="0" defaultValue={trip?.chickenBurgers ?? ""} placeholder={isArabic ? "عدد تشيكن برجر" : "Chicken burger meals"} />
+    <MealCountFields item={trip} meals={catalogues.meals || []} isArabic={isArabic} />
     <input name="staffingRequired" type="number" min="0" defaultValue={trip?.staffingRequired ?? ""} placeholder={isArabic ? "الموظفون المطلوبون" : "Staff required"} /><textarea name="notes" defaultValue={trip?.notes || ""} aria-label={isArabic ? "ملاحظات الرحلة" : "Trip notes"} placeholder={isArabic ? "ملاحظات الرحلة" : "Trip notes"} />
   </FormCard>;
 }
@@ -237,7 +251,7 @@ function BirthdayForm({ event, daily, catalogues, submit, cancel, isArabic }) {
     <select name="birthdayCustomerId" aria-label={isArabic ? "عميل مسجل" : "Saved customer"} defaultValue="" onChange={(event) => { const item = daily?.birthdayCustomers?.find((row) => row.id === event.target.value); const form = event.currentTarget.form; if (item && form) { form.elements.customerName.value = item.customerName; form.elements.customerPhone.value = item.phone; form.elements.childName.value = item.childName || ""; } }}><option value="">{isArabic ? "عميل جديد" : "New customer"}</option>{(daily?.birthdayCustomers || []).map((item) => <option key={item.id} value={item.id}>{item.customerName} · {item.phone}{item.childName ? ` · ${item.childName}` : ""}</option>)}</select>
     <input name="name" defaultValue={event?.name || ""} placeholder={isArabic ? "عنوان الحجز (اختياري)" : "Booking title (optional)"} /><input name="customerName" defaultValue={event?.customerName || ""} placeholder={isArabic ? "اسم العميل" : "Customer name"} /><input name="customerPhone" type="tel" defaultValue={event?.customerPhone || ""} placeholder={isArabic ? "رقم التليفون" : "Phone number"} /><input name="childName" defaultValue={event?.childName || ""} placeholder={isArabic ? "اسم الطفل" : "Child name"} />
     <label>{isArabic ? "من" : "From"}<input name="startTime" type="time" required defaultValue={event?.startTime || ""} /></label><label>{isArabic ? "إلى" : "To"}<input name="endTime" type="time" defaultValue={event?.endTime || ""} /></label><input name="expectedGuests" type="number" min="0" defaultValue={event?.expectedGuests ?? ""} placeholder={isArabic ? "عدد الضيوف" : "Guests"} />
-    <input name="chickenNuggets" type="number" min="0" defaultValue={event?.chickenNuggets ?? ""} placeholder={isArabic ? "عدد تشيكن ناجتس" : "Chicken nuggets meals"} /><input name="beefBurgers" type="number" min="0" defaultValue={event?.beefBurgers ?? ""} placeholder={isArabic ? "عدد بيف برجر" : "Beef burger meals"} /><input name="chickenBurgers" type="number" min="0" defaultValue={event?.chickenBurgers ?? ""} placeholder={isArabic ? "عدد تشيكن برجر" : "Chicken burger meals"} />
+    <MealCountFields item={event} meals={catalogues.meals || []} isArabic={isArabic} />
     <input name="partyRoomHours" type="number" min="0" step="0.5" defaultValue={event?.partyRoomHours ?? ""} placeholder={isArabic ? "حجز Party Room بالساعات" : "Party Room hours"} /><select name="location" defaultValue={event?.location || ""}><option value="">{isArabic ? "اختر الغرفة" : "Choose room"}</option>{(catalogues.partyRooms || []).map((item) => { const name = typeof item === "string" ? item : item.name; return <option key={name} value={name}>{name}</option>; })}</select>
     <input name="staffingRequired" type="number" min="0" defaultValue={event?.staffingRequired ?? ""} placeholder={isArabic ? "الموظفون المطلوبون" : "Staff required"} /><textarea name="notes" defaultValue={event?.notes || ""} aria-label={isArabic ? "ملاحظات عيد الميلاد" : "Birthday notes"} placeholder={isArabic ? "ملاحظات" : "Notes"} />
   </FormCard>;

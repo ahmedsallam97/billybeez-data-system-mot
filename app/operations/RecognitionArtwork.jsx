@@ -62,7 +62,7 @@ export function MonthlyWinnerArtwork({ winner, variant, config }) {
     <div className="eotm-corner corner-one" aria-hidden="true" /><div className="eotm-corner corner-two" aria-hidden="true" /><div className="eotm-burst burst-one" aria-hidden="true">•••</div><div className="eotm-burst burst-two" aria-hidden="true">•••</div>
     <Brand config={resolved} tagline={monthly.brandTagline} /><div className="eotm-master-title"><b>{monthly.titleLine1}</b><strong>{monthly.titleLine2}</strong><i aria-hidden="true" /></div>
     <div className="eotm-photo-frame"><EmployeePhoto employee={winner.employee} config={resolved} /></div><div className="eotm-name-ribbon">{name}</div>
-    <div className="eotm-master-period"><i />{ENGLISH_MONTHS[winner.month - 1]} {winner.year}<b>·</b>{winner.branch || "MOT"}<i /></div>
+    <div className="eotm-master-period"><i />{resolved.hall.monthLabels?.[winner.month - 1] || ENGLISH_MONTHS[winner.month - 1]} {winner.year}<b>·</b>{winner.branch || "MOT"}<i /></div>
     <div className="eotm-master-message"><b>{replaceName(monthly.congratulations)}</b><span>{replaceName(monthly.message)}</span></div>
     <div className="eotm-side-copy side-left">{lines(monthly.leftMessage)}</div><div className="eotm-side-copy side-right">{lines(monthly.rightMessage)}</div><div className="eotm-bee-watermark" aria-hidden="true">B</div>
   </article>;
@@ -70,13 +70,13 @@ export function MonthlyWinnerArtwork({ winner, variant, config }) {
 
 export function HallOfFameArtwork({ winners, yearLabel, config }) {
   const resolved = resolveConfig(config); const hall = resolved.hall; const year = Number(yearLabel) || new Date().getFullYear();
-  const slots = ENGLISH_MONTHS.map((month, index) => ({ month, winner: winners.find((item) => item.year === year && item.month === index + 1) || null }));
+  const slots = (hall.monthLabels?.length === 12 ? hall.monthLabels : ENGLISH_MONTHS).map((month, index) => ({ month, winner: winners.find((item) => item.year === year && item.month === index + 1) || null }));
   return <article className="recognition-artwork hall-master-artwork" style={{ ...artworkStyle(resolved, "hall"), "--hall-odd": hall.oddMonthColor, "--hall-even": hall.evenMonthColor }} data-recognition-kind="hall" dir="ltr">
     <div className="hall-wave hall-wave-top" aria-hidden="true" /><div className="hall-wave hall-wave-bottom" aria-hidden="true" />
     <header><div className="hall-slogan">{lines(hall.slogan)}</div><Brand config={resolved} tagline={resolved.monthly.brandTagline} /><b>{year}</b></header>
     <div className="hall-master-heading"><div className="hall-crown" aria-hidden="true">♛</div><h2>{hall.title}</h2><h3>{hall.subtitle}</h3><p>{hall.intro}</p></div>
-    <div className="hall-month-grid">{slots.map(({ month, winner }, index) => <section className={`hall-month-card ${index % 2 ? "yellow" : "purple"}`} key={month}><div className="hall-month-label">{month}</div><EmployeePhoto employee={winner?.employee} hall config={resolved} /><b>{winner ? displayName(winner.employee, resolved) : "TBA"}</b><span>{winner ? `${winner.branch || "MOT"} Branch` : hall.awaitingWinner}</span></section>)}</div>
+    <div className="hall-month-grid">{slots.map(({ month, winner }, index) => <section className={`hall-month-card ${index % 2 ? "yellow" : "purple"}`} key={`${month}-${index}`}><div className="hall-month-label">{month}</div><EmployeePhoto employee={winner?.employee} hall config={resolved} /><b>{winner ? displayName(winner.employee, resolved) : "TBA"}</b><span>{winner ? `${winner.branch || "MOT"} ${hall.branchSuffix || "Branch"}` : hall.awaitingWinner}</span></section>)}</div>
     <section className="hall-appreciation"><h3>{hall.messageTitle}</h3><p>{hall.messageParagraph1}</p><p>{hall.messageParagraph2}</p><strong>{hall.messageHighlight}</strong><small>{hall.messageFooter}</small></section>
-    <footer className="hall-values"><div><b>♢</b><span>Safety<br />Always</span></div><div><b>♚</b><span>Stronger<br />Together</span></div><div><b>▥</b><span>Bigger<br />Possibilities</span></div><div><b>♥</b><span>Happier<br />Guests</span></div><div><b>★</b><span>Brighter<br />Future</span></div><section><small>{hall.signatureLabel}</small><strong>{hall.signature}</strong></section></footer>
+    <footer className="hall-values">{(hall.values || []).map((item, index) => { const text = item.text || [item.line1, item.line2].filter(Boolean).join("\n"); return <div key={`${text}-${index}`}><b>{item.icon}</b><span>{lines(text)}</span></div>; })}<section><small>{hall.signatureLabel}</small><strong>{hall.signature}</strong></section></footer>
   </article>;
 }

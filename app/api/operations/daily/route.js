@@ -44,6 +44,25 @@ function offerValues(body, userId) {
 }
 
 function bool(value) { return value === true || value === "true" || value === "on" || value === "YES"; }
+function mealCounts(body) {
+  const counts = {};
+  for (const [key, value] of Object.entries(body || {})) {
+    if (!key.startsWith("meal__")) continue;
+    const label = decodeURIComponent(key.slice(6)).trim();
+    const quantity = Math.max(0, Math.round(Number(value || 0)));
+    if (label && quantity) counts[label] = quantity;
+  }
+  const legacy = [
+    ["Chicken Nuggets", body.chickenNuggets],
+    ["Beef Burger", body.beefBurgers],
+    ["Chicken Burger", body.chickenBurgers],
+  ];
+  for (const [label, value] of legacy) {
+    const quantity = Math.max(0, Math.round(Number(value || 0)));
+    if (quantity && counts[label] == null) counts[label] = quantity;
+  }
+  return counts;
+}
 function stockValues(body) {
   const number = (key) => Math.max(0, Number(body[key] || 0));
   const stockCategory = String(body.stockCategory || "BRACELET").trim().toUpperCase();
@@ -247,7 +266,7 @@ export async function POST(request) {
       const expectedChildren = number("expectedChildren");
       const record = await prisma.$transaction(async (tx) => {
         const bracelet = await reserveBracelets(tx, { branch, usageType: "TRIP", quantity: expectedChildren, offset: existingCount });
-        return tx.opsDailyTrip.create({ data: { branch, workDate: date, tripPartnerId: partner.id, name: partner.name, startTime: String(body.startTime), endTime: String(body.endTime || "") || null, expectedChildren, supervisorName: String(body.supervisorName || partner.supervisorName || "").trim() || null, supervisorPhone: String(body.supervisorPhone || partner.supervisorPhone || "").trim() || null, mealIncluded: bool(body.mealIncluded), chickenNuggets: number("chickenNuggets"), beefBurgers: number("beefBurgers"), chickenBurgers: number("chickenBurgers"), braceletType: bracelet.braceletType, braceletColor: bracelet.braceletColor, braceletMaterial: bracelet.braceletMaterial, staffingRequired: number("staffingRequired"), notes: String(body.notes || "").trim() || null, createdBy: user.id, updatedBy: user.id } });
+        return tx.opsDailyTrip.create({ data: { branch, workDate: date, tripPartnerId: partner.id, name: partner.name, startTime: String(body.startTime), endTime: String(body.endTime || "") || null, expectedChildren, supervisorName: String(body.supervisorName || partner.supervisorName || "").trim() || null, supervisorPhone: String(body.supervisorPhone || partner.supervisorPhone || "").trim() || null, mealIncluded: bool(body.mealIncluded), chickenNuggets: number("chickenNuggets"), beefBurgers: number("beefBurgers"), chickenBurgers: number("chickenBurgers"), mealCountsJson: JSON.stringify(mealCounts(body)), braceletType: bracelet.braceletType, braceletColor: bracelet.braceletColor, braceletMaterial: bracelet.braceletMaterial, staffingRequired: number("staffingRequired"), notes: String(body.notes || "").trim() || null, createdBy: user.id, updatedBy: user.id } });
       });
       await writeAudit({ action: "OPS_CREATETRIP", user, summary: `Created trip for ${partner.name}`, metadata: { id: record.id, partnerId: partner.id, branch, date } });
       return NextResponse.json({ success: true, record, partner });
@@ -263,7 +282,7 @@ export async function POST(request) {
       const expectedGuests = number("expectedGuests");
       const record = await prisma.$transaction(async (tx) => {
         const bracelet = await reserveBracelets(tx, { branch, usageType: "BIRTHDAY", quantity: expectedGuests, offset: existingCount });
-        return tx.opsDailyEvent.create({ data: { branch, workDate: date, birthdayCustomerId: customer.id, name: String(body.name || `${childName} Birthday`).trim(), customerName, customerPhone: phone, childName, startTime: String(body.startTime), endTime: String(body.endTime || "") || null, eventType: "BIRTHDAY", expectedGuests, chickenNuggets: number("chickenNuggets"), beefBurgers: number("beefBurgers"), chickenBurgers: number("chickenBurgers"), partyRoomHours: body.partyRoomHours ? Number(body.partyRoomHours) : null, braceletType: bracelet.braceletType, braceletColor: bracelet.braceletColor, braceletMaterial: bracelet.braceletMaterial, location: String(body.location || "").trim() || null, staffingRequired: number("staffingRequired"), notes: String(body.notes || "").trim() || null, createdBy: user.id, updatedBy: user.id } });
+        return tx.opsDailyEvent.create({ data: { branch, workDate: date, birthdayCustomerId: customer.id, name: String(body.name || `${childName} Birthday`).trim(), customerName, customerPhone: phone, childName, startTime: String(body.startTime), endTime: String(body.endTime || "") || null, eventType: "BIRTHDAY", expectedGuests, chickenNuggets: number("chickenNuggets"), beefBurgers: number("beefBurgers"), chickenBurgers: number("chickenBurgers"), mealCountsJson: JSON.stringify(mealCounts(body)), partyRoomHours: body.partyRoomHours ? Number(body.partyRoomHours) : null, braceletType: bracelet.braceletType, braceletColor: bracelet.braceletColor, braceletMaterial: bracelet.braceletMaterial, location: String(body.location || "").trim() || null, staffingRequired: number("staffingRequired"), notes: String(body.notes || "").trim() || null, createdBy: user.id, updatedBy: user.id } });
       });
       await writeAudit({ action: "OPS_CREATEEVENT", user, summary: `Created birthday for ${childName}`, metadata: { id: record.id, customerId: customer.id, branch, date } });
       return NextResponse.json({ success: true, record, customer });
@@ -342,7 +361,7 @@ export async function PATCH(request) {
       const expectedChildren = Math.max(0, Number(body.expectedChildren || 0));
       const record = await prisma.$transaction(async (tx) => {
         const bracelet = await updateBraceletReservation(tx, { branch: current.branch, current, quantity: expectedChildren, usageType: "TRIP" });
-        return tx.opsDailyTrip.update({ where: { id: current.id }, data: { name: String(body.name || current.name).trim(), startTime: String(body.startTime || current.startTime || "") || null, endTime: String(body.endTime || "") || null, expectedChildren, supervisorName: String(body.supervisorName || "").trim() || null, supervisorPhone: String(body.supervisorPhone || "").trim() || null, mealIncluded: bool(body.mealIncluded), chickenNuggets: Math.max(0, Number(body.chickenNuggets || 0)), beefBurgers: Math.max(0, Number(body.beefBurgers || 0)), chickenBurgers: Math.max(0, Number(body.chickenBurgers || 0)), braceletType: bracelet.braceletType, braceletColor: bracelet.braceletColor, braceletMaterial: bracelet.braceletMaterial, staffingRequired: Math.max(0, Number(body.staffingRequired || 0)), notes: String(body.notes || "").trim() || null, updatedBy: user.id } });
+        return tx.opsDailyTrip.update({ where: { id: current.id }, data: { name: String(body.name || current.name).trim(), startTime: String(body.startTime || current.startTime || "") || null, endTime: String(body.endTime || "") || null, expectedChildren, supervisorName: String(body.supervisorName || "").trim() || null, supervisorPhone: String(body.supervisorPhone || "").trim() || null, mealIncluded: bool(body.mealIncluded), chickenNuggets: Math.max(0, Number(body.chickenNuggets || 0)), beefBurgers: Math.max(0, Number(body.beefBurgers || 0)), chickenBurgers: Math.max(0, Number(body.chickenBurgers || 0)), mealCountsJson: JSON.stringify(mealCounts(body)), braceletType: bracelet.braceletType, braceletColor: bracelet.braceletColor, braceletMaterial: bracelet.braceletMaterial, staffingRequired: Math.max(0, Number(body.staffingRequired || 0)), notes: String(body.notes || "").trim() || null, updatedBy: user.id } });
       });
       await writeAudit({ action: "OPS_UPDATETRIP", user, summary: `Updated trip ${record.name}`, metadata: { id: record.id, branch: record.branch } });
       return NextResponse.json({ success: true, record });
@@ -363,7 +382,7 @@ export async function PATCH(request) {
       const expectedGuests = Math.max(0, Number(body.expectedGuests || 0));
       const record = await prisma.$transaction(async (tx) => {
         const bracelet = await updateBraceletReservation(tx, { branch: current.branch, current, quantity: expectedGuests, usageType: "BIRTHDAY" });
-        return tx.opsDailyEvent.update({ where: { id: current.id }, data: { name: String(body.name || current.name).trim(), customerName: String(body.customerName || current.customerName || "").trim() || null, customerPhone: String(body.customerPhone || current.customerPhone || "").trim() || null, childName: String(body.childName || current.childName || "").trim() || null, startTime: String(body.startTime || current.startTime || "") || null, endTime: String(body.endTime || "") || null, expectedGuests, chickenNuggets: Math.max(0, Number(body.chickenNuggets || 0)), beefBurgers: Math.max(0, Number(body.beefBurgers || 0)), chickenBurgers: Math.max(0, Number(body.chickenBurgers || 0)), partyRoomHours: body.partyRoomHours ? Number(body.partyRoomHours) : null, braceletType: bracelet.braceletType, braceletColor: bracelet.braceletColor, braceletMaterial: bracelet.braceletMaterial, location: String(body.location || "").trim() || null, staffingRequired: Math.max(0, Number(body.staffingRequired || 0)), notes: String(body.notes || "").trim() || null, updatedBy: user.id } });
+        return tx.opsDailyEvent.update({ where: { id: current.id }, data: { name: String(body.name || current.name).trim(), customerName: String(body.customerName || current.customerName || "").trim() || null, customerPhone: String(body.customerPhone || current.customerPhone || "").trim() || null, childName: String(body.childName || current.childName || "").trim() || null, startTime: String(body.startTime || current.startTime || "") || null, endTime: String(body.endTime || "") || null, expectedGuests, chickenNuggets: Math.max(0, Number(body.chickenNuggets || 0)), beefBurgers: Math.max(0, Number(body.beefBurgers || 0)), chickenBurgers: Math.max(0, Number(body.chickenBurgers || 0)), mealCountsJson: JSON.stringify(mealCounts(body)), partyRoomHours: body.partyRoomHours ? Number(body.partyRoomHours) : null, braceletType: bracelet.braceletType, braceletColor: bracelet.braceletColor, braceletMaterial: bracelet.braceletMaterial, location: String(body.location || "").trim() || null, staffingRequired: Math.max(0, Number(body.staffingRequired || 0)), notes: String(body.notes || "").trim() || null, updatedBy: user.id } });
       });
       await writeAudit({ action: "OPS_UPDATEEVENT", user, summary: `Updated birthday ${record.name}`, metadata: { id: record.id, branch: record.branch } });
       return NextResponse.json({ success: true, record });

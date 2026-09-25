@@ -76,6 +76,16 @@ const fallback = {
     "• Follow your assigned rotation.\n• Fill break times when leaving and returning.\n• Contact the shift leader for any changes.",
   fillerRows: { AM: 5, BW: 4, PM: 5 },
   rotationHours: ["10", "11", "12", "1", "2", "3", "4", "5"],
+  roleColors: { female: "#fff0a8", male: "#e7d6f6", cashier: "#b9e2c3", leader: "#c3e9f6", cashierLeader: "#d5b9ec" },
+  cardColors: { trips: "#3182bd", birthdays: "#4f8c5c", offers: "#d98a31", bracelets: "#2e7da5" },
+  labels: {
+    ...cardLabels, employee: "EMPLOYEE", attendance: "ATTENDANCE", break: "BREAK", rotation: "ROTATION (HOURLY)", rotationTime: "ROTATION TIME",
+    in: "IN", out: "OUT", from: "FROM", to: "TO", morningShift: "MORNING SHIFT (AM)", betweenShift: "BETWEEN SHIFT (BW)", nightShift: "NIGHT SHIFT (PM)",
+    frontCashier: "Front Cashier", cashier: "Cashier", teamLeader: "Team Leader", cashierLeader: "Front Cashier | Team Leader",
+    leaves: "TODAY'S LEAVES / OFF", notes: "OPERATIONAL NOTES", noLeaves: "No leave / off in the published schedule", noNotices: "No operational notices recorded", noOffers: "No active offers", noBracelets: "No wristband stock recorded",
+    offerAdmits: "Admits", childSingular: "child", childPlural: "children", remaining: "remaining", page: "Page",
+  },
+  currency: "EGP", weekdayLocale: "en-US",
 };
 function mergeConfig(value) {
   const input = value && typeof value === "object" ? value : {};
@@ -85,6 +95,9 @@ function mergeConfig(value) {
     visibleCards: { ...fallback.visibleCards, ...input.visibleCards },
     visibleSections: { ...fallback.visibleSections, ...input.visibleSections },
     cardContent: { ...fallback.cardContent, ...input.cardContent },
+    roleColors: { ...fallback.roleColors, ...input.roleColors },
+    cardColors: { ...fallback.cardColors, ...input.cardColors },
+    labels: { ...fallback.labels, ...input.labels },
     fillerRows: { ...fallback.fillerRows, ...input.fillerRows },
     cardOrder: Array.isArray(input.cardOrder)
       ? input.cardOrder
@@ -111,25 +124,28 @@ function rosterName(employee = {}) {
   return String(employee.nameEn || employee.name || "").trim().split(/\s+/).slice(0, 2).join(" ");
 }
 
-function rosterRole(person) {
-  const cashier = person?.employee?.department === "CASHIER" || frontAssignment(person?.metadata) === "FRONT_CASHIER";
+function rosterRole(person, labels = fallback.labels) {
+  const frontCashier = frontAssignment(person?.metadata) === "FRONT_CASHIER";
+  const cashier = person?.employee?.department === "CASHIER";
   const leader = Boolean(person?.employee?.operationsTeamLeader);
-  if (cashier && leader) return { label: "Front Cashier | Team Leader", tone: "cashier-leader" };
-  if (cashier) return { label: "Front Cashier", tone: "cashier" };
-  if (leader) return { label: "Team Leader", tone: "leader" };
+  if (frontCashier && leader) return { label: labels.cashierLeader, tone: "cashier-leader" };
+  if (frontCashier) return { label: labels.frontCashier, tone: "cashier" };
+  if (cashier && leader) return { label: `${labels.cashier} | ${labels.teamLeader}`, tone: "cashier-leader" };
+  if (cashier) return { label: labels.cashier, tone: "cashier" };
+  if (leader) return { label: labels.teamLeader, tone: "leader" };
   return null;
 }
 
-function employeeTone(person) {
-  const role = rosterRole(person);
+function employeeTone(person, labels) {
+  const role = rosterRole(person, labels);
   if (role) return role.tone;
   if (person?.employee?.gender === "FEMALE") return "female";
   if (person?.employee?.gender === "MALE") return "male";
   return employeeGenderClass(person?.employee?.nameEn || person?.employee?.name) === "employee-name-female" ? "female" : "male";
 }
 
-function OfferCardContent({ offers = [] }) {
-  if (!offers.length) return <p>No active offers</p>;
+function OfferCardContent({ offers = [], config }) {
+  if (!offers.length) return <p>{config.labels.noOffers}</p>;
   const dayNames = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
   return <div className="ops-offer-grid">{offers.map((offer) => {
     let weekdays = [];
@@ -138,25 +154,25 @@ function OfferCardContent({ offers = [] }) {
       <b>{offer.title} {offer.discountPercent != null && <em className="ops-discount-badge">-{offer.discountPercent}%</em>}</b>
       {(offer.priceBefore != null || offer.priceAfter != null) && (
         <span className="ops-offer-price">
-          {offer.priceBefore != null && <del>{offer.priceBefore} EGP</del>}
-          {offer.priceAfter != null && <strong>{offer.priceAfter} EGP</strong>}
+          {offer.priceBefore != null && <del>{offer.priceBefore} {config.currency}</del>}
+          {offer.priceAfter != null && <strong>{offer.priceAfter} {config.currency}</strong>}
         </span>
       )}
-      <span className="ops-offer-children">Admits {offer.childrenCount || 1} {(offer.childrenCount || 1) === 1 ? "child" : "children"}</span>
+      <span className="ops-offer-children">{config.labels.offerAdmits} {offer.childrenCount || 1} {(offer.childrenCount || 1) === 1 ? config.labels.childSingular : config.labels.childPlural}</span>
       {weekdays.length > 0 && <small>{weekdays.map((day) => dayNames[day]).filter(Boolean).join(" · ")}</small>}
       {offer.details && <small>{offer.details}</small>}
     </article>;
   })}</div>;
 }
 
-function BraceletCardContent({ items = [] }) {
+function BraceletCardContent({ items = [], config }) {
   const bracelets = items.filter((item) => !item.stockCategory || item.stockCategory === "BRACELET");
-  if (!bracelets.length) return <p>No wristband stock recorded</p>;
+  if (!bracelets.length) return <p>{config.labels.noBracelets}</p>;
   return <div className="ops-bracelet-list">{bracelets.map((item) => (
     <p key={item.id || item.wristbandType}>
       <i className="ops-bracelet-swatch" style={{ backgroundColor: item.color || "#cccccc" }} aria-hidden="true" />
       <b>{item.usageType || item.wristbandType} ⇒ {item.material || "Bracelet"} {item.colorName || colorNameFor(item.color)}</b>
-      <span>{stockAvailable(item)} remaining</span>
+      <span>{stockAvailable(item)} {config.labels.remaining}</span>
     </p>
   ))}</div>;
 }
@@ -212,7 +228,7 @@ async function posterPngBlob({ data, config, weekday, grouped, scheduleColors })
         const tone = config.cardColors?.[card] || (card === "offers" ? "#d98a31" : card === "trips" ? "#3182bd" : card === "birthdays" ? "#4f8c5c" : "#2e7da5");
         rect(x, y, cardWidth, rowHeight, "#fffdf8", tone, 12);
         rect(x, y, cardWidth, 38, tone, "none", 10);
-        text(cardLabels[card], x + cardWidth / 2, y + 26, 17, 900, "#ffffff", "middle");
+        text(config.labels[card] || cardLabels[card], x + cardWidth / 2, y + 26, 17, 900, "#ffffff", "middle");
         const lines = cardLinesByCard[card] || [];
         (lines.length ? lines : [config.cardContent?.[card] || "—"]).forEach((line, lineIndex) => text(short(line, row.length === 1 ? 120 : 55), x + 14, y + 65 + lineIndex * 21, 14, 700));
       });
@@ -226,10 +242,10 @@ async function posterPngBlob({ data, config, weekday, grouped, scheduleColors })
   const rotationWidth = contentWidth - numberWidth - nameWidth - attendanceWidth - breakWidth;
   rect(margin, y, contentWidth, 54, config.primary);
   text("#", margin + numberWidth / 2, y + 34, 15, 900, "#ffffff", "middle");
-  text("EMPLOYEE", margin + numberWidth + nameWidth / 2, y + 34, 15, 900, "#ffffff", "middle");
-  text("ATTENDANCE  IN / OUT", margin + numberWidth + nameWidth + attendanceWidth / 2, y + 34, 13, 900, "#ffffff", "middle");
-  text("BREAK  FROM / TO", margin + numberWidth + nameWidth + attendanceWidth + breakWidth / 2, y + 34, 13, 900, "#ffffff", "middle");
-  text("ROTATION (HOURLY)", rotationX + rotationWidth / 2, y + 34, 15, 900, "#ffffff", "middle");
+  text(config.labels.employee, margin + numberWidth + nameWidth / 2, y + 34, 15, 900, "#ffffff", "middle");
+  text(`${config.labels.attendance}  ${config.labels.in} / ${config.labels.out}`, margin + numberWidth + nameWidth + attendanceWidth / 2, y + 34, 13, 900, "#ffffff", "middle");
+  text(`${config.labels.break}  ${config.labels.from} / ${config.labels.to}`, margin + numberWidth + nameWidth + attendanceWidth + breakWidth / 2, y + 34, 13, 900, "#ffffff", "middle");
+  text(config.labels.rotation, rotationX + rotationWidth / 2, y + 34, 15, 900, "#ffffff", "middle");
   y += 54;
 
   WORKING_SHIFTS.forEach((shift) => {
@@ -239,16 +255,16 @@ async function posterPngBlob({ data, config, weekday, grouped, scheduleColors })
     const startHour = Number(data?.shifts?.[shift]?.startTime?.slice(0, 2) || (shift === "PM" ? 15 : 10));
     const hours = Array.from({ length: slotCount }, (_, index) => String((startHour + index - 1) % 12 + 1));
     rect(margin, y, contentWidth, 38, shiftColor, "#8b8794");
-    text(shift === "AM" ? "MORNING SHIFT (AM)" : shift === "BW" ? "BETWEEN SHIFT (BW)" : "NIGHT SHIFT (PM)", margin + 12, y + 25, 16, 900);
+    text(shift === "AM" ? config.labels.morningShift : shift === "BW" ? config.labels.betweenShift : config.labels.nightShift, margin + 12, y + 25, 16, 900);
     text(`${formatTime12(data?.shifts?.[shift]?.startTime)} — ${formatTime12(data?.shifts?.[shift]?.endTime)}`, margin + contentWidth - 12, y + 25, 15, 800, config.text, "end");
     y += 38;
     rect(margin, y, contentWidth, 30, "#f3edf8", "#8b8794");
-    text("ROTATION TIME", margin + numberWidth + nameWidth + (attendanceWidth + breakWidth) / 2, y + 20, 12, 900, config.text, "middle");
+    text(config.labels.rotationTime, margin + numberWidth + nameWidth + (attendanceWidth + breakWidth) / 2, y + 20, 12, 900, config.text, "middle");
     hours.forEach((hour, index) => text(hour, rotationX + rotationWidth / slotCount * (index + 0.5), y + 20, 13, 900, config.text, "middle"));
     y += 30;
     people.forEach((person, personIndex) => {
-      const role = rosterRole(person);
-      const tone = employeeTone(person);
+      const role = rosterRole(person, config.labels);
+      const tone = employeeTone(person, config.labels);
       const roleColors = config.roleColors || {}; const nameTone = tone === "cashier" ? (roleColors.cashier || "#b9e2c3") : tone === "leader" ? (roleColors.leader || "#c3e9f6") : tone === "cashier-leader" ? (roleColors.cashierLeader || "#d5b9ec") : tone === "female" ? (roleColors.female || "#fff0a8") : (roleColors.male || "#e7d6f6");
       rect(margin, y, contentWidth, 42, "#ffffff", "#bcb5c3");
       rect(margin + numberWidth, y, nameWidth, 42, nameTone, "#bcb5c3");
@@ -271,27 +287,27 @@ async function posterPngBlob({ data, config, weekday, grouped, scheduleColors })
   });
 
   if (config.visibleSections.leaves) {
-    y += 14; rect(margin, y, contentWidth, 38, config.primary, "none", 8); text("TODAY'S LEAVES / OFF", margin + contentWidth - 14, y + 25, 16, 900, "#ffffff", "end"); y += 38;
-    (nonWorking.length ? nonWorking : [{ group: "—", employee: { name: "No leave / off in the published schedule" } }]).forEach((item) => { const badgeColor = scheduleColor(item.group, scheduleColors); rect(margin, y, contentWidth, 34, "#fff", "#d4ced8"); if (item.group !== "—") { rect(margin + 10, y + 5, 86, 24, badgeColor, "none", 5); text(item.group, margin + 53, y + 22, 12, 900, contrastColor(badgeColor), "middle"); } else text(item.group, margin + 14, y + 23, 13, 900); text(rosterName(item.employee), margin + 110, y + 23, 14, 700); y += 34; });
+    y += 14; rect(margin, y, contentWidth, 38, config.primary, "none", 8); text(config.labels.leaves, margin + contentWidth - 14, y + 25, 16, 900, "#ffffff", "end"); y += 38;
+    (nonWorking.length ? nonWorking : [{ group: "—", employee: { name: config.labels.noLeaves } }]).forEach((item) => { const badgeColor = scheduleColor(item.group, scheduleColors); rect(margin, y, contentWidth, 34, "#fff", "#d4ced8"); if (item.group !== "—") { rect(margin + 10, y + 5, 86, 24, badgeColor, "none", 5); text(item.group, margin + 53, y + 22, 12, 900, contrastColor(badgeColor), "middle"); } else text(item.group, margin + 14, y + 23, 13, 900); text(rosterName(item.employee), margin + 110, y + 23, 14, 700); y += 34; });
   }
   if (config.visibleCards.offers !== false && data.offers?.length) {
-    y += 14; rect(margin, y, contentWidth, 38, config.cardColors?.offers || "#d98a31", "none", 8); text("TODAY'S OFFERS", margin + contentWidth - 14, y + 25, 16, 900, "#ffffff", "end"); y += 46;
+    y += 14; rect(margin, y, contentWidth, 38, config.cardColors?.offers || "#d98a31", "none", 8); text(config.labels.offers, margin + contentWidth - 14, y + 25, 16, 900, "#ffffff", "end"); y += 46;
     const gap = 12; const offerWidth = (contentWidth - gap * (data.offers.length - 1)) / data.offers.length;
     data.offers.forEach((offer, index) => {
       const x = margin + index * (offerWidth + gap);
       rect(x, y, offerWidth, 104, "#fffaf2", config.cardColors?.offers || "#d98a31", 10);
       text(short(offer.title, 26), x + 12, y + 25, 15, 900);
       if (offer.discountPercent != null) text(`-${offer.discountPercent}%`, x + offerWidth - 12, y + 25, 13, 900, "#c61f3c", "end");
-      const prices = `${offer.priceBefore != null ? `Was ${offer.priceBefore}` : ""}${offer.priceAfter != null ? `  Now ${offer.priceAfter} EGP` : ""}`.trim();
+      const prices = `${offer.priceBefore != null ? `Was ${offer.priceBefore}` : ""}${offer.priceAfter != null ? `  Now ${offer.priceAfter} ${config.currency}` : ""}`.trim();
       if (prices) text(short(prices, 30), x + 12, y + 51, 13, 800);
-      text(`Admits ${offer.childrenCount || 1} ${(offer.childrenCount || 1) === 1 ? "child" : "children"}`, x + 12, y + 76, 13, 800, "#176837");
+      text(`${config.labels.offerAdmits} ${offer.childrenCount || 1} ${(offer.childrenCount || 1) === 1 ? config.labels.childSingular : config.labels.childPlural}`, x + 12, y + 76, 13, 800, "#176837");
       if (offer.details) text(short(offer.details, 34), x + 12, y + 96, 11, 600);
     });
     y += 104;
   }
   if (config.visibleSections.notes) {
-    y += 14; rect(margin, y, contentWidth, 38, config.primary, "none", 8); text("OPERATIONAL NOTES", margin + contentWidth - 14, y + 25, 16, 900, "#ffffff", "end"); y += 38;
-    const notices = data.notices?.length ? data.notices : [{ title: "No operational notices recorded", message: "", priority: "INFO" }];
+    y += 14; rect(margin, y, contentWidth, 38, config.primary, "none", 8); text(config.labels.notes, margin + contentWidth - 14, y + 25, 16, 900, "#ffffff", "end"); y += 38;
+    const notices = data.notices?.length ? data.notices : [{ title: config.labels.noNotices, message: "", priority: "INFO" }];
     notices.forEach((notice) => {
       const critical = String(notice.priority || "").toUpperCase() === "CRITICAL";
       rect(margin, y, contentWidth, 52, critical ? "#fee7eb" : "#ffffff", critical ? "#d7193f" : "#d4ced8", 4);
@@ -360,10 +376,10 @@ function OperationsPoster({ config, weekday, data, grouped, scheduleColors }) {
         <header>
           <b>
             {shift === "AM"
-              ? "MORNING SHIFT (AM)"
+              ? config.labels.morningShift
               : shift === "BW"
-                ? "BETWEEN SHIFT (BW)"
-                : "NIGHT SHIFT (PM)"}
+                ? config.labels.betweenShift
+                : config.labels.nightShift}
           </b>
           <span>
             {formatTime12(data?.shifts?.[shift]?.startTime)} —{" "}
@@ -371,13 +387,13 @@ function OperationsPoster({ config, weekday, data, grouped, scheduleColors }) {
           </span>
         </header>
         {show.rotation && <div className="ops-shift-hours" style={rowStyle}>
-          <b className="ops-rotation-time-label" style={{ gridColumn: `span ${leadingColumns}` }}>ROTATION TIME</b>
+          <b className="ops-rotation-time-label" style={{ gridColumn: `span ${leadingColumns}` }}>{config.labels.rotationTime}</b>
           {rotationHours.map((hour, index) => <b key={`${shift}-${hour}-${index}`}>{hour}</b>)}
         </div>}
         {Array.from({ length: total }, (_, index) => {
           const person = people[index];
-          const role = rosterRole(person);
-          const tone = employeeTone(person);
+          const role = rosterRole(person, config.labels);
+          const tone = employeeTone(person, config.labels);
           return (
             <div className="ops-row" style={rowStyle} key={person?.id || index}>
               <b>{index + 1}</b>
@@ -429,15 +445,15 @@ function OperationsPoster({ config, weekday, data, grouped, scheduleColors }) {
       <section className="ops-table" key="roster">
         <div className="ops-table-head" style={rowStyle}>
           <b>#</b>
-          <b>EMPLOYEE</b>
+          <b>{config.labels.employee}</b>
           {show.attendance && (
             <b className="ops-grouphead" style={{ gridColumn: "span 2" }}>
-              ATTENDANCE
+              {config.labels.attendance}
             </b>
           )}
           {show.breaks && (
             <b className="ops-grouphead" style={{ gridColumn: "span 2" }}>
-              BREAK
+              {config.labels.break}
             </b>
           )}
           {show.rotation && (
@@ -447,14 +463,14 @@ function OperationsPoster({ config, weekday, data, grouped, scheduleColors }) {
                 gridColumn: `span ${slotCount}`,
               }}
             >
-              ROTATION (HOURLY)
+              {config.labels.rotation}
             </b>
           )}
         </div>
         <div className="ops-table-subhead" style={rowStyle}>
           <b></b><b></b>
-          {show.attendance && <><b>IN</b><b>OUT</b></>}
-          {show.breaks && <><b>FROM</b><b>TO</b></>}
+          {show.attendance && <><b>{config.labels.in}</b><b>{config.labels.out}</b></>}
+          {show.breaks && <><b>{config.labels.from}</b><b>{config.labels.to}</b></>}
           {show.rotation && Array.from({ length: slotCount }, (_, index) => <b key={index}></b>)}
         </div>
         {WORKING_SHIFTS.map(shiftBlock)}
@@ -462,7 +478,7 @@ function OperationsPoster({ config, weekday, data, grouped, scheduleColors }) {
     ),
     leaves: (
       <section className="ops-bottom-card" key="leaves">
-        <h3>TODAY'S LEAVES / OFF</h3>
+        <h3>{config.labels.leaves}</h3>
         {nonWorking.length ? (
           nonWorking.map((item) => (
             <p key={item.id}>
@@ -472,33 +488,33 @@ function OperationsPoster({ config, weekday, data, grouped, scheduleColors }) {
           ))
         ) : (
           <p>
-            <span>No leave / off in the published schedule</span>
+            <span>{config.labels.noLeaves}</span>
           </p>
         )}
       </section>
     ),
     offers: data.offers?.length ? (
       <section className="ops-bottom-card ops-offers-section" key="offers">
-        <h3>TODAY'S OFFERS</h3>
-        <OfferCardContent offers={data.offers} />
+        <h3>{config.labels.offers}</h3>
+        <OfferCardContent offers={data.offers} config={config} />
       </section>
     ) : null,
     notes: (
       <section className="ops-bottom-card ops-notes" key="notes">
-        <h3>OPERATIONAL NOTES</h3>
+        <h3>{config.labels.notes}</h3>
         {data.notices?.length ? data.notices.map((notice) => (
           <article className={`ops-notice-item priority-${String(notice.priority || "INFO").toLowerCase()}`} key={notice.id}>
             <b>{notice.title}</b>
             <span>{notice.message}</span>
           </article>
-        )) : <p>No operational notices recorded</p>}
+        )) : <p>{config.labels.noNotices}</p>}
       </section>
     ),
     footer: (
       <footer className="ops-footer" key="footer">
         <i></i>
         <b>{data.motivationalPhrase || config.footerMotto}</b>
-        <span>{config.branchName} · Page 1 of 1</span>
+        <span>{config.branchName} · {config.labels.page} 1 of 1</span>
       </footer>
     ),
   };
@@ -530,8 +546,8 @@ function OperationsPoster({ config, weekday, data, grouped, scheduleColors }) {
         {topCards
           .map((card) => (
             <article key={card} className={`ops-info-card ${card}`} style={{ borderColor: config.cardColors?.[card] }}>
-              <h3 style={{ background: config.cardColors?.[card] }}>{cardLabels[card]}</h3>
-              {card === "bracelets" ? <BraceletCardContent items={data.wristbands || []} /> : previewCardLines(card, data).map((line, index) => <p key={index}>{line}</p>)}
+              <h3 style={{ background: config.cardColors?.[card] }}>{config.labels[card] || cardLabels[card]}</h3>
+              {card === "bracelets" ? <BraceletCardContent items={data.wristbands || []} config={config} /> : previewCardLines(card, data).map((line, index) => <p key={index}>{line}</p>)}
             </article>
           ))}
       </section>}
@@ -616,7 +632,7 @@ export default function DailyApprovalPreview() {
       }, {}),
     [data],
   );
-  const weekday = new Intl.DateTimeFormat("en-US", {
+  const weekday = new Intl.DateTimeFormat(config.weekdayLocale || "en-US", {
     weekday: "long",
     year: "numeric",
     month: "long",

@@ -82,6 +82,9 @@ export async function POST(request) {
     }
     if (body.action === "close") {
       if (day.status === "CLOSED") throw new Error("Evaluation day is already closed");
+      if (rules.requireReviewBeforeClose !== false && day.evaluations.some((item) => item.status === "DEFAULT_FULL" || item.status === "DEFAULT_ZERO")) {
+        throw new Error("Save every employee evaluation before closing the day");
+      }
       const updated = await prisma.opsDailyEvaluationDay.update({ where: { id: day.id }, data: { status: "CLOSED", closedBy: user.id, closedAt: new Date(), teamNote: String(body.teamNote || "").trim() || null } });
       await writeAudit({ action: "OPS_EVALUATION_DAY_CLOSED", user, summary: `Closed daily evaluation ${date}`, metadata: { dayId: day.id } });
       return NextResponse.json({ success: true, day: updated });
@@ -111,7 +114,7 @@ export async function POST(request) {
           const finalScore = Math.max(0, evaluation.maxScore - totalDeduction);
           await tx.opsEvaluationException.deleteMany({ where: { employeeDailyEvaluationId: evaluation.id } });
           if (exceptions.length) await tx.opsEvaluationException.createMany({ data: exceptions.map((item) => ({ employeeDailyEvaluationId: evaluation.id, criterionId: item.criterionId, reasonId: item.reasonId || null, deduction: Number(item.deduction), note: String(item.note || "").trim() || null, createdBy: user.id })) });
-          await tx.opsEmployeeDailyEvaluation.update({ where: { id: evaluation.id }, data: { finalScore, status: correction ? "MODIFIED" : exceptions.length ? "EXCEPTION" : "DEFAULT_FULL", supervisorNote: String(change.supervisorNote || "").trim() || null } });
+          await tx.opsEmployeeDailyEvaluation.update({ where: { id: evaluation.id }, data: { finalScore, status: correction ? "MODIFIED" : exceptions.length ? "EXCEPTION" : "REVIEWED", supervisorNote: String(change.supervisorNote || "").trim() || null } });
         }
       }, { timeout: 30000 });
       await writeAudit({ action: correction ? "OPS_EVALUATIONS_CORRECTED" : "OPS_EVALUATIONS_SAVED", user, summary: `${correction ? "Corrected" : "Saved"} ${changes.length} daily evaluations for ${date}`, metadata: { dayId: day.id, employeeCount: changes.length }, reason: correction ? String(body.reason).trim() : undefined });

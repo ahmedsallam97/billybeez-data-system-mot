@@ -67,8 +67,8 @@ export async function GET(request) {
     schedule: { id: schedule.id, version: schedule.version, status: schedule.status, publishedAt: schedule.publishedAt, operationalYear: schedule.operationalYear, operationalMonth: schedule.operationalMonth },
     shifts,
     roster: rosterAssignments.map((item) => ({ id: item.id, code: item.code, shiftCode: item.shiftCode, rawValue: item.importRawValue, metadata: item.metadata || (item.importMetadata ? parse(item.importMetadata, null) : null), employee: item.employee })).sort((left, right) => {
-      const leftCashier = left.employee.department === "CASHIER" || left.metadata?.frontAssignment === "FRONT_CASHIER" ? 0 : 1;
-      const rightCashier = right.employee.department === "CASHIER" || right.metadata?.frontAssignment === "FRONT_CASHIER" ? 0 : 1;
+      const leftCashier = left.metadata?.frontAssignment === "FRONT_CASHIER" ? 0 : left.employee.department === "CASHIER" ? 1 : 2;
+      const rightCashier = right.metadata?.frontAssignment === "FRONT_CASHIER" ? 0 : right.employee.department === "CASHIER" ? 1 : 2;
       return String(left.shiftCode || left.code || "").localeCompare(String(right.shiftCode || right.code || "")) || leftCashier - rightCashier || String(left.employee.name || "").localeCompare(String(right.employee.name || ""));
     }),
     attendance: attendanceDay ? { id: attendanceDay.id, status: attendanceDay.status, records: attendanceDay.records } : null,

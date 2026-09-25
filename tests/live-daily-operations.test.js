@@ -175,9 +175,14 @@ test("close validation blocks incomplete days and preview binds real planning da
     }).ready,
     false,
   );
-  assert.deepEqual(previewCardLines("trips", { trips: [] }), [
-    "No trips planned",
-  ]);
+  assert.deepEqual(previewCardLines("trips", { trips: [] }), []);
+  assert.deepEqual(previewCardLines("birthdays", { events: [] }), []);
+  assert.match(
+    previewCardLines("trips", {
+      trips: [{ name: "Academy", mealCountsJson: JSON.stringify({ "Chicken Nuggets": 12, "Fruit Meal": 4 }) }],
+    }).join(" "),
+    /12 Chicken Nuggets.*4 Fruit Meal/,
+  );
   assert.match(
     previewCardLines("offers", {
       offers: [{ title: "Weekend", details: "25%" }],

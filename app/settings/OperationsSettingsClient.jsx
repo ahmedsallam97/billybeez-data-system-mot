@@ -65,7 +65,7 @@ export default function OperationsSettingsClient() {
       {navigationOpen && visibleGroups.map(([key, code, title, hint]) => <button type="button" className={tab === key ? "active" : ""} key={key} onClick={() => setTab(key)}><small>{code}</small><b>{title}</b><span>{hint}</span></button>)}
     </nav>
     <div className="operations-content settings-operations-content">
-      <header className="panel settings-workbench-head"><div><span>{isArabic ? "مركز تحكم المدير" : "MANAGEMENT CONTROL CENTER"}</span><h1>{isArabic ? "الإعدادات" : "Settings"}</h1><p>{isArabic ? "قواعد العمليات والبيانات والتصميم في مكان واحد." : "Operations rules, data and design in one place."}</p></div><input className="settings-search" value={search} onChange={(event) => setSearch(event.target.value)} placeholder={isArabic ? "ابحث في أقسام الإعدادات" : "Search settings sections"} /></header>
+      <header className="panel settings-workbench-head"><div><span>{isArabic ? "إعدادات العمليات" : "OPERATIONS SETTINGS"}</span><h1>{isArabic ? "الإعدادات" : "Settings"}</h1><p>{isArabic ? "قواعد العمليات والبيانات والتصميم في مكان واحد." : "Operations rules, data and design in one place."}</p></div><input className="settings-search" value={search} onChange={(event) => setSearch(event.target.value)} placeholder={isArabic ? "ابحث في أقسام الإعدادات" : "Search settings sections"} /></header>
       {message && <div className={`alert ${message.includes("تم") || message === "Saved" ? "success" : "danger"}`}>{message}</div>}
       <div className="settings-content operations-settings-center">
       {tab === "insights" && <Insights summary={summary} health={health} config={config} isArabic={isArabic} />}
@@ -113,7 +113,12 @@ function RosterSettings({ config, settings, isArabic, busy, saveSetting, saveRec
     const limit = kind === "primary" ? Number(current.primaryCount || 3) : Number(current.backupCount || 4);
     const values = current[key] || [];
     if (checked && values.length >= limit) return current;
-    return { ...current, [key]: checked ? [...new Set([...values, employeeId])] : values.filter((id) => id !== employeeId) };
+    const otherKey = kind === "primary" ? "backupEmployeeIds" : "primaryEmployeeIds";
+    return {
+      ...current,
+      [key]: checked ? [...new Set([...values, employeeId])] : values.filter((id) => id !== employeeId),
+      ...(checked ? { [otherKey]: (current[otherKey] || []).filter((id) => id !== employeeId) } : {}),
+    };
   });
   return <div className="ops-settings-section"><h2>{isArabic ? "الروستر والشيفتات" : "Roster and shifts"}</h2>
     <section className="panel form-grid"><h3>{isArabic ? "الفرع والمنطقة الزمنية" : "Branch and timezone"}</h3><Field label={isArabic ? "كود الفرع" : "Branch code"}><input value={branch.branchCode || ""} onChange={(e) => setBranch({ ...branch, branchCode: e.target.value })} /></Field><Field label={isArabic ? "اسم الفرع" : "Branch name"}><input value={branch.branchName || ""} onChange={(e) => setBranch({ ...branch, branchName: e.target.value })} /></Field><Field label={isArabic ? "المنطقة الزمنية" : "Timezone"}><input value={branch.timezone || ""} onChange={(e) => setBranch({ ...branch, timezone: e.target.value })} /></Field><Field label={isArabic ? "تنسيق اللغة والتاريخ" : "Locale"}><input value={branch.locale || "en-GB"} onChange={(e) => setBranch({ ...branch, locale: e.target.value })} /></Field><button disabled={busy} onClick={() => saveSetting("OPS_BRANCH_CONFIG", branch)}>{isArabic ? "حفظ بيانات الفرع" : "Save branch"}</button></section>
@@ -148,7 +153,7 @@ function RecognitionSettings({ config, settings, isArabic, busy, saveSetting, re
   const setEmployeeName = (id, value) => setArtwork((current) => ({ ...current, employeeNameOverrides: { ...(current.employeeNameOverrides || {}), [id]: value } }));
   async function uploadPhoto(employeeId, file) {
     if (!file) return; const form = new FormData(); form.set("file", file); form.set("employeeId", employeeId); form.set("documentType", "EMPLOYEE_PHOTO"); form.set("displayName", file.name);
-    try { await fetch(`/api/operations/employees/${employeeId}/documents`, { method: "POST", body: form }).then(read); setMessage(isArabic ? "تم تحديث صورة الموظف" : "Employee photo updated"); await reload(); }
+    try { const payload = await fetch(`/api/operations/employees/${employeeId}/documents`, { method: "POST", body: form }).then(read); if (payload.document?.employeeId !== employeeId) throw new Error("Upload target verification failed"); setMessage(isArabic ? "تم تحديث صورة الموظف" : "Employee photo updated"); await reload(); }
     catch (error) { setMessage(error.message); }
   }
   const fontPicker = (value, onChange) => <select aria-label="Artwork font" value={value || '"Avenir Next", "Segoe UI", Arial, sans-serif'} onChange={(event) => onChange(event.target.value)}>{RECOGNITION_FONT_OPTIONS.map(([label, font]) => <option value={font} key={label}>{label}</option>)}</select>;

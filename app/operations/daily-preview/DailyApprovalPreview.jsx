@@ -74,8 +74,6 @@ const fallback = {
   },
   operationalNotes:
     "• Follow your assigned rotation.\n• Fill break times when leaving and returning.\n• Contact the shift leader for any changes.",
-  fillerRows: { AM: 5, BW: 4, PM: 5 },
-  rotationHours: ["10", "11", "12", "1", "2", "3", "4", "5"],
   roleColors: { female: "#fff0a8", male: "#e7d6f6", cashier: "#b9e2c3", leader: "#c3e9f6", cashierLeader: "#d5b9ec" },
   cardColors: { trips: "#3182bd", birthdays: "#4f8c5c", offers: "#d98a31", bracelets: "#2e7da5" },
   labels: {
@@ -98,16 +96,12 @@ function mergeConfig(value) {
     roleColors: { ...fallback.roleColors, ...input.roleColors },
     cardColors: { ...fallback.cardColors, ...input.cardColors },
     labels: { ...fallback.labels, ...input.labels },
-    fillerRows: { ...fallback.fillerRows, ...input.fillerRows },
     cardOrder: Array.isArray(input.cardOrder)
       ? input.cardOrder
       : fallback.cardOrder,
     sectionOrder: Array.isArray(input.sectionOrder)
       ? input.sectionOrder
       : fallback.sectionOrder,
-    rotationHours: Array.isArray(input.rotationHours)
-      ? input.rotationHours
-      : fallback.rotationHours,
   };
 }
 function localIsoDate(date = new Date()) {

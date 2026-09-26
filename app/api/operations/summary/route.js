@@ -23,8 +23,9 @@ export async function GET() {
   const currentYear = Number(today.slice(0, 4));
   const currentMonth = Number(today.slice(5, 7));
   const attendanceLookbackDate = isoDaysBefore(today, 60);
-  const nextWeek = new Date(`${today}T00:00:00Z`); nextWeek.setUTCDate(nextWeek.getUTCDate() + 7); const nextWeekDate = nextWeek.toISOString().slice(0, 10);
-  const [activeEmployees, hrisEmployees, partTimeEmployees, schedules, attendanceDay, draftAppraisals, draftLeaveRequests, latestApproved, activeMismatch, missingRosterNames, upcomingTrips, upcomingEvents, lowStock, attendanceIssues, staleAttendanceDays, openDiscipline, openIncidents, competitionRows, appraisalPeriods] = await Promise.all([
+  const attendanceTrendStart = isoDaysBefore(today, 13);
+  const nextWeek = new Date(`${today}T00:00:00Z`); nextWeek.setUTCDate(nextWeek.getUTCDate() + 6); const nextWeekDate = nextWeek.toISOString().slice(0, 10);
+  const [activeEmployees, hrisEmployees, partTimeEmployees, schedules, attendanceDay, draftAppraisals, draftLeaveRequests, latestApproved, activeMismatch, missingRosterNames, upcomingTrips, upcomingEvents, lowStock, attendanceIssues, staleAttendanceDays, openDiscipline, openIncidents, competitionRows, appraisalPeriods, attendanceTrendDays] = await Promise.all([
     prisma.employee.count({ where: { active: true } }),
     prisma.employee.count({ where: { active: true, employmentType: "HRIS" } }),
     prisma.employee.count({ where: { active: true, employmentType: "PART_TIME" } }),
@@ -35,8 +36,8 @@ export async function GET() {
     prisma.opsMonthlyAppraisal.findFirst({ where: { status: "APPROVED", employee: { active: true } }, orderBy: [{ year: "desc" }, { month: "desc" }, { version: "desc" }], select: { year: true, month: true } }),
     prisma.employee.count({ where: { OR: [{ active: true, employmentStatus: { not: "ACTIVE" } }, { active: false, employmentStatus: "ACTIVE" }] } }),
     prisma.employee.count({ where: { active: true, OR: [{ operationalName: null }, { operationalName: "" }] } }),
-    prisma.opsDailyTrip.count({ where: { workDate: { gte: today, lte: nextWeekDate }, status: { not: "CANCELLED" } } }),
-    prisma.opsDailyEvent.count({ where: { workDate: { gte: today, lte: nextWeekDate }, status: { not: "CANCELLED" } } }),
+    prisma.opsDailyTrip.findMany({ where: { workDate: { gte: today, lte: nextWeekDate }, status: { not: "CANCELLED" } }, select: { workDate: true, expectedChildren: true } }),
+    prisma.opsDailyEvent.findMany({ where: { workDate: { gte: today, lte: nextWeekDate }, status: { not: "CANCELLED" } }, select: { workDate: true, expectedGuests: true } }),
     prisma.opsWristbandStock.count({ where: { workDate: { in: ["ALL", today] }, availableStock: { lte: lowStockThreshold } } }),
     prisma.opsAttendanceRecord.findMany({
       where: {
@@ -75,6 +76,11 @@ export async function GET() {
       by: ["month", "status"],
       where: { year: currentYear, month: { lt: currentMonth }, employee: { active: true } },
       _count: { _all: true },
+    }),
+    prisma.opsAttendanceDay.findMany({
+      where: { workDate: { gte: attendanceTrendStart, lte: today } },
+      select: { workDate: true, status: true, records: { select: { status: true, lateMinutes: true, earlyLeaveMinutes: true } } },
+      orderBy: { workDate: "asc" },
     }),
   ]);
   const currentSchedule = schedules.find((schedule) => schedule.periodStart <= today && schedule.periodEnd >= today) || null;
@@ -134,6 +140,26 @@ export async function GET() {
     const counts = appraisalCounts.get(month) || { approved: 0, pending: 0 };
     return [{ month, status: counts.approved > 0 ? "READY_FOR_WINNER" : counts.pending > 0 ? "APPRAISALS_PENDING" : "NOT_STARTED", approvedAppraisals: counts.approved, pendingAppraisals: counts.pending, competitionStatus: competition?.status || null }];
   });
+  const attendanceTrend = attendanceTrendDays.map((day) => ({
+    date: day.workDate,
+    dayStatus: day.status,
+    total: day.records.length,
+    present: day.records.filter((record) => ["PRESENT", "UNEXPECTED_PRESENT"].includes(record.status)).length,
+    timingIssues: day.records.filter((record) => ["LATE", "EARLY_LEAVE"].includes(record.status) || record.lateMinutes > 0 || record.earlyLeaveMinutes > 0).length,
+    absent: day.records.filter((record) => record.status === "ABSENT").length,
+    missing: day.records.filter((record) => record.status === "MISSING").length,
+    excused: day.records.filter((record) => ["LEAVE", "REPLACEMENT_LEAVE", "SICK_LEAVE", "HOLIDAY", "OFF"].includes(record.status)).length,
+  }));
+  const bookingTrend = Array.from({ length: 7 }, (_, index) => {
+    const date = new Date(`${today}T00:00:00Z`); date.setUTCDate(date.getUTCDate() + index); const workDate = date.toISOString().slice(0, 10);
+    const trips = upcomingTrips.filter((item) => item.workDate === workDate);
+    const birthdays = upcomingEvents.filter((item) => item.workDate === workDate);
+    return { date: workDate, trips: trips.length, birthdays: birthdays.length, expectedGuests: trips.reduce((sum, item) => sum + Number(item.expectedChildren || 0), 0) + birthdays.reduce((sum, item) => sum + Number(item.expectedGuests || 0), 0) };
+  });
+  const recognitionTimeline = Array.from({ length: Math.max(0, currentMonth - 1) }, (_, index) => {
+    const month = index + 1; const competition = latestCompetitionByMonth.get(month); const pending = recognitionMonths.find((item) => item.month === month);
+    return { month, status: competition?.status === "LOCKED" && competition.winnerEmployeeId ? "LOCKED" : pending?.status || "NOT_STARTED" };
+  });
 
   const disciplineEmployeeIds = new Set([...openDiscipline, ...openIncidents].map((item) => item.employeeId));
   const assistantInsights = [];
@@ -142,5 +168,5 @@ export async function GET() {
   if (disciplineEmployeeIds.size) assistantInsights.push({ code: "DISCIPLINARY_FOLLOWUP", severity: "danger", target: "employees", employeeCount: disciplineEmployeeIds.size, warningCount: openDiscipline.length, incidentCount: openIncidents.length, overdueFollowUps: openDiscipline.filter((item) => item.followUpDate && item.followUpDate.toISOString().slice(0, 10) < today).length, employees: [...new Map([...openDiscipline, ...openIncidents].map((item) => [item.employeeId, { employeeId: item.employeeId, name: employeeName(item.employee) }])).values()].slice(0, 4) });
   if (recognitionMonths.length) assistantInsights.push({ code: "RECOGNITION_MONTHS_PENDING", severity: recognitionMonths.some((item) => item.status === "READY_FOR_WINNER") ? "warning" : "info", target: "performance", year: currentYear, months: recognitionMonths });
 
-  return NextResponse.json({ success: true, today, metrics: { activeEmployees, hrisEmployees, partTimeEmployees, publishedSchedules: schedules.length, draftAppraisals, draftLeaveRequests }, currentSchedule, attendanceDay: attendanceDay ? { status: attendanceDay.status, records: attendanceDay.records.length } : null, performance, attention, assistant: { name: "Billy Assistant", generatedAt: new Date().toISOString(), insights: assistantInsights }, planning: { upcomingTrips, upcomingEvents, upcomingBookings: upcomingTrips + upcomingEvents, lowStock }, dataQuality: { inconsistentActiveStatus: activeMismatch, missingRosterNames } });
+  return NextResponse.json({ success: true, today, metrics: { activeEmployees, hrisEmployees, partTimeEmployees, publishedSchedules: schedules.length, draftAppraisals, draftLeaveRequests }, currentSchedule, attendanceDay: attendanceDay ? { status: attendanceDay.status, records: attendanceDay.records.length } : null, performance, attention, assistant: { name: "Billy Assistant", generatedAt: new Date().toISOString(), insights: assistantInsights }, planning: { upcomingTrips: upcomingTrips.length, upcomingEvents: upcomingEvents.length, upcomingBookings: upcomingTrips.length + upcomingEvents.length, expectedGuests: bookingTrend.reduce((sum, item) => sum + item.expectedGuests, 0), lowStock }, charts: { attendanceTrend, bookingTrend, recognitionTimeline }, dataQuality: { inconsistentActiveStatus: activeMismatch, missingRosterNames } });
 }

@@ -13,6 +13,7 @@ export default function OperationsSettingsClient() {
   const [config, setConfig] = useState(null);
   const [summary, setSummary] = useState(null);
   const [health, setHealth] = useState(null);
+  const [commerce, setCommerce] = useState(null);
   const [message, setMessage] = useState("");
   const [busy, setBusy] = useState(false);
   const [search, setSearch] = useState("");
@@ -20,12 +21,13 @@ export default function OperationsSettingsClient() {
   const load = useCallback(async () => {
     setMessage("");
     try {
-      const [configuration, insights, systemHealth] = await Promise.all([
+      const [configuration, insights, systemHealth, systemDashboard] = await Promise.all([
         fetch("/api/operations/config", { cache: "no-store" }).then(read),
         fetch("/api/operations/summary", { cache: "no-store" }).then(read),
         fetch("/api/operations/health", { cache: "no-store" }).then(read),
+        fetch("/api/dashboard?light=1", { cache: "no-store" }).then(read),
       ]);
-      setConfig(configuration); setSummary(insights); setHealth(systemHealth);
+      setConfig(configuration); setSummary(insights); setHealth(systemHealth); setCommerce(systemDashboard);
     } catch (error) { setMessage(error.message); }
   }, []);
   useEffect(() => { load(); }, [load]);
@@ -68,7 +70,7 @@ export default function OperationsSettingsClient() {
       <header className="panel settings-workbench-head"><div><span>{isArabic ? "إعدادات العمليات" : "OPERATIONS SETTINGS"}</span><h1>{isArabic ? "الإعدادات" : "Settings"}</h1><p>{isArabic ? "قواعد العمليات والبيانات والتصميم في مكان واحد." : "Operations rules, data and design in one place."}</p></div><input className="settings-search" value={search} onChange={(event) => setSearch(event.target.value)} placeholder={isArabic ? "ابحث في أقسام الإعدادات" : "Search settings sections"} /></header>
       {message && <div className={`alert ${message.includes("تم") || message === "Saved" ? "success" : "danger"}`}>{message}</div>}
       <div className="settings-content operations-settings-center">
-      {tab === "insights" && <Insights summary={summary} isArabic={isArabic} />}
+      {tab === "insights" && <Insights summary={summary} health={health} commerce={commerce} isArabic={isArabic} />}
       {tab === "roster" && <RosterSettings config={config} settings={settings} isArabic={isArabic} busy={busy} saveSetting={saveSetting} saveRecord={saveRecord} />}
       {tab === "template" && <TemplateSettings settings={settings} isArabic={isArabic} busy={busy} saveSetting={saveSetting} />}
       {tab === "recognition" && <RecognitionSettings config={config} settings={settings} isArabic={isArabic} busy={busy} saveSetting={saveSetting} reload={load} setMessage={setMessage} />}
@@ -80,18 +82,60 @@ export default function OperationsSettingsClient() {
   </section>;
 }
 
-function Insights({ summary, isArabic }) {
+function Insights({ summary, health, commerce, isArabic }) {
   const attention = summary?.attention || [];
   const assistantInsights = summary?.assistant?.insights || [];
   const arabicMessages = { SCHEDULE_NOT_PUBLISHED: "لا يوجد جدول منشور يغطي اليوم.", ATTENDANCE_NOT_STARTED: "الحضور لم يبدأ لليوم.", MISSING_ATTENDANCE: "توجد سجلات حضور تحتاج مراجعة.", APPRAISALS_PENDING: "توجد تقييمات شهرية تنتظر المراجعة أو الاعتماد.", LEAVE_REQUESTS_PENDING: "توجد طلبات إجازة تنتظر القرار.", EMPLOYEE_STATUS_MISMATCH: "توجد ملفات موظفين بحالة نشاط غير متطابقة.", LOW_STOCK: "توجد أصناف وصلت إلى مستوى المخزون المنخفض." };
   return <div className="ops-settings-section insights-workspace">
-    {attention.length > 0 && <section className="settings-action-required"><header><span>{isArabic ? "قرارات معلقة" : "PENDING DECISIONS"}</span><h2>{isArabic ? "إجراء مطلوب" : "Action required"}</h2></header><div className="operations-insight-grid">{attention.map((item) => <article className={`operations-insight ${item.severity}`} key={item.code}><b>{isArabic ? "إجراء مطلوب" : (item.title || item.code)}</b><span>{isArabic ? (arabicMessages[item.code] || item.message) : item.message}</span>{item.target && <Link href={`/operations?tab=${item.target}`}>{isArabic ? "فتح الإجراء" : "Open action"}</Link>}</article>)}</div></section>}
+    <div className="insights-command-grid">
+      <section className="settings-action-required"><header><span>{isArabic ? "قرارات معلقة" : "PENDING DECISIONS"}</span><h2>{isArabic ? "إجراء مطلوب" : "Action required"}</h2></header><div className="operations-insight-grid">{attention.length ? attention.map((item) => <article className={`operations-insight ${item.severity}`} key={item.code}><b>{isArabic ? "إجراء مطلوب" : (item.title || item.code)}</b><span>{isArabic ? (arabicMessages[item.code] || item.message) : item.message}</span>{item.target && <Link href={`/operations?tab=${item.target}`}>{isArabic ? "فتح الإجراء" : "Open action"}</Link>}</article>) : <article className="operations-insight clear"><b>{isArabic ? "لا يوجد إجراء عاجل" : "No urgent action"}</b><span>{isArabic ? "كل القرارات المباشرة المسجلة محسومة حاليًا." : "All directly recorded decisions are currently resolved."}</span></article>}</div></section>
+      <SystemPulse summary={summary} health={health} commerce={commerce} isArabic={isArabic} />
+    </div>
     <section className="panel billy-assistant">
       <header className="billy-assistant-head"><div><span>BILLY ASSISTANT · AI GENERATED</span><h2>Billy Assistant</h2><p>{isArabic ? "يحلل بيانات الحضور والموظفين والجزاءات وموظف الشهر ويقترح أين يبدأ المدير." : "Analyses attendance, employee, disciplinary and recognition records to show where management should act first."}</p></div>{summary?.assistant?.generatedAt && <time>{new Intl.DateTimeFormat(isArabic ? "ar-EG" : "en-GB", { dateStyle: "medium", timeStyle: "short" }).format(new Date(summary.assistant.generatedAt))}</time>}</header>
       <div className="billy-insight-grid">{assistantInsights.length ? assistantInsights.map((insight) => <BillyInsight key={insight.code} insight={insight} isArabic={isArabic} />) : <p className="muted">{isArabic ? "لم يرصد Billy Assistant متابعة إضافية من البيانات المسجلة حاليًا." : "Billy Assistant found no additional follow-up in the currently recorded data."}</p>}</div>
       <small className="billy-assistant-source">{isArabic ? "الإنسايتس مولدة من بيانات النظام الحية، ويظل القرار النهائي للمدير." : "Insights are generated from live system evidence; the manager keeps final approval."}</small>
     </section>
+    <section className="insight-chart-grid">
+      <MiniBarChart title={isArabic ? "اتجاه الحضور" : "Attendance trend"} subtitle={isArabic ? "آخر 14 يومًا مسجلًا" : "Last 14 recorded days"} rows={summary?.charts?.attendanceTrend || []} series={[{ key: "present", label: isArabic ? "حاضر" : "Present", color: "#2f9d62" }, { key: "timingIssues", label: isArabic ? "مواعيد" : "Timing", color: "#f2b632" }, { key: "absent", label: isArabic ? "غياب" : "Absent", color: "#df3151" }, { key: "missing", label: isArabic ? "ناقص" : "Missing", color: "#8d70a6" }]} isArabic={isArabic} />
+      <MiniBarChart title={isArabic ? "حجوزات الأسبوع" : "Seven-day bookings"} subtitle={isArabic ? "رحلات وأعياد ميلاد قادمة" : "Upcoming trips and birthdays"} rows={summary?.charts?.bookingTrend || []} series={[{ key: "trips", label: isArabic ? "رحلات" : "Trips", color: "#2b83ba" }, { key: "birthdays", label: isArabic ? "أعياد ميلاد" : "Birthdays", color: "#e05b8f" }]} isArabic={isArabic} />
+      <RecognitionProgress rows={summary?.charts?.recognitionTimeline || []} year={summary?.assistant?.insights?.find((item) => item.code === "RECOGNITION_MONTHS_PENDING")?.year || new Date().getFullYear()} isArabic={isArabic} />
+    </section>
+    <section className="operations-performance-summary"><PerformanceRank title={isArabic ? "أفضل 3 موظفين" : "Top 3 employees"} rows={summary?.performance?.top} source={summary?.performance?.source} isArabic={isArabic} tone="top" /><PerformanceRank title={isArabic ? "أقل 3 موظفين أداءً" : "Bottom 3 employees"} rows={summary?.performance?.needsSupport} source={summary?.performance?.source} isArabic={isArabic} tone="support" /></section>
   </div>;
+}
+
+function SystemPulse({ summary, health, commerce, isArabic }) {
+  const metrics = summary?.metrics || {};
+  const planning = summary?.planning || {};
+  const latestBackup = health?.backups?.[0];
+  const cards = [
+    { key: "orders", tone: commerce?.unpaidOrders ? "red" : "green", label: isArabic ? "الطلبات الحالية" : "Current orders", value: commerce?.ordersCount || 0, detail: isArabic ? `مدفوع ${commerce?.paidOrders || 0} · غير مدفوع ${commerce?.unpaidOrders || 0}` : `Paid ${commerce?.paidOrders || 0} · unpaid ${commerce?.unpaidOrders || 0}` },
+    { key: "team", tone: "blue", label: isArabic ? "الفريق النشط" : "Active team", value: metrics.activeEmployees || 0, detail: `HRIS ${metrics.hrisEmployees || 0} · Part-time ${metrics.partTimeEmployees || 0}`, href: "/operations?tab=employees" },
+    { key: "bookings", tone: "orange", label: isArabic ? "حجوزات 7 أيام" : "Next 7-day bookings", value: planning.upcomingBookings || 0, detail: isArabic ? `رحلات ${planning.upcomingTrips || 0} · ميلاد ${planning.upcomingEvents || 0} · ضيوف ${planning.expectedGuests || 0}` : `Trips ${planning.upcomingTrips || 0} · birthdays ${planning.upcomingEvents || 0} · guests ${planning.expectedGuests || 0}`, href: "/operations?tab=trips" },
+    { key: "reviews", tone: (metrics.draftAppraisals || metrics.draftLeaveRequests) ? "yellow" : "green", label: isArabic ? "طابور المراجعة" : "Review queue", value: (metrics.draftAppraisals || 0) + (metrics.draftLeaveRequests || 0), detail: isArabic ? `تقييمات ${metrics.draftAppraisals || 0} · إجازات ${metrics.draftLeaveRequests || 0}` : `Appraisals ${metrics.draftAppraisals || 0} · leave ${metrics.draftLeaveRequests || 0}`, href: "/operations?tab=performance" },
+    { key: "schedule", tone: summary?.currentSchedule ? "green" : "red", label: isArabic ? "جدول اليوم" : "Today's schedule", value: summary?.currentSchedule ? (isArabic ? "منشور" : "Published") : (isArabic ? "غير موجود" : "Missing"), detail: summary?.currentSchedule ? `${summary.currentSchedule.operationalMonth}/${summary.currentSchedule.operationalYear}` : (isArabic ? "يلزم نشر جدول يغطي اليوم" : "Publish a schedule covering today"), href: "/operations?tab=schedule" },
+    { key: "attendance", tone: summary?.attendanceDay?.status === "FINALIZED" ? "green" : "yellow", label: isArabic ? "حضور اليوم" : "Today's attendance", value: summary?.attendanceDay?.status || (isArabic ? "لم يبدأ" : "Not started"), detail: isArabic ? `${summary?.attendanceDay?.records || 0} سجل موظف` : `${summary?.attendanceDay?.records || 0} employee records`, href: "/operations?tab=daily" },
+    { key: "stock", tone: planning.lowStock ? "red" : "green", label: isArabic ? "تنبيهات المخزون" : "Stock alerts", value: planning.lowStock || 0, detail: planning.lowStock ? (isArabic ? "أصناف عند أو تحت حد التنبيه" : "Items at or below warning level") : (isArabic ? "لا يوجد تنبيه منخفض" : "No low-stock alert"), href: "/operations?tab=stock" },
+    { key: "health", tone: health?.database?.integrity === "ok" ? "green" : "red", label: isArabic ? "سلامة النظام" : "System health", value: String(health?.database?.integrity || "…").toUpperCase(), detail: latestBackup ? (isArabic ? `آخر نسخة: ${new Intl.DateTimeFormat("ar-EG", { dateStyle: "medium" }).format(new Date(latestBackup.modifiedAt))}` : `Latest backup: ${new Intl.DateTimeFormat("en-GB", { dateStyle: "medium" }).format(new Date(latestBackup.modifiedAt))}`) : (isArabic ? "لا توجد نسخة احتياطية مسجلة" : "No recorded backup") },
+  ];
+  return <section className="panel system-pulse"><header><span>SYSTEM PULSE</span><h2>{isArabic ? "نبض السيستم" : "System pulse"}</h2></header><div className="system-pulse-grid">{cards.map((card) => <article className={`system-pulse-card ${card.tone}`} key={card.key}><span>{card.label}</span><b>{card.value}</b><small>{card.detail}</small>{card.href && <Link href={card.href}>{isArabic ? "عرض التفاصيل" : "View details"}</Link>}</article>)}</div></section>;
+}
+
+function MiniBarChart({ title, subtitle, rows, series, isArabic, valueSuffix = "" }) {
+  const totals = rows.map((row) => series.reduce((sum, item) => sum + Number(row[item.key] || 0), 0));
+  const maximum = Math.max(1, ...totals);
+  const total = totals.reduce((sum, value) => sum + value, 0);
+  return <article className="panel insight-chart"><header><div><span>LIVE DATA</span><h3>{title}</h3><p>{subtitle}</p></div><strong>{rows.length ? Math.round(total).toLocaleString() : 0}{valueSuffix}</strong></header><div className="insight-chart-legend">{series.map((item) => <span key={item.key}><i style={{ background: item.color }} />{item.label}</span>)}</div>{rows.length && total > 0 ? <div className="insight-bars">{rows.map((row, index) => <div className="insight-bar-column" key={`${row.date}-${index}`} title={`${row.date}: ${totals[index]}${valueSuffix}`}><div className="insight-bar-track">{series.map((item) => { const value = Number(row[item.key] || 0); return value > 0 ? <i key={item.key} style={{ height: `${Math.max(4, (value / maximum) * 100)}%`, background: item.color }} /> : null; })}</div><small>{String(row.date || "").slice(5).replace("-", "/")}</small></div>)}</div> : <p className="muted chart-empty">{isArabic ? "لا توجد حركة مسجلة في هذه الفترة." : "No activity was recorded in this period."}</p>}</article>;
+}
+
+function RecognitionProgress({ rows, year, isArabic }) {
+  const counts = rows.reduce((result, item) => ({ ...result, [item.status]: (result[item.status] || 0) + 1 }), {});
+  return <article className="panel recognition-progress"><header><div><span>EOTM · {year}</span><h3>{isArabic ? "تقدم موظف الشهر" : "Employee of the Month progress"}</h3><p>{isArabic ? "حالة كل شهر مكتمل حتى الآن" : "Completion state for every elapsed month"}</p></div><strong>{counts.LOCKED || 0}/{rows.length || 0}</strong></header><div className="recognition-month-grid">{rows.map((item) => <Link href={`/operations?tab=performance&year=${year}&month=${item.month}`} className={item.status.toLowerCase().replaceAll("_", "-")} key={item.month}><b>{item.month}</b><small>{item.status === "LOCKED" ? (isArabic ? "مكتمل" : "Done") : item.status === "READY_FOR_WINNER" ? (isArabic ? "اختيار فائز" : "Pick winner") : item.status === "APPRAISALS_PENDING" ? (isArabic ? "تقييمات" : "Appraisals") : (isArabic ? "لم يبدأ" : "Not started")}</small></Link>)}</div></article>;
+}
+
+function PerformanceRank({ title, rows = [], source, isArabic, tone }) {
+  return <article className={`panel performance-summary-card ${tone}`}><header><div><span>{tone === "top" ? (isArabic ? "أقوى أداء معتمد" : "TOP APPROVED PERFORMANCE") : (isArabic ? "أولوية تطوير" : "DEVELOPMENT PRIORITY")}</span><h2>{title}</h2></div><small>{source ? `${source.month}/${source.year}` : "—"}</small></header>{rows?.length ? rows.map((item, index) => <div className="performance-rank-row" key={item.employee.id}><span>{index + 1}</span><div><b>{item.employee.nameEn || item.employee.name}</b><small>{item.employee.jobTitle || "—"}</small></div><strong>{item.score}</strong></div>) : <p className="muted">{isArabic ? "لا توجد تقييمات معتمدة كفاية لإظهار ترتيب موثوق." : "No approved appraisals are available for a reliable ranking."}</p>}</article>;
 }
 
 function BillyInsight({ insight, isArabic }) {

@@ -34,6 +34,7 @@ export default function OperationsClient() {
   function navigate(nextTab) {
     if (!tabKeys.includes(nextTab)) return;
     setTab(nextTab);
+    if (window.innerWidth <= 620) setNavigationOpen(false);
     const url = new URL(window.location.href);
     url.searchParams.set("tab", nextTab);
     window.history.replaceState({}, "", url);

@@ -62,7 +62,7 @@ export default function OperationsSettingsClient() {
   return <section className={`operations-shell settings-operations-shell ${navigationOpen ? "operations-nav-open" : "operations-nav-collapsed"}`}>
     <nav className="operations-main-nav settings-main-nav" aria-label={isArabic ? "أقسام الإعدادات" : "Settings areas"}>
       <button className="operations-nav-toggle" type="button" aria-label={isArabic ? "فتح أقسام الإعدادات" : "Open settings areas"} aria-expanded={navigationOpen} onClick={() => setNavigationOpen((value) => !value)}><span aria-hidden="true">☰</span><i>{isArabic ? "أقسام الإعدادات" : "Settings areas"}</i></button>
-      {navigationOpen && visibleGroups.map(([key, code, title, hint]) => <button type="button" className={tab === key ? "active" : ""} key={key} onClick={() => setTab(key)}><small>{code}</small><b>{title}</b><span>{hint}</span></button>)}
+      {navigationOpen && visibleGroups.map(([key, code, title, hint]) => <button type="button" className={tab === key ? "active" : ""} key={key} onClick={() => { setTab(key); if (window.innerWidth <= 620) setNavigationOpen(false); }}><small>{code}</small><b>{title}</b><span>{hint}</span></button>)}
     </nav>
     <div className="operations-content settings-operations-content">
       <header className="panel settings-workbench-head"><div><span>{isArabic ? "إعدادات العمليات" : "OPERATIONS SETTINGS"}</span><h1>{isArabic ? "الإعدادات" : "Settings"}</h1><p>{isArabic ? "قواعد العمليات والبيانات والتصميم في مكان واحد." : "Operations rules, data and design in one place."}</p></div><input className="settings-search" value={search} onChange={(event) => setSearch(event.target.value)} placeholder={isArabic ? "ابحث في أقسام الإعدادات" : "Search settings sections"} /></header>

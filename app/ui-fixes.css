@@ -1,0 +1,285 @@
+/* Final responsive containment layer. Keep print-specific artwork dimensions in globals.css. */
+html,
+body {
+  max-inline-size: 100%;
+  overflow-x: clip;
+}
+
+.shell,
+.container,
+.panel,
+.card,
+.grid > *,
+.form-grid > *,
+.operations-content > *,
+.settings-content > * {
+  min-inline-size: 0;
+}
+
+img {
+  max-inline-size: 100%;
+}
+
+.record-table-scroll,
+.employee-table,
+.schedule-grid-scroll {
+  inline-size: 100%;
+  max-inline-size: 100%;
+  min-inline-size: 0;
+  overflow-x: auto;
+  overscroll-behavior-inline: contain;
+}
+
+.actions,
+.tabs {
+  max-inline-size: 100%;
+}
+
+.performance-workspace,
+.performance-layout,
+.performance-layout > .panel,
+.performance-layout .record-table-scroll {
+  inline-size: 100%;
+  max-inline-size: 100%;
+  min-inline-size: 0;
+}
+
+.performance-layout {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+@media (max-width: 900px) {
+  .performance-layout {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+
+  .performance-layout > .panel {
+    overflow: hidden;
+  }
+
+  .performance-layout .record-table-scroll {
+    overflow-x: auto;
+  }
+}
+
+@media (max-width: 700px) {
+  .topbar {
+    position: sticky;
+    display: grid !important;
+    grid-template-columns: minmax(0, 1fr) !important;
+    align-items: center !important;
+    gap: 7px !important;
+    height: auto !important;
+    min-height: 0 !important;
+    padding: 8px 10px 9px !important;
+    overflow: visible !important;
+  }
+
+  .brand-block {
+    display: grid;
+    grid-template-columns: 112px minmax(0, 1fr);
+    align-items: center;
+    gap: 10px;
+    inline-size: 100%;
+    min-inline-size: 0;
+  }
+
+  .brand-logo {
+    inline-size: 112px;
+    max-inline-size: 112px;
+  }
+
+  .brand-block > div {
+    min-inline-size: 0;
+  }
+
+  .brand {
+    font-size: 15px;
+    line-height: 1.2;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .topbar .muted {
+    font-size: 10px;
+    line-height: 1.25;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .topbar > .nav:not(.app-drawer) {
+    display: flex !important;
+    inline-size: 100%;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: nowrap !important;
+    overflow-x: auto;
+    padding-block: 1px;
+    scrollbar-width: thin;
+  }
+
+  .topbar .nav > a,
+  .topbar .nav > button {
+    flex: 1 0 auto;
+    min-height: 36px;
+    padding: 6px 9px;
+    font-size: 12px;
+    white-space: nowrap;
+  }
+
+  .topbar .nav .preference-icons {
+    flex: 0 0 auto;
+    gap: 5px;
+  }
+
+  .topbar .icon-toggle {
+    inline-size: 32px;
+    block-size: 32px;
+    min-height: 32px;
+    padding: 0;
+  }
+
+  .container {
+    inline-size: 100%;
+    padding: 10px;
+  }
+
+  .business-day-control {
+    max-inline-size: 100%;
+    margin-block: 7px 10px;
+  }
+
+  .panel {
+    padding: 12px;
+    margin-bottom: 11px;
+  }
+
+  .card {
+    padding: 11px;
+  }
+
+  .operations-main-nav {
+    margin-bottom: 2px;
+  }
+
+  .operations-nav-toggle {
+    min-height: 42px !important;
+  }
+
+  .settings-operations-content > .settings-workbench-head {
+    padding: 16px;
+  }
+
+  .settings-workbench-head h1 {
+    font-size: 25px;
+  }
+
+  .settings-operations-content .panel {
+    padding: 13px;
+  }
+
+  .employee-directory-toolbar {
+    padding: 14px;
+  }
+
+  .employee360-content {
+    padding: 13px !important;
+  }
+
+  .employee-file-controls > * {
+    flex: 1 1 140px;
+  }
+
+  .employee-file-controls button,
+  .employee-file-controls .button-link {
+    justify-content: center;
+    text-align: center;
+  }
+
+  .orders-sidebar-metrics,
+  .kitchen-orders-toolbar .orders-sidebar-metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    overflow: visible;
+  }
+
+  .orders-sidebar-metrics .metric {
+    min-width: 0;
+    padding: 9px 10px;
+  }
+
+  .orders-sidebar-metrics .metric .label {
+    white-space: normal;
+    line-height: 1.2;
+  }
+
+  .performance-controls {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .performance-controls input,
+  .performance-controls select {
+    max-width: none;
+  }
+
+  .daily-controls {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    align-items: stretch;
+  }
+
+  .daily-controls > b,
+  .daily-controls > span,
+  .daily-controls > input {
+    grid-column: 1 / -1;
+  }
+
+  .daily-controls > input,
+  .daily-controls > button,
+  .daily-controls > .button-link {
+    inline-size: 100%;
+    min-inline-size: 0;
+    justify-content: center;
+    text-align: center;
+  }
+
+  .operations-status-strip {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .operations-status-strip article {
+    min-width: 0;
+  }
+}
+
+@media (max-width: 430px) {
+  .brand-block {
+    grid-template-columns: 100px minmax(0, 1fr);
+  }
+
+  .brand-logo {
+    inline-size: 100px;
+    max-inline-size: 100px;
+  }
+
+  .topbar .nav > a,
+  .topbar .nav > button {
+    padding-inline: 8px;
+    font-size: 11px;
+  }
+
+  .panel,
+  .settings-operations-content .panel {
+    border-radius: 11px;
+  }
+
+  .daily-preview-controls > * {
+    flex: 1 1 120px;
+  }
+
+  .daily-preview-controls button {
+    width: 100%;
+  }
+}

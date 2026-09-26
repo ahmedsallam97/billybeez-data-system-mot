@@ -29,3 +29,33 @@ test("core operations tabs and settings render without JSON/session errors", asy
   await expect(page.locator("body")).not.toContainText("Login required");
   await expect(page.locator("body")).not.toContainText("Unexpected end of JSON input");
 });
+
+test("mobile workspaces stay inside the viewport and collapse navigation after selection", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+
+  await page.goto("/operations?tab=performance", { waitUntil: "networkidle" });
+  const performanceContent = page.locator(".operations-content");
+  await expect(performanceContent).toBeVisible();
+  const performanceBox = await performanceContent.boundingBox();
+  expect(performanceBox.x).toBeGreaterThanOrEqual(0);
+  expect(performanceBox.x + performanceBox.width).toBeLessThanOrEqual(391);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
+
+  await page.goto("/operations?tab=daily", { waitUntil: "networkidle" });
+  const dailyControls = page.locator(".daily-controls");
+  const dailyControlsBox = await dailyControls.boundingBox();
+  expect(dailyControlsBox.x).toBeGreaterThanOrEqual(0);
+  expect(dailyControlsBox.x + dailyControlsBox.width).toBeLessThanOrEqual(391);
+  expect(await dailyControls.evaluate((element) => element.scrollWidth)).toBeLessThanOrEqual(Math.ceil(dailyControlsBox.width));
+
+  await page.goto("/data", { waitUntil: "networkidle" });
+  const topbarBox = await page.locator(".topbar").boundingBox();
+  expect(topbarBox.height).toBeLessThan(150);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
+
+  await page.goto("/settings", { waitUntil: "networkidle" });
+  const toggle = page.locator(".settings-main-nav .operations-nav-toggle");
+  if (await toggle.getAttribute("aria-expanded") !== "true") await toggle.click();
+  await page.locator(".settings-main-nav > button:not(.operations-nav-toggle)").nth(1).click();
+  await expect(toggle).toHaveAttribute("aria-expanded", "false");
+});

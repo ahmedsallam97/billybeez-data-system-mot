@@ -283,3 +283,14 @@ img {
     width: 100%;
   }
 }
+
+/* Keep Billy Assistant branded after the generic Settings panel styles. */
+.settings-operations-content .panel.billy-assistant {
+  background: linear-gradient(135deg, #2f1548 0, #512176 52%, #7132a0 100%);
+  border-color: #5f2a85;
+  color: #fff;
+}
+
+.settings-operations-content .panel.billy-assistant .billy-insight {
+  background: rgba(255, 255, 255, .97);
+}

@@ -1,15 +1,19 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { useI18n } from "../i18n";
 import HallOfFame from "./HallOfFame";
 import { MonthlyWinnerArtwork } from "./RecognitionArtwork";
 
 export default function PerformanceWorkspace() {
   const { isArabic } = useI18n();
+  const searchParams = useSearchParams();
   const now = new Date();
-  const [year, setYear] = useState(now.getFullYear());
-  const [month, setMonth] = useState(now.getMonth() + 1);
+  const requestedYear = Number(searchParams.get("year"));
+  const requestedMonth = Number(searchParams.get("month"));
+  const [year, setYear] = useState(Number.isInteger(requestedYear) && requestedYear >= 2020 && requestedYear <= 2100 ? requestedYear : now.getFullYear());
+  const [month, setMonth] = useState(Number.isInteger(requestedMonth) && requestedMonth >= 1 && requestedMonth <= 12 ? requestedMonth : now.getMonth() + 1);
   const [data, setData] = useState(null);
   const [error, setError] = useState("");
   const [section, setSection] = useState("workspace");

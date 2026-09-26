@@ -28,6 +28,9 @@ test("core operations tabs and settings render without JSON/session errors", asy
   await page.goto("/settings");
   await expect(page.locator("body")).not.toContainText("Login required");
   await expect(page.locator("body")).not.toContainText("Unexpected end of JSON input");
+  await expect(page.getByRole("heading", { name: "Billy Assistant" })).toBeVisible();
+  await expect(page.locator(".billy-assistant")).toContainText("AI GENERATED");
+  await expect(page.locator("body")).not.toContainText("OPERATIONS AI ASSISTANT");
 });
 
 test("mobile workspaces stay inside the viewport and collapse navigation after selection", async ({ page }) => {

@@ -236,7 +236,7 @@ export default function DailyWorkspace({ initialView = "attendance" }) {
     {!daily?.schedule ? <section className="panel"><Empty>{isArabic ? "لا يوجد جدول منشور يغطي التاريخ المحدد." : "No published schedule covers this date."}</Empty></section> : evaluationMode ? <DailyEvaluationPanel date={date} /> : date !== today ? <section className="panel"><Empty>{isArabic ? "الحضور الفعلي متاح لليوم الحالي؛ استخدم الروستر لمراجعة الأيام الأخرى." : "Actual attendance is available for today; use the roster for other dates."}</Empty></section> : <section className="panel">
       <h2>{isArabic ? "الحضور الفعلي" : "Actual attendance"}</h2>
       {attendance?.day ? <>
-        <div className="record-table-scroll">
+        <div className="record-table-scroll attendance-table-wrap">
           <table className="record-line-table attendance-table">
             <thead><tr><th>{isArabic ? "الموظف" : "Employee"}</th><th>{isArabic ? "المتوقع" : "Expected"}</th><th>{isArabic ? "الحالة" : "Status"}</th><th>In</th><th>Out</th><th>{isArabic ? "ملاحظة" : "Note"}</th><th>{isArabic ? "حفظ" : "Save"}</th></tr></thead>
             <tbody>{records.map((record) => <AttendanceRow key={record.id} record={record} finalized={attendance.day.status === "FINALIZED"} onSave={updateAttendance} />)}</tbody>

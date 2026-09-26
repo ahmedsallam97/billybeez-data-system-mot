@@ -25,7 +25,7 @@ test("core operations tabs and settings render without JSON/session errors", asy
     await expect(page.locator("body")).not.toContainText("Login required");
     await expect(page.locator("body")).not.toContainText("Roster data could not be loaded");
   }
-  await page.goto("/settings");
+  await page.goto("/settings", { waitUntil: "networkidle" });
   await expect(page.locator("body")).not.toContainText("Login required");
   await expect(page.locator("body")).not.toContainText("Unexpected end of JSON input");
   await expect(page.getByRole("heading", { name: "Billy Assistant" })).toBeVisible();
@@ -67,4 +67,30 @@ test("mobile workspaces stay inside the viewport and collapse navigation after s
   if (await toggle.getAttribute("aria-expanded") !== "true") await toggle.click();
   await page.locator(".settings-main-nav > button:not(.operations-nav-toggle)").nth(1).click();
   await expect(toggle).toHaveAttribute("aria-expanded", "false");
+});
+
+test("daily tables fit their panels and roster settings use focused editors", async ({ page }) => {
+  await page.goto("/operations?tab=daily", { waitUntil: "networkidle" });
+  const attendance = page.locator(".attendance-table-wrap");
+  await expect(attendance).toBeVisible();
+  expect(await attendance.evaluate((element) => element.scrollWidth <= element.clientWidth + 1)).toBeTruthy();
+
+  await page.goto("/operations?tab=evaluation", { waitUntil: "networkidle" });
+  const evaluation = page.locator(".evaluation-table-wrap");
+  await expect(evaluation).toBeVisible();
+  expect(await evaluation.evaluate((element) => element.scrollWidth <= element.clientWidth + 1)).toBeTruthy();
+  await page.getByRole("button", { name: /Actions & notes|جزاءات وتوجيه/ }).first().click();
+  await expect(page.getByLabel(/Employee penalty|جزاء الموظف/)).toBeVisible();
+  await expect(page.getByLabel(/Guidance action|الإجراء التوجيهي/)).toBeVisible();
+
+  await page.goto("/settings", { waitUntil: "networkidle" });
+  const toggle = page.locator(".settings-main-nav .operations-nav-toggle");
+  await toggle.click();
+  await page.locator(".settings-main-nav > button").filter({ hasText: /Roster & shifts|الروستر والشيفتات/ }).click();
+  await expect(page.locator(".cashier-picker-panel select")).toHaveCount(2);
+  await expect(page.locator(".roster-name-settings select")).toHaveCount(1);
+  const editorInputs = page.locator(".operational-position-settings .settings-editor-form").first().locator("input");
+  const firstInput = await editorInputs.nth(0).boundingBox();
+  const secondInput = await editorInputs.nth(1).boundingBox();
+  expect(secondInput.y).toBeGreaterThan(firstInput.y + firstInput.height - 1);
 });

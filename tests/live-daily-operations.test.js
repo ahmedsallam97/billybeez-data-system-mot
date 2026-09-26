@@ -120,6 +120,24 @@ test("cashiers remain first-line roster staff but never receive operational rota
   assert.equal(result.assignments[0].employeeId, "operator");
 });
 
+test("fully staffed shifts distribute remaining employees across distinct optional positions", () => {
+  const positions = [
+    position("data", "DATA", false, true),
+    { ...position("locker", "LOCKER", false), staffingRequirements: [] },
+    { ...position("tower", "TOWER", false), staffingRequirements: [] },
+    { ...position("drop", "DROP", false), staffingRequirements: [] },
+  ];
+  const result = generateRotation({
+    workDate: "2026-09-17",
+    team: buildExpectedTeam([employee("a"), employee("b"), employee("c")], { AM: {} }).map((item) => ({ ...item, liveDay: false })),
+    positions,
+    slots: [{ shiftCode: "AM", startTime: "10:00", endTime: "11:00" }],
+  });
+  assert.equal(result.assignments.length, 3);
+  assert.equal(new Set(result.assignments.map((item) => item.positionCode)).size, 3);
+  assert.ok(result.assignments.some((item) => item.positionCode !== "DATA"));
+});
+
 test("overlapping shifts never duplicate the same position in the same hour", () => {
   const locker = position("locker", "LOCKER", false);
   locker.staffingRequirements.push({ shiftCode: "PM", minEmployees: 1, effectiveFrom: "2026-01-01", effectiveTo: null });

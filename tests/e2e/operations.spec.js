@@ -10,11 +10,24 @@ test("authenticated employee 360 exposes incidents and protected complete PDF", 
   await page.getByRole("button", { name: "Schedule & Attendance" }).click();
   await expect(page.getByRole("heading", { name: "Monthly shift totals" })).toBeVisible();
   await expect(page.locator(".employee-schedule-summary table")).toHaveCount(2);
+  await expect(page.locator(".employee-schedule-summary table").first().locator("thead")).toContainText("Working days");
+  await expect(page.locator(".employee-schedule-summary table").first().locator("thead")).not.toContainText("Annual");
+  await expect(page.locator(".employee-schedule-summary table").first().locator("thead")).not.toContainText("Other");
+  await expect(page.locator(".employee-schedule-summary table").nth(1).locator("thead")).toContainText("Replacement");
+  await expect(page.locator(".employee-schedule-summary table").nth(1).locator("thead")).toContainText("Sick leave");
+  for (const tableWrap of await page.locator(".employee-schedule-summary .record-table-scroll").all()) expect(await tableWrap.evaluate((element) => element.scrollWidth <= element.clientWidth + 1)).toBeTruthy();
   const shiftRows = page.locator(".employee-schedule-summary table").first().locator("tbody tr");
   await expect(shiftRows.nth(0).locator("td").first()).toHaveText("January");
   await expect(shiftRows.nth(1).locator("td").first()).toHaveText("February");
   await expect(page.locator(".employee-schedule-summary")).toContainText("Total to date");
   await expect(page.locator(".employee-schedule-summary")).not.toContainText("October");
+  const convertButton = page.getByRole("button", { name: "Convert PT to HRIS" });
+  if (await convertButton.count()) {
+    await convertButton.click();
+    await expect(page.getByRole("dialog", { name: "Convert employee to HRIS" })).toBeVisible();
+    await expect(page.getByLabel("HRIS number")).toBeVisible();
+    await page.getByRole("button", { name: "Close" }).click();
+  }
   const employeesResponse = await request.get("/api/operations/employees?status=ACTIVE");
   expect(employeesResponse.ok()).toBeTruthy();
   const employees = (await employeesResponse.json()).employees;

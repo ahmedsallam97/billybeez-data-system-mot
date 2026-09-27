@@ -240,4 +240,49 @@ test.describe("isolated operations mutations", () => {
     expect(profile.guidanceRecords.some((item) => item.id === guidanceId)).toBeTruthy();
     expect(profile.incidents.find((item) => item.id === incidentId)?.status).toBe("CLOSED");
   });
+
+  test("an existing Part-Time employee converts to a real HRIS identity with a contract", async ({ request }) => {
+    const employeesResponse = await request.get("/api/operations/employees?status=ACTIVE");
+    const employees = (await employeesResponse.json()).employees;
+    const partTime = employees.find((item) => !item.hrisNumber && item.employmentType === "PART_TIME");
+    expect(partTime).toBeTruthy();
+
+    const conversionResponse = await request.post(`/api/operations/employees/${partTime.id}/360`, { data: {
+      action: "convertToHris",
+      hrisNumber: "99876",
+      effectiveDate: "2099-12-01",
+      contractEnd: "2100-11-30",
+      jobTitle: partTime.jobTitle || "Ride Operator",
+      jobCode: "E2E-HRIS",
+      reason: "Isolated HRIS conversion rehearsal",
+    } });
+    expect(conversionResponse.ok()).toBeTruthy();
+    const converted = (await conversionResponse.json()).employee;
+    expect(converted.id).toBe(partTime.id);
+    expect(converted.hrisNumber).toBe("99876");
+    expect(converted.localEmployeeCode).toBe("");
+    expect(converted.employmentType).toBe("HRIS");
+
+    const png = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=", "base64");
+    const contractResponse = await request.post(`/api/operations/employees/${partTime.id}/documents`, { multipart: {
+      employeeId: partTime.id,
+      documentType: "CONTRACT",
+      displayName: "E2E signed HRIS contract",
+      issueDate: "2099-12-01",
+      expiryDate: "2100-11-30",
+      notes: "Isolated fixture",
+      file: { name: "hris-contract.png", mimeType: "image/png", buffer: png },
+    } });
+    expect(contractResponse.ok()).toBeTruthy();
+
+    const profileResponse = await request.get(`/api/operations/employees/${partTime.id}/360`);
+    const profile = (await profileResponse.json()).employee;
+    expect(profile.employmentEvents.some((item) => item.eventType === "CONVERTED_TO_HRIS" && item.newValue.includes("99876"))).toBeTruthy();
+    expect(profile.employmentPeriods.flatMap((period) => period.assignments).some((item) => item.changeReason === "PT_TO_HRIS" && item.jobCode === "E2E-HRIS")).toBeTruthy();
+    expect(profile.documents.some((item) => item.documentType === "CONTRACT" && item.displayName === "E2E signed HRIS contract")).toBeTruthy();
+
+    const repeatResponse = await request.post(`/api/operations/employees/${partTime.id}/360`, { data: { action: "convertToHris", hrisNumber: "99876", effectiveDate: "2099-12-01", jobTitle: "Ride Operator" } });
+    expect(repeatResponse.status()).toBe(400);
+    expect((await repeatResponse.json()).error).toContain("already assigned to HRIS");
+  });
 });

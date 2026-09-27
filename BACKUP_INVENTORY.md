@@ -2,15 +2,15 @@
 
 ## Backup set
 
-- Created: 2026-09-25
+- Created: 2026-09-27
 - Repository: `D:\Projects\billybeez-data-system-mot`
 - Git branch: `ops-migration-local`
-- External package: `D:\Projects\billybeez-system-backups\BillyBeez-MOT-restore-2026-09-25T20-53-25Z-r1.zip`
-- Fresh verified database backup: `D:\Projects\billybeez-data-system-mot\backups\manual-2026-09-25T20-52-22-357Z.db`
+- External package: `D:\Projects\billybeez-system-backups\BillyBeez-MOT-restore-2026-09-27T06-46-03Z-r2.zip`
+- Fresh verified database backup: `D:\Projects\billybeez-data-system-mot\backups\manual-2026-09-27T06-46-03-014Z.db`
 
 The external package is intentionally outside the repository and must never be committed or uploaded to GitHub. It contains credentials, operational history, employee information, and restricted employee evidence. Treat it as confidential.
 
-The package folder contains 60 files (about 152.4 MiB before ZIP compression). All 59 payload checksums passed, the ZIP opens successfully, the packaged database matches the fresh verified backup byte-for-byte, and the packaged database passed SQLite integrity and foreign-key checks.
+The package folder contains 61 files (about 159.3 MiB before ZIP compression). All 60 payload checksums passed, the ZIP opens successfully, the packaged database matches the fresh verified backup byte-for-byte, and the packaged database passed SQLite integrity and foreign-key checks. The ZIP is about 24.0 MiB.
 
 ## Required restore sources
 
@@ -53,8 +53,11 @@ All SQLite files present in the active database and backup locations at package 
 - `backups\manual-2026-09-24T10-16-44-618Z.db`
 - `backups\manual-2026-09-25T08-19-40-888Z.db`
 - `backups\manual-2026-09-25T08-41-57-035Z.db`
+- `backups\manual-2026-09-25T14-20-18-567Z.db`
+- `backups\manual-2026-09-25T20-11-56-873Z.db`
 - `backups\manual-2026-09-25T20-27-43-725Z.db`
-- `backups\manual-2026-09-25T20-52-22-357Z.db` (fresh verified backup and package database source)
+- `backups\manual-2026-09-25T20-52-22-357Z.db`
+- `backups\manual-2026-09-27T06-46-03-014Z.db` (fresh verified backup and package database source)
 - `backups\pre-leave-time-20260913-020722.db`
 
 ## Verification baseline
@@ -63,7 +66,7 @@ The active database, fresh backup, and the database extracted from the final arc
 
 - SQLite `integrity_check`: `ok`
 - foreign-key errors: `0`
-- application tables: `76`
+- application tables: `77`
 - employees: `16`
 - active protected employee documents/photos in the database: `10`
 - active employees: `13`
@@ -76,7 +79,7 @@ The package contains `PACKAGE_SHA256.csv` and `PACKAGE_INFO.txt`. Use them to ve
 ## Package layout
 
 ```text
-BillyBeez-MOT-restore-2026-09-25T20-53-25Z/
+BillyBeez-MOT-restore-2026-09-27T06-46-03Z-r2/
   PACKAGE_INFO.txt
   PACKAGE_SHA256.csv
   BACKUP_INVENTORY.md

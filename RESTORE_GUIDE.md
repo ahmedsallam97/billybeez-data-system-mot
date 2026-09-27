@@ -7,7 +7,7 @@ This procedure restores the current Billy Beez system from two sources:
 
 The restore archive is expected at:
 
-`D:\Projects\billybeez-system-backups\BillyBeez-MOT-restore-2026-09-25T20-53-25Z-r1.zip`
+`D:\Projects\billybeez-system-backups\BillyBeez-MOT-restore-2026-09-27T06-46-03Z-r2.zip`
 
 Never upload the restore archive to GitHub. It contains credentials and employee/operational information.
 
@@ -52,8 +52,8 @@ Do not run the seed script. The restore archive contains the real current databa
 Choose a temporary access-controlled directory outside the repository:
 
 ```powershell
-$Archive = 'D:\Projects\billybeez-system-backups\BillyBeez-MOT-restore-2026-09-25T20-53-25Z-r1.zip'
-$Package = 'D:\SecureRestore\BillyBeez-MOT-restore-2026-09-25T20-53-25Z'
+$Archive = 'D:\Projects\billybeez-system-backups\BillyBeez-MOT-restore-2026-09-27T06-46-03Z-r2.zip'
+$Package = 'D:\SecureRestore\BillyBeez-MOT-restore-2026-09-27T06-46-03Z-r2'
 New-Item -ItemType Directory -Force -Path $Package | Out-Null
 Expand-Archive -LiteralPath $Archive -DestinationPath $Package -Force
 ```
@@ -155,14 +155,14 @@ Copy-Item -Path (Join-Path $Overlay 'output\*') -Destination (Join-Path $Repo 'o
 Do not print `.env` in a shared terminal or chat. Check only that required keys exist:
 
 ```powershell
-$RequiredKeys = @('DATABASE_URL', 'SESSION_SECRET', 'AUTH_COOKIE_NAME')
+$RequiredKeys = @('DATABASE_URL', 'DATABASE_PROVIDER', 'SESSION_SECRET', 'AUTH_COOKIE_NAME')
 $DefinedKeys = Get-Content -LiteralPath .env | Where-Object { $_ -match '^\s*[A-Za-z_][A-Za-z0-9_]*\s*=' } | ForEach-Object { ($_ -split '=', 2)[0].Trim() }
 $Missing = $RequiredKeys | Where-Object { $_ -notin $DefinedKeys }
 if ($Missing) { throw "Missing environment keys: $($Missing -join ', ')" }
 'Required environment keys are present.'
 ```
 
-For the restored package, `DATABASE_URL` should resolve to the SQLite database under `prisma\dev.db`. Do not replace the restored secret with the placeholder from `.env.example`.
+For the restored package, `DATABASE_PROVIDER` must be `sqlite` and `DATABASE_URL` should resolve to the SQLite database under `prisma\dev.db`. Do not replace the restored secret with the placeholder from `.env.example`.
 
 The workstation restore continues to use `EMPLOYEE_FILE_STORAGE_PROVIDER="local"` (or leaves it unset) and reads protected files from `storage\employee-files\`. For a stateless or multi-instance deployment, set the provider to `s3` and fill the `EMPLOYEE_FILE_S3_*` variables documented in `.env.example`; do not commit their values.
 
@@ -173,6 +173,7 @@ For a long-lived copy on a new machine, generate a new strong `SESSION_SECRET` a
 ```powershell
 npx prisma generate
 npx prisma validate
+npm run db:pg:generate
 ```
 
 Do not run `npm run db:push` during a normal full restore. The archived database already contains the required schema and data. Do not run `npm run db:seed`.
@@ -181,19 +182,19 @@ To validate the generated PostgreSQL-parity schema without changing SQLite:
 
 ```powershell
 npm run db:pg:sync-schema
-$env:POSTGRES_DATABASE_URL="postgresql://user:password@host:5432/isolated_validation_database"
 npm run db:pg:validate
-Remove-Item Env:POSTGRES_DATABASE_URL
 ```
 
-Do not run `npm run db:pg:push` against production until the database and data migration have been rehearsed and reviewed on an isolated PostgreSQL instance.
+Use `npm run db:pg:migrate` only against an isolated PostgreSQL target until the versioned migration and current-data transfer have been rehearsed and reconciled. Never use `db push` for PostgreSQL production changes.
+
+After restoring `storage\employee-files`, run `npm run storage:verify`. It creates and removes one verification object. Run `npm run storage:cleanup` only as a dry-run report; do not apply retention deletion during a restore.
 
 ## 7. Verify the restored database
 
 Verify the archived recovery point header:
 
 ```powershell
-npm run db:verify-backup -- .\backups\manual-2026-09-25T20-52-22-357Z.db
+npm run db:verify-backup -- .\backups\manual-2026-09-27T06-46-03-014Z.db
 ```
 
 Run the application tests and build:
@@ -230,7 +231,7 @@ This command prints only aggregate counts and integrity results. It does not pri
 
 Expected baseline at package creation:
 
-- 60 tests passing;
+- 72 tests passing;
 - UI audit passing;
 - production build passing;
 - SQLite integrity `ok`;
@@ -282,6 +283,6 @@ At package creation, employee storage contained 12 protected files across 12 emp
 
 ## 11. Rollback if validation fails
 
-Stop the server. Preserve the failed restored database for diagnosis, then replace `prisma\dev.db` with the verified recovery point `backups\manual-2026-09-25T20-52-22-357Z.db`. Repeat database verification before restarting.
+Stop the server. Preserve the failed restored database for diagnosis, then replace `prisma\dev.db` with the verified recovery point `backups\manual-2026-09-27T06-46-03-014Z.db`. Repeat database verification before restarting.
 
 If package checksums fail, do not restore from the damaged archive. Return to the original machine and create a new backup package from the verified active database.

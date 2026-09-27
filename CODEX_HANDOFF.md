@@ -4,7 +4,7 @@
 
 This file is the continuity document for a new developer or Codex session with no access to the conversation that produced the current branch. Read it before changing code or data.
 
-The active branch is `ops-migration-local`. The current implementation commit is `61a7222` (`feat: finish Arabic employee files and incident closure`) and is ready to publish to `origin/ops-migration-local` with this handoff update. The branch was created from `origin/next-level-upgrade` at `a34f409`.
+The active branch is `ops-migration-local`. The current implementation commit is `e456b0d` (`fix: make production builds coexist with dev server`) and is ready to publish to `origin/ops-migration-local` with this handoff update. The branch was created from `origin/next-level-upgrade` at `a34f409`.
 
 The local SQLite database, employee files, backups, generated screenshots, generated PDFs, local migration helpers, logs, and environment files are deliberately not in Git. Git contains application code and schema only. Never infer that cloning this branch recreates the current local operational data.
 
@@ -24,31 +24,51 @@ The active application is the Next.js application under `app/`. Root-level stati
 
 ## Current state
 
-As of 2026-09-25:
+As of 2026-09-26:
 
 - the code is on `ops-migration-local` and is pushed to GitHub;
-- `npm test` passes all 68 tests;
+- `npm test` passes all 72 tests;
 - `npm run build` succeeds and builds 49 pages/routes;
 - `npm run lint` (the repository UI audit) passes;
 - the development server is configured for `http://127.0.0.1:3008`;
-- the current local SQLite database passes integrity checking;
+- the current local SQLite database and the fresh `manual-2026-09-27T06-46-03-014Z.db` backup pass integrity and foreign-key checking;
 - the local employee population remains 16 total, 13 active, and 3 inactive;
 - the 13 active operational employees consist of 8 HRIS and 5 Part-Time records;
 - inactive employees were preserved and were not deleted, merged, or normalized away;
 - Employee 360 and the current Live Daily Operations workflows are implemented and runtime-smoke-tested;
 - the roster automatically creates a rules-based rotation when a published day has no plan;
+- automatic and manual rotation assignment both prevent overlapping employees from occupying the same position, and the three legacy 2026-09-16 LOCKER conflicts were removed from the local database;
 - cashier fallback, Team Leader exclusion, per-shift eight-hour headings, merged role bands, and non-overlapping rotation assignment are active;
 - trips and birthdays support create/edit/delete, reusable contacts, meal counts, stock-driven bracelet color/material display, and reservation/release of bracelet quantities;
 - schedule import/export includes both Operations and Cashier departments, with direct downloadable PDF, XLSX, browser print, and distinct cancel/delete draft actions;
 - `/settings` is the Operations settings/insights center; the previous management-settings selector is not exposed there;
 - Guest Feedback, Guidance/Penalties, and Incidents are persisted Employee 360 workflows with timeline, incident status/follow-up updates, and Complete Employee File integration;
 - Complete Employee File supports English or Arabic server-generated PDFs with embedded Tajawal fonts and merges active PDF, JPG, and PNG attachments;
+- daily-template settings now upgrade older JSON to one shared source, remove retired `fillerRows`/`rotationHours`, and replace the two retired slogans without overwriting manager customizations;
+- the roster WhatsApp action captures the actual rendered poster with its logo, uses native share or image clipboard when available, and downloads a verified PNG before opening WhatsApp when clipboard access is unavailable;
+- all Operations client requests use a shared safe response reader, so empty/HTML/session responses no longer produce raw `Unexpected end of JSON input` failures;
+- PostgreSQL now has a generated runtime client and versioned baseline migration, while SQLite remains the active provider;
+- CI, Docker packaging, deployment guidance, employee-storage verification, and dry-run file-retention cleanup are committed;
 - no pull request was created as part of this handoff.
 
 The current local database also contains 23 schedules and 9,087 schedule assignments. These figures describe the local database and are not seed data committed to Git.
 
 ## Important recent commits
 
+- `e456b0d` — `fix: make production builds coexist with dev server`
+  - generates Prisma clients during build only when missing, avoiding Windows DLL replacement errors while the development server is active;
+  - loads the generated PostgreSQL client at runtime without causing Next file tracing to capture the whole repository.
+- `1b85b51` — `feat: harden operations restore and deployment`
+  - upgrades legacy Operations settings from one shared definition and adds a repeatable settings migration;
+  - completes actual-poster WhatsApp image capture and reliable PNG download fallback;
+  - blocks manual position/hour collisions and repairs legacy active rotation conflicts;
+  - standardizes safe Operations API response handling;
+  - adds versioned PostgreSQL migrations/runtime selection, storage verification/cleanup, isolated mutation E2E, CI, Docker, and a deployment runbook;
+  - validated by 72 unit tests, UI audit, a 49-route build, 4 non-mutating Playwright tests, and 2 isolated mutation/PNG tests.
+- `56675ae` — `feat: complete roster rotation and daily controls`
+  - completes full-team rotation distribution, evaluation penalties/guidance, focused settings editors, and no-scroll daily tables.
+- `048c496` — `feat: expand operations management insights`
+  - expands Billy Assistant operational insights, charts, actions, and best/support employee cards without sales metrics.
 - `61a7222` — `feat: finish Arabic employee files and incident closure`
   - adds a full Arabic server-generated Complete Employee File with embedded fonts and protected attachment merging;
   - adds incident status/follow-up updates and closure auditing;
@@ -116,6 +136,9 @@ The earlier local implementation history was consolidated before its first push 
 - local protected file storage by default, with an S3-compatible provider for deployment
 - Node's built-in test runner
 - custom repository UI audit in `scripts/ui-audit.js`
+- Playwright browser tests, including opt-in isolated mutation coverage
+- a provider-selected Prisma runtime for SQLite or PostgreSQL
+- GitHub Actions CI and a reviewed Docker deployment path
 
 The application uses server routes under `app/api/`, Prisma through `lib/db`, and shared business rules under `lib/`. Most Operations-specific domain logic is under `lib/operations/`.
 
@@ -165,7 +188,7 @@ Core areas include:
 
 The Employee 360 aggregation reads existing operational source records. It does not duplicate schedule, attendance, evaluation, appraisal, recognition, or leave history. The unified timeline is derived at API time instead of being persisted as a second timeline table.
 
-`prisma/schema.postgres.prisma` is generated from the authoritative SQLite schema by `npm run db:pg:sync-schema` and passes Prisma validation. It has not yet been migrated against an isolated real PostgreSQL instance, so review generated migrations and rehearse restore/cutover before any production push.
+`prisma/postgres/schema.prisma` is generated from the authoritative SQLite schema by `npm run db:pg:sync-schema`. `prisma/postgres/migrations/0001_baseline/migration.sql` is the versioned PostgreSQL baseline and the generated PostgreSQL client is selected when `DATABASE_PROVIDER=postgresql`. Schema validation passes. A live PostgreSQL rehearsal and current-data transfer remain outstanding because this workstation has no configured PostgreSQL URL and its Docker daemon is stopped.
 
 ## Roles and permissions
 
@@ -314,33 +337,33 @@ Authentication uses bcrypt-hashed database passwords and an HMAC-signed HTTP-onl
 - Incidents can be recorded, investigated, updated, and closed with follow-up text and audit history. Add further investigation fields only from approved requirements.
 - Complete Employee File download now creates a protected server-side PDF and embeds active PDF, JPG, and PNG attachments; unsupported or unavailable attachments are listed in the PDF.
 - Employee file storage uses a provider adapter. Local filesystem remains the workstation default; S3-compatible storage is available through environment configuration.
-- PostgreSQL schema parity is automated and validated, while a real isolated PostgreSQL migration rehearsal remains outstanding.
-- The project has authenticated read-path browser coverage; destructive/transactional workflows still need isolated fixture coverage.
+- PostgreSQL schema parity, a generated provider-specific client, and a versioned baseline migration are committed; a live isolated PostgreSQL rehearsal and current-data transfer remain outstanding.
+- Browser coverage includes authenticated read paths plus isolated offer create/update/delete, schedule publish/revise/delete, and roster PNG fallback. Attendance finalization, evaluation approval, and upload lifecycle mutations still need isolated fixtures.
 - Roster gender and Team Leader fields are configurable, but historical/local records may still be null until a manager configures them. Name-based gender inference exists only as a presentation fallback.
 - Some operational staffing requirements can exceed the available scheduled team. Treat resulting coverage warnings as an operational capacity/configuration gap, not as a duplicate-assignment bug.
 - The settings and Daily Operations interfaces have been heavily revised but still need continued real-user visual review at common desktop widths and print sizes.
 
 ## Known bugs and limitations
 
-- README setup, branch, current feature, and seed guidance were refreshed at `61a7222`; keep it current as deployment choices change.
-- `prisma/schema.postgres.prisma` is generated in parity with the active SQLite schema, but a real data migration rehearsal remains outstanding.
-- There is no committed deployment pipeline or production infrastructure definition.
+- README, the deployment runbook, restore guide, and handoff must remain synchronized as deployment choices change.
+- `prisma/postgres/schema.prisma` is generated in parity with the active SQLite schema, but a real data migration rehearsal remains outstanding.
+- CI and a Docker single-host deployment definition are committed; no hosted production target, DNS, TLS termination, PostgreSQL service, or S3 bucket is configured in this repository.
 - SQLite and local upload storage are single-host state. They require persistent volumes, backup discipline, and single-writer considerations.
 - Generated screenshots and PDFs are not versioned because they can reveal employee information.
 - The repository now has baseline authenticated Playwright coverage for Employee 360, protected PDF export, roster, settings, and session/JSON regressions. Expand it as workflows change.
 - Direct browser print behavior can vary by browser; Complete Employee File and roster print layouts should be visually checked after CSS changes.
 
-No currently reproduced runtime-blocking roster API error remains in the committed code. If `Unexpected end of JSON input` returns, inspect the server terminal first: it previously indicated an API/server failure rather than valid empty data.
+No currently reproduced runtime-blocking roster API error remains in the committed code. Operations clients now parse empty, HTML, and JSON error responses through `lib/client/read-api-response.js`.
 
 ## Technical debt
 
 - Rehearse the generated PostgreSQL schema and data migration on an isolated real PostgreSQL database.
 - Configure and validate the S3-compatible employee-file provider in the target deployment.
-- Expand Playwright coverage to destructive/transactional schedule publish, attendance finalization, evaluation approval, and upload lifecycle cases using isolated fixtures.
+- Expand isolated Playwright mutation coverage to attendance finalization, evaluation approval, and upload lifecycle cases.
 - Break up the large `DailyWorkspace.jsx` and `DailyApprovalPreview.jsx` components.
 - Replace alert-based client feedback with consistent form validation and notifications.
-- Add explicit schema migrations instead of relying only on `prisma db push` for production evolution.
-- Add retention/cleanup rules for soft-removed employee files and replaced photos.
+- Add subsequent reviewed PostgreSQL migrations for every future schema change; `0001_baseline` is now committed.
+- Approve a formal retention period and run the committed file cleanup in dry-run mode before enabling deletion in production.
 - Expand the current Arabic/English PDF coverage with text-extraction and visual regression checks when the PDF toolchain supports them reliably.
 - Add a formal data retention/privacy policy for employee documents and generated reports.
 
@@ -363,14 +386,17 @@ No currently reproduced runtime-blocking roster API error remains in the committ
 - Issuing reserved stock moves it from allocated to issued without subtracting availability twice. Stock with reservations or issue history cannot change identity or be deleted, and saved totals cannot fall below committed quantities.
 - The local duplicate active `WF Weekend` offers were consolidated to one recurring Thursday/Friday/Saturday offer; this is local operational data, not a hardcoded source default.
 - Generated evidence containing employee information is local-only and ignored by Git.
+- Daily poster settings have one shared default/normalization source. Do not reintroduce template defaults directly inside client components.
+- Native browser security prevents automatically attaching a file to WhatsApp Web. The supported flow is native file share, image clipboard, or PNG download followed by opening WhatsApp.
+- Manual and generated rotation assignments both enforce employee/time and position/time exclusivity.
 
 ## Local-only context not represented by Git data
 
 - Latest verified local counts: 16 total employees, 13 active, 3 inactive, 8 active HRIS, 5 active Part-Time.
 - SQLite integrity was verified as `ok` before the Employee 360 schema changes and again during closure work.
 - Pre-change backup: `backups/manual-2026-09-14T02-24-42-035Z.db`.
-- Latest verified backup: `backups/manual-2026-09-25T20-52-22-357Z.db`.
-- Full confidential non-Git restore package: `D:\Projects\billybeez-system-backups\BillyBeez-MOT-restore-2026-09-25T20-53-25Z-r1.zip`.
+- Latest verified backup: `backups/manual-2026-09-27T06-46-03-014Z.db`.
+- Full confidential non-Git restore package: `D:\Projects\billybeez-system-backups\BillyBeez-MOT-restore-2026-09-27T06-46-03Z-r2.zip`.
 - Read `BACKUP_INVENTORY.md` and `RESTORE_GUIDE.md` before restoring. The archive remains local and must never be uploaded to GitHub.
 - The local database contains the operational schedule/history and must not be reseeded or reset.
 - The latest local rotation plan at handoff is V1 for 2026-09-24 with 13 DATA assignments, merged cashier bands, no cashier rotations, and no duplicate employee/hour or position/hour assignment. Optional positions were correctly withheld because the published day includes leave records and `optionalOnlyWhenFullyStaffed` is enabled.
@@ -383,12 +409,14 @@ No currently reproduced runtime-blocking roster API error remains in the committ
 Create a local `.env` from `.env.example`, then add the required variables. Never commit `.env`.
 
 - `DATABASE_URL` — required Prisma database URL. The local default is a SQLite file URL.
+- `DATABASE_PROVIDER` — `sqlite` by default or `postgresql` for the generated PostgreSQL runtime client.
 - `SESSION_SECRET` — required; at least 32 characters; use a cryptographically random value.
 - `AUTH_COOKIE_NAME` — optional cookie-name override.
 - `COOKIE_SECURE` — optional; use `false` only for local HTTP development. Production defaults to secure cookies.
 - `POSTGRES_DATABASE_URL` — PostgreSQL validation/migration target; use an isolated database until cutover is reviewed.
 - `EMPLOYEE_FILE_STORAGE_PROVIDER` — `local` by default or `s3` for protected object storage.
 - `EMPLOYEE_FILE_STORAGE_ROOT` — optional local storage root override.
+- `EMPLOYEE_FILE_RETENTION_DAYS` — minimum age used by the dry-run/apply employee-file cleanup scripts; default 90.
 - `EMPLOYEE_FILE_S3_BUCKET`, `EMPLOYEE_FILE_S3_REGION`, `EMPLOYEE_FILE_S3_ENDPOINT`, `EMPLOYEE_FILE_S3_PREFIX`, `EMPLOYEE_FILE_S3_ACCESS_KEY_ID`, `EMPLOYEE_FILE_S3_SECRET_ACCESS_KEY`, `EMPLOYEE_FILE_S3_FORCE_PATH_STYLE`, `EMPLOYEE_FILE_S3_SSE` — S3-compatible provider settings; never commit values.
 - `SEED_ADMIN_PASSWORD`, `SEED_MANAGER_PASSWORD`, `SEED_DATA_PASSWORD`, `SEED_CASHIER_PASSWORD`, `SEED_KITCHEN_PASSWORD`, `SEED_EMPLOYEE_PASSWORD` — required only when deliberately seeding a new disposable database; each must be at least 12 characters and must never be committed with a real value.
 
@@ -415,7 +443,7 @@ npm run test:e2e
 npm run db:pg:validate
 ```
 
-Production-style local start uses `npm run start` on port 3000 after `npm run build`. Review the Windows-specific environment syntax in that script before using it on Linux or in a deployment platform.
+Production-style local start uses `npm run start` on port 3000 after `npm run build` and is cross-platform.
 
 ## Database migration and setup
 
@@ -426,7 +454,7 @@ Production-style local start uses `npm run start` on port 3000 after `npm run bu
 - Use `npm run db:push` only after reviewing the exact Prisma diff against the intended database.
 - Do not run `npm run db:seed` against the current operational database. It is intended for a disposable/demo database and may overwrite or create unwanted records.
 - Do not run the ignored `scripts/migrate-bb-oms.js` as a routine setup step.
-- Do not run PostgreSQL push commands against production. The parity schema validates, but the migration must first be rehearsed and reviewed on an isolated database.
+- Use `npm run db:pg:migrate` for PostgreSQL deployment. Do not use `db push` against PostgreSQL; rehearse the versioned migration and data transfer on an isolated database first.
 
 For a new clean environment, schema creation and seed behavior must be tested on a disposable database first. For an existing Billy Beez database, preserve operational history and reconcile by stable identifiers rather than names.
 
@@ -454,7 +482,7 @@ Employee files under `storage/employee-files/` require a separate filesystem bac
 
 ## Deployment notes
 
-There is no finished production deployment definition in this repository.
+The repository contains `.github/workflows/ci.yml`, `Dockerfile`, `docker-compose.production.example.yml`, and `docs/DEPLOYMENT.md`. They provide a reviewable CI and single-host container baseline. A real production platform is not yet configured.
 
 Any deployment must provide:
 
@@ -473,10 +501,10 @@ Do not deploy the current SQLite file and local `storage/` directory to an ephem
 
 1. Run and review a full SQLite-to-PostgreSQL migration rehearsal on an isolated database.
 2. Configure the S3-compatible employee-file provider and verify upload/download/backup behavior in the deployment environment.
-3. Expand the new authenticated Playwright suite with isolated transactional fixtures.
+3. Add isolated attendance-finalization, evaluation-approval, and employee-upload mutation fixtures.
 4. Select the fourth backup cashier and any Team Leader through Settings; these choices were intentionally not invented. Enter real inventory quantities and optional qualification restrictions as operational data becomes available.
 5. Resolve or explicitly accept current operational coverage warnings using real staffing requirements; do not suppress them in code.
-6. Continue visual refinement using runtime screenshots at actual branch desktop widths and A4 print preview.
+6. Continue visual refinement only from real branch feedback at actual desktop widths and A4 print preview.
 7. Add isolated create/update browser E2E coverage for Guest Feedback, Guidance/Penalties, and Incidents.
 8. Define any additional incident investigation/closure fields only from approved branch requirements; the distinct Incidents workflow is now present.
 
@@ -487,7 +515,7 @@ Do not deploy the current SQLite file and local `storage/` directory to an ephem
 3. Start the server on port 3008 and run a focused runtime smoke test of schedule, roster, attendance, daily evaluation, Employee 360, uploads, protected file access, and both print previews.
 4. Review current Settings data with the branch manager and select the fourth backup cashier, Team Leader, real stock quantities, and any qualification restrictions the branch actually uses.
 5. Verify coverage warnings against the real staffing model and adjust requirements or staffing only with operational approval.
-6. Extend the authenticated E2E suite before another large UI refactor.
+6. Extend isolated mutation E2E before another large workflow refactor.
 7. Rehearse PostgreSQL and the configured object-storage target in an isolated environment before planning deployment.
 8. Extend Guest Feedback, Guidance/Penalties, and Incidents only from approved operational requirements.
 
@@ -495,7 +523,9 @@ Do not deploy the current SQLite file and local `storage/` directory to an ephem
 
 1. `CODEX_HANDOFF.md`
 2. `prisma/schema.prisma`
-3. `app/operations/OperationsClient.jsx`
+3. `prisma/postgres/schema.prisma` and `prisma/postgres/migrations/`
+4. `docs/DEPLOYMENT.md`
+5. `app/operations/OperationsClient.jsx`
 4. `app/operations/DailyWorkspace.jsx`
 5. `app/operations/daily-preview/DailyApprovalPreview.jsx`
 6. `app/operations/Employee360View.jsx`
@@ -516,7 +546,7 @@ Do not deploy the current SQLite file and local `storage/` directory to an ephem
 ## Legacy and safety warnings
 
 - Do not build new work on root-level `index.html`, `cashier.html`, `delivery.html`, `dashboard.html`, `orders.html`, `invoice.html`, `app.js`, `auth.js`, `config.js`, `code.gs`, `appsscript.json`, or `style.css`. They are legacy references.
-- Do not treat `prisma/schema.postgres.prisma` as production-ready.
+- Do not point the PostgreSQL runtime at production until the versioned migration and current-data transfer have passed an isolated rehearsal and reconciliation.
 - Do not seed or reset the current local operational database.
 - Do not commit `.env`, SQLite databases, backups, `storage/`, generated employee screenshots/PDFs, local admin helpers, logs, or the ignored migration helper.
 - Do not expose employee files through `public/` or a raw static URL.
@@ -541,9 +571,10 @@ The implementation commit was reviewed for tracked secrets and forbidden artifac
 At handoff, the expected repository checks are:
 
 ```text
-npm test      # 64 passing
+npm test      # 72 passing
 npm run lint  # UI audit passing
 npm run build # production build passing
+npm run test:e2e # 4 read-path tests pass; 2 mutation tests skip unless E2E_MUTATIONS=1
 ```
 
 Re-run them after material changes. Runtime verification remains mandatory for visual or workflow changes.
@@ -560,9 +591,22 @@ The current Operations implementation now includes the following verified behavi
 - Bracelet stock has a persisted human-readable `colorName`, retains the color picker value, and renders a color swatch plus usage, material, color name, and remaining quantity. Existing bracelet rows were backfilled (`Light Purple`, `Red`).
 - Offer records have a persisted `childrenCount` (default 1). Existing BOGO records were set to 2 children and existing discount mismatches were recalculated from price-before/price-after values.
 - Monthly schedule rows were reduced to compact 43px cells, employee names stay on one line, the Operations/Cashier tables remain separated, and the live schedule color setting was updated to a lighter but still readable palette.
-- WhatsApp image export no longer depends on DOM canvas capture. It generates a same-origin SVG/PNG, tries the native file share, then falls back to image clipboard or a downloaded PNG and opens WhatsApp. The fallback was exercised successfully in the running browser.
+- WhatsApp image export first captures the actual rendered poster, including its logo and multi-column offers. A same-origin SVG renderer remains as a safe fallback. The flow tries native file share, then image clipboard, then a downloaded PNG before opening WhatsApp.
 - `OpsDailyOffer.childrenCount` and `OpsWristbandStock.colorName` were added to the active SQLite schema and Prisma Client was regenerated.
 
 The same completion pass also wired the previously saved rules into runtime behavior: attendance calculates lateness and early leave from the configured grace periods, evaluation closure enforces required review, leave approval enforces negative-balance and coverage rules, stock alerts use the configured threshold, schedule import can create a new draft when none exists, and the roster selects one front cashier per working shift while honoring mandatory rotation priorities. Trip and birthday meals now use the configurable meal catalog. Employee 360 now includes persisted Guest Feedback and Guidance/Penalties records with the corresponding API and database models.
 
-Runtime verification on 2026-09-25 covered the roster poster, Settings, every core Operations tab, Employee 360, offers, stock, monthly schedule, Incidents, and protected English/Arabic Complete Employee File export. The final checks were `npm run build`, `npm test` (68/68), `npm run lint`, authenticated Playwright (2/2), PostgreSQL schema validation, and a verified SQLite backup at `backups/manual-2026-09-25T20-52-22-357Z.db`. The complete confidential non-Git restore package is `D:\Projects\billybeez-system-backups\BillyBeez-MOT-restore-2026-09-25T20-53-25Z-r1.zip`.
+Runtime verification on 2026-09-25 covered the roster poster, Settings, every core Operations tab, Employee 360, offers, stock, monthly schedule, Incidents, and protected English/Arabic Complete Employee File export.
+
+## Update — 2026-09-26 hardening and restoration pass
+
+- Legacy template JSON was normalized in the local database and in code. Retired fixed rotation hours, filler rows, and slogans are removed while valid manager customizations remain.
+- Manual rotation edits now reject a second employee in an overlapping position/time slot. The repair script removed the three known 2026-09-16 LOCKER collisions, and a final dry run reports zero conflicts.
+- Operations uses a common safe API reader across schedule, daily, evaluation, Employee 360, dashboard, performance, recognition, leave/time, and settings workspaces.
+- Roster sharing captures the real poster and embeds the configured logo. The verified fallback downloads a valid PNG when clipboard APIs are blocked; browsers still require the user to attach or paste it in WhatsApp unless native file share is available.
+- PostgreSQL has a versioned baseline, generated client, provider switch, provider-aware health endpoint, and deployment commands. A real server was unavailable: no URL is configured and Docker Desktop is installed but its daemon is stopped.
+- Employee storage verification passed against the active local provider. The 90-day cleanup dry run found no stale or orphan objects. S3 live verification remains pending because no S3 provider/bucket is configured.
+- CI and Docker definitions are committed. CI creates a disposable database and runs schema parity, unit, UI audit, build, read-path browser, and opt-in mutation browser tests.
+- Final verification: 72/72 Node tests, UI audit, 49-route production build, PostgreSQL schema/client generation, 4/4 non-mutating Playwright tests, and 2/2 isolated mutation/PNG tests.
+- Fresh verified database backup: `backups/manual-2026-09-27T06-46-03-014Z.db` (SQLite integrity `ok`, zero foreign-key errors, 16 employees, 10 active protected documents).
+- Confidential non-Git restore package: `D:\Projects\billybeez-system-backups\BillyBeez-MOT-restore-2026-09-27T06-46-03Z-r2.zip`.

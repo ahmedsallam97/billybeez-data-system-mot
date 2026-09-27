@@ -25,7 +25,7 @@ export async function GET() {
   const attendanceLookbackDate = isoDaysBefore(today, 60);
   const attendanceTrendStart = isoDaysBefore(today, 13);
   const nextWeek = new Date(`${today}T00:00:00Z`); nextWeek.setUTCDate(nextWeek.getUTCDate() + 6); const nextWeekDate = nextWeek.toISOString().slice(0, 10);
-  const [activeEmployees, hrisEmployees, partTimeEmployees, schedules, attendanceDay, draftAppraisals, draftLeaveRequests, latestApproved, activeMismatch, missingRosterNames, upcomingTrips, upcomingEvents, lowStock, attendanceIssues, staleAttendanceDays, openDiscipline, openIncidents, competitionRows, appraisalPeriods, attendanceTrendDays] = await Promise.all([
+  const [activeEmployees, hrisEmployees, partTimeEmployees, schedules, attendanceDay, draftAppraisals, draftLeaveRequests, pendingAppraisalPeriod, yearlyApprovedAppraisals, activeMismatch, missingRosterNames, upcomingTrips, upcomingEvents, lowStock, attendanceIssues, staleAttendanceDays, openDiscipline, openIncidents, competitionRows, appraisalPeriods, attendanceTrendDays] = await Promise.all([
     prisma.employee.count({ where: { active: true } }),
     prisma.employee.count({ where: { active: true, employmentType: "HRIS" } }),
     prisma.employee.count({ where: { active: true, employmentType: "PART_TIME" } }),
@@ -33,7 +33,12 @@ export async function GET() {
     prisma.opsAttendanceDay.findFirst({ where: { workDate: today }, include: { records: { include: { employee: { select: { id: true, name: true, jobTitle: true } } } } }, orderBy: { version: "desc" } }),
     prisma.opsMonthlyAppraisal.count({ where: { status: { in: ["DRAFT", "REVIEWED", "REOPENED"] } } }),
     prisma.opsLeaveBooking.count({ where: { status: "DRAFT" } }),
-    prisma.opsMonthlyAppraisal.findFirst({ where: { status: "APPROVED", employee: { active: true } }, orderBy: [{ year: "desc" }, { month: "desc" }, { version: "desc" }], select: { year: true, month: true } }),
+    prisma.opsMonthlyAppraisal.findFirst({ where: { status: { in: ["DRAFT", "REVIEWED", "REOPENED"] } }, orderBy: [{ year: "asc" }, { month: "asc" }, { version: "desc" }], select: { year: true, month: true } }),
+    prisma.opsMonthlyAppraisal.findMany({
+      where: { year: currentYear, status: "APPROVED", employee: { active: true } },
+      include: { employee: { select: { id: true, name: true, nameEn: true, jobTitle: true } } },
+      orderBy: [{ month: "asc" }, { version: "desc" }],
+    }),
     prisma.employee.count({ where: { OR: [{ active: true, employmentStatus: { not: "ACTIVE" } }, { active: false, employmentStatus: "ACTIVE" }] } }),
     prisma.employee.count({ where: { active: true, OR: [{ operationalName: null }, { operationalName: "" }] } }),
     prisma.opsDailyTrip.findMany({ where: { workDate: { gte: today, lte: nextWeekDate }, status: { not: "CANCELLED" } }, select: { workDate: true, expectedChildren: true } }),
@@ -91,21 +96,30 @@ export async function GET() {
     const missing = attendanceDay.records.filter((record) => record.status === "MISSING").length;
     if (missing) attention.push({ code: "MISSING_ATTENDANCE", severity: "warning", target: "daily", message: `${missing} attendance records still need action` });
   }
-  if (draftAppraisals) attention.push({ code: "APPRAISALS_PENDING", severity: "info", target: "performance", message: `${draftAppraisals} appraisals are awaiting review or approval` });
+  if (draftAppraisals) attention.push({ code: "APPRAISALS_PENDING", severity: "info", target: "performance", year: pendingAppraisalPeriod?.year, month: pendingAppraisalPeriod?.month, message: `${draftAppraisals} appraisals are awaiting review or approval` });
   if (draftLeaveRequests) attention.push({ code: "LEAVE_REQUESTS_PENDING", severity: "info", target: "time", message: `${draftLeaveRequests} leave requests are awaiting approval` });
   if (activeMismatch) attention.push({ code: "EMPLOYEE_STATUS_MISMATCH", severity: "warning", target: "employees", message: `${activeMismatch} employee records have inconsistent active status` });
   if (lowStock) attention.push({ code: "LOW_STOCK", severity: "warning", target: "stock", message: `${lowStock} stock items are at or below the warning level` });
-  const approvedAppraisals = latestApproved ? await prisma.opsMonthlyAppraisal.findMany({ where: { year: latestApproved.year, month: latestApproved.month, status: "APPROVED", employee: { active: true } }, include: { employee: { select: { id: true, name: true, nameEn: true, jobTitle: true } } }, orderBy: [{ totalScore: "desc" }, { employee: { name: "asc" } }] }) : [];
-  const performanceRows = approvedAppraisals.map((appraisal) => ({
-    employee: appraisal.employee,
-    score: appraisal.totalScore,
-    year: appraisal.year,
-    month: appraisal.month,
-  })).sort((a, b) => Number(b.score) - Number(a.score));
+  const latestApprovedByEmployeeMonth = new Map();
+  yearlyApprovedAppraisals.forEach((appraisal) => {
+    const key = `${appraisal.employeeId}:${appraisal.month}`;
+    if (!latestApprovedByEmployeeMonth.has(key)) latestApprovedByEmployeeMonth.set(key, appraisal);
+  });
+  const performanceByEmployee = new Map();
+  latestApprovedByEmployeeMonth.forEach((appraisal) => {
+    const current = performanceByEmployee.get(appraisal.employeeId) || { employee: appraisal.employee, score: 0, months: 0 };
+    current.score += Number(appraisal.totalScore || 0);
+    current.months += 1;
+    performanceByEmployee.set(appraisal.employeeId, current);
+  });
+  const performanceRows = [...performanceByEmployee.values()]
+    .map((item) => ({ ...item, score: Math.round(item.score * 100) / 100 }))
+    .sort((left, right) => right.score - left.score || left.employee.name.localeCompare(right.employee.name));
+  const approvedMonthCount = new Set([...latestApprovedByEmployeeMonth.values()].map((item) => item.month)).size;
   const performance = {
     top: performanceRows.slice(0, 3),
     needsSupport: performanceRows.slice(-3).reverse(),
-    source: latestApproved,
+    source: { scope: "YEAR", year: currentYear, monthCount: approvedMonthCount },
   };
 
   const employeeName = (employee) => employee.operationalName || employee.nameEn || employee.name;

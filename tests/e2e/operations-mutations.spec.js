@@ -27,6 +27,46 @@ test.describe("isolated operations mutations", () => {
     expect(deleted.active).toBeFalsy();
   });
 
+  test("monthly appraisals can be approved and completed through Employee of the Month", async ({ request, page }) => {
+    await page.goto("/operations?tab=performance&year=2099&month=10", { waitUntil: "networkidle" });
+    const approveAll = page.getByRole("button", { name: /Approve all monthly appraisals|اعتماد كل تقييمات الشهر/ });
+    await expect(approveAll).toBeVisible();
+    await expect(approveAll).toBeEnabled();
+
+    const initialResponse = await request.get("/api/operations/performance?year=2099&month=10");
+    expect(initialResponse.ok()).toBeTruthy();
+    const initial = await initialResponse.json();
+    expect(initial.appraisals.filter((item) => item.status === "DRAFT")).toHaveLength(2);
+
+    const approvalResponse = await request.post("/api/operations/performance", { data: { action: "appraisalApproveAll", year: 2099, month: 10 } });
+    expect(approvalResponse.ok()).toBeTruthy();
+    expect((await approvalResponse.json()).approved).toBe(2);
+
+    await page.reload({ waitUntil: "networkidle" });
+    const calculate = page.getByRole("button", { name: /Calculate candidates|حساب المرشحين/ });
+    await expect(calculate).toBeEnabled();
+
+    const createResponse = await request.post("/api/operations/performance", { data: { action: "eotmCreate", year: 2099, month: 10 } });
+    expect(createResponse.ok()).toBeTruthy();
+    const competitionId = (await createResponse.json()).competition.id;
+    const calculatedResponse = await request.get("/api/operations/performance?year=2099&month=10");
+    const calculated = await calculatedResponse.json();
+    const competition = calculated.competitions.find((item) => item.id === competitionId);
+    expect(competition.candidates).toHaveLength(2);
+
+    const winnerId = competition.candidates[0].employeeId;
+    const winnerResponse = await request.post("/api/operations/performance", { data: { action: "eotmWinner", competitionId, employeeId: winnerId } });
+    expect(winnerResponse.ok()).toBeTruthy();
+    const lockResponse = await request.post("/api/operations/performance", { data: { action: "eotmLock", competitionId } });
+    expect(lockResponse.ok()).toBeTruthy();
+    expect((await lockResponse.json()).competition.status).toBe("LOCKED");
+
+    const finalResponse = await request.get("/api/operations/performance?year=2099&month=10");
+    const finalCompetition = (await finalResponse.json()).competitions.find((item) => item.id === competitionId);
+    expect(finalCompetition.status).toBe("LOCKED");
+    expect(finalCompetition.winnerEmployeeId).toBe(winnerId);
+  });
+
   test("schedule publishing supports exact roster image copy, PNG fallback, revision and deletion", async ({ request, page, context }) => {
     const year = 2099;
     const month = 11;

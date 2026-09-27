@@ -42,6 +42,30 @@ module.exports = async () => {
           update: { maxScore: 10, active: true, sortOrder: (index + 1) * 10 },
         });
       }
+      const performanceEmployees = await prisma.employee.findMany({ where: { active: true, department: { in: ["OPERATION", "CASHIER"] } }, orderBy: { name: "asc" }, take: 2, select: { id: true } });
+      if (performanceEmployees.length < 2) throw new Error("E2E performance workflow requires two active Operations or Cashier employees");
+      const appraisalFormula = await prisma.opsAppraisalFormulaVersion.upsert({
+        where: { code: "E2E-APPRAISAL-V1" },
+        create: { code: "E2E-APPRAISAL-V1", label: "E2E Monthly Appraisal", effectiveFrom: "2099-01-01", active: true, configJson: "{}" },
+        update: { active: true, configJson: "{}" },
+      });
+      await prisma.opsEotmFormulaVersion.upsert({
+        where: { code: "E2E-EOTM-V1" },
+        create: { code: "E2E-EOTM-V1", label: "E2E Employee of the Month", effectiveFrom: "2099-01-01", active: true, configJson: "{}" },
+        update: { active: true, configJson: "{}", createdAt: new Date() },
+      });
+      const oldCompetitions = await prisma.opsEotmCompetition.findMany({ where: { year: 2099, month: 10 }, select: { id: true } });
+      if (oldCompetitions.length) {
+        await prisma.opsEotmCandidate.deleteMany({ where: { competitionId: { in: oldCompetitions.map((item) => item.id) } } });
+        await prisma.opsEotmCompetition.deleteMany({ where: { id: { in: oldCompetitions.map((item) => item.id) } } });
+      }
+      for (const [index, employee] of performanceEmployees.entries()) {
+        await prisma.opsMonthlyAppraisal.upsert({
+          where: { employeeId_year_month_version: { employeeId: employee.id, year: 2099, month: 10, version: 1 } },
+          create: { employeeId: employee.id, year: 2099, month: 10, version: 1, formulaVersionId: appraisalFormula.id, status: "DRAFT", totalScore: 90 - index * 10, componentSnapshotJson: "{}", sourceSnapshotJson: "{}", calculationExplanationJson: "{}" },
+          update: { formulaVersionId: appraisalFormula.id, status: "DRAFT", totalScore: 90 - index * 10, componentSnapshotJson: "{}", sourceSnapshotJson: "{}", calculationExplanationJson: "{}", reviewedBy: null, reviewedAt: null, approvedBy: null, approvedAt: null },
+        });
+      }
     }
   } finally {
     await prisma.$disconnect();

@@ -102,6 +102,10 @@ export default function OperationsClient() {
       const payload = await readApiResponse(response, "Employee profile could not be loaded");
       if (requestNumber !== employeeRequest.current) return;
       setSelected(payload.employee);
+      const url = new URL(window.location.href);
+      url.searchParams.set("tab", "employees");
+      url.searchParams.set("employeeId", id);
+      window.history.replaceState({}, "", url);
     } catch (requestError) {
       if (requestNumber === employeeRequest.current) setError(requestError.message);
     }
@@ -136,22 +140,17 @@ export default function OperationsClient() {
           <option value="ALL">{text.all}</option><option value="ACTIVE">{text.active}</option>
           <option value="INACTIVE">{text.inactive}</option><option value="EXITED">{text.exited}</option>
         </select>
+        <select className="employee-directory-picker" aria-label={isArabic ? "اختيار الموظف" : "Select employee"} value={selected?.id || ""} onChange={(event) => event.target.value && openEmployee(event.target.value)} disabled={loading || !employees.length}>
+          <option value="">{loading ? text.loading : text.select}</option>
+          {employees.map((employee) => <option value={employee.id} key={employee.id}>{employee.name} · {employee.hrisNumber || employee.localEmployeeCode || employee.jobTitle || "—"}</option>)}
+        </select>
         <button onClick={loadEmployees}>{text.refresh}</button>
       </section>
       {error && <div className="alert danger">{error}</div>}
-      <div className="operations-workspace employee-directory-workspace">
-        <section className="panel operations-employee-list">
-          {loading ? <div className="muted">{text.loading}</div> : employees.length ? employees.map((employee) => (
-            <button className={`operations-employee-row ${selected?.id === employee.id ? "active" : ""}`} key={employee.id} onClick={() => openEmployee(employee.id)}>
-              <i>{String(employee.name || "?").split(/\s+/).slice(0, 2).map((part) => part[0]).join("")}</i><span><b>{employee.name}</b><small>{employee.hrisNumber || employee.localEmployeeCode || "—"} · {employee.jobTitle || "—"}</small></span><em>{employee.employmentStatus}</em>
-            </button>
-          )) : <div className="muted">{text.noData}</div>}
-        </section>
-        <section className="operations-profile">
-          {selected && <Employee360View key={selected.id} employee={selected} onReload={() => openEmployee(selected.id)} />}
-          {!selected && <div className="muted">{text.select}</div>}
-        </section>
-      </div>
+      <section className="operations-profile employee-directory-profile">
+        {selected && <Employee360View key={selected.id} employee={selected} onReload={() => openEmployee(selected.id)} />}
+        {!selected && <div className="panel muted">{loading ? text.loading : employees.length ? text.select : text.noData}</div>}
+      </section>
       </>}
       </div>
     </section>

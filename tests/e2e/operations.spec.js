@@ -3,6 +3,9 @@ const { test, expect } = require("@playwright/test");
 test("authenticated employee 360 exposes incidents and protected complete PDF", async ({ page, request }) => {
   await page.goto("/operations?tab=employees");
   await expect(page.getByText("EMPLOYEE 360")).toBeVisible();
+  await expect(page.locator(".employee-directory-picker")).toBeVisible();
+  await expect(page.locator(".operations-employee-list")).toHaveCount(0);
+  await expect(page.locator(".employee-directory-profile")).toBeVisible();
   await expect(page.getByRole("button", { name: "Incidents" })).toBeVisible();
   const employeesResponse = await request.get("/api/operations/employees?status=ACTIVE");
   expect(employeesResponse.ok()).toBeTruthy();
@@ -32,10 +35,12 @@ test("core operations tabs and settings render without JSON/session errors", asy
   await expect(page.locator(".billy-assistant")).toContainText("AI GENERATED");
   await expect(page.locator("body")).not.toContainText("OPERATIONS AI ASSISTANT");
   await expect(page.locator(".system-pulse-card")).toHaveCount(8);
-  await expect(page.locator(".insight-chart-grid > article")).toHaveCount(3);
+  await expect(page.locator(".insight-chart-grid > article")).toHaveCount(4);
+  await expect(page.locator(".follow-up-map")).toBeVisible();
   await expect(page.locator(".operations-performance-summary > .performance-summary-card")).toHaveCount(2);
   await expect(page.locator(".performance-summary-card.top")).toBeVisible();
   await expect(page.locator(".performance-summary-card.support")).toBeVisible();
+  await expect(page.locator(".performance-summary-card header small").first()).toContainText(String(new Date().getFullYear()));
   await expect(page.locator("body")).not.toContainText("Business-day sales");
 
   await page.goto("/settings?tab=template", { waitUntil: "networkidle" });

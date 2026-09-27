@@ -97,8 +97,8 @@ function Insights({ summary, health, commerce, isArabic }) {
     const params = new URLSearchParams({ tab: item.target || "roster" });
     if (item.target === "daily" && summary?.today) params.set("date", summary.today);
     if (item.target === "performance" && summary?.today) {
-      params.set("year", summary.today.slice(0, 4));
-      params.set("month", String(Number(summary.today.slice(5, 7))));
+      params.set("year", String(item.year || summary.today.slice(0, 4)));
+      params.set("month", String(item.month || Number(summary.today.slice(5, 7))));
     }
     return `/operations?${params}`;
   };
@@ -117,6 +117,7 @@ function Insights({ summary, health, commerce, isArabic }) {
       <MiniBarChart title={isArabic ? "اتجاه الحضور" : "Attendance trend"} subtitle={isArabic ? "آخر 14 يومًا مسجلًا" : "Last 14 recorded days"} rows={summary?.charts?.attendanceTrend || []} series={[{ key: "present", label: isArabic ? "حاضر" : "Present", color: "#2f9d62" }, { key: "timingIssues", label: isArabic ? "مواعيد" : "Timing", color: "#f2b632" }, { key: "absent", label: isArabic ? "غياب" : "Absent", color: "#df3151" }, { key: "missing", label: isArabic ? "ناقص" : "Missing", color: "#8d70a6" }]} isArabic={isArabic} />
       <MiniBarChart title={isArabic ? "حجوزات الأسبوع" : "Seven-day bookings"} subtitle={isArabic ? "رحلات وأعياد ميلاد قادمة" : "Upcoming trips and birthdays"} rows={summary?.charts?.bookingTrend || []} series={[{ key: "trips", label: isArabic ? "رحلات" : "Trips", color: "#2b83ba" }, { key: "birthdays", label: isArabic ? "أعياد ميلاد" : "Birthdays", color: "#e05b8f" }]} isArabic={isArabic} />
       <RecognitionProgress rows={summary?.charts?.recognitionTimeline || []} year={summary?.assistant?.insights?.find((item) => item.code === "RECOGNITION_MONTHS_PENDING")?.year || new Date().getFullYear()} isArabic={isArabic} />
+      <FollowUpMap summary={summary} isArabic={isArabic} />
     </section>
     <section className="operations-performance-summary"><PerformanceRank title={isArabic ? "أفضل 3 موظفين" : "Top 3 employees"} rows={summary?.performance?.top} source={summary?.performance?.source} isArabic={isArabic} tone="top" /><PerformanceRank title={isArabic ? "أقل 3 موظفين أداءً" : "Bottom 3 employees"} rows={summary?.performance?.needsSupport} source={summary?.performance?.source} isArabic={isArabic} tone="support" /></section>
   </div>;
@@ -151,8 +152,28 @@ function RecognitionProgress({ rows, year, isArabic }) {
   return <article className="panel recognition-progress"><header><div><span>EOTM · {year}</span><h3>{isArabic ? "تقدم موظف الشهر" : "Employee of the Month progress"}</h3><p>{isArabic ? "حالة كل شهر مكتمل حتى الآن" : "Completion state for every elapsed month"}</p></div><strong>{counts.LOCKED || 0}/{rows.length || 0}</strong></header><div className="recognition-month-grid">{rows.map((item) => <Link href={`/operations?tab=performance&year=${year}&month=${item.month}`} className={item.status.toLowerCase().replaceAll("_", "-")} key={item.month}><b>{item.month}</b><small>{item.status === "LOCKED" ? (isArabic ? "مكتمل" : "Done") : item.status === "READY_FOR_WINNER" ? (isArabic ? "اختيار فائز" : "Pick winner") : item.status === "APPRAISALS_PENDING" ? (isArabic ? "تقييمات" : "Appraisals") : (isArabic ? "لم يبدأ" : "Not started")}</small></Link>)}</div></article>;
 }
 
+function FollowUpMap({ summary, isArabic }) {
+  const insights = summary?.assistant?.insights || [];
+  const appraisalAttention = summary?.attention?.find((item) => item.code === "APPRAISALS_PENDING");
+  const staleAttendance = insights.find((item) => item.code === "STALE_ATTENDANCE_DAYS");
+  const discipline = insights.find((item) => item.code === "DISCIPLINARY_FOLLOWUP");
+  const pendingAppraisals = summary?.metrics?.draftAppraisals || 0;
+  const pendingLeave = summary?.metrics?.draftLeaveRequests || 0;
+  const lowStock = summary?.planning?.lowStock || 0;
+  const cards = [
+    { key: "appraisals", label: isArabic ? "تقييمات معلقة" : "Pending appraisals", value: pendingAppraisals, href: appraisalAttention?.year && appraisalAttention?.month ? `/operations?tab=performance&year=${appraisalAttention.year}&month=${appraisalAttention.month}` : "/operations?tab=performance", tone: pendingAppraisals ? "warning" : "clear" },
+    { key: "attendance", label: isArabic ? "أيام حضور مفتوحة" : "Open attendance days", value: staleAttendance?.dayCount || 0, href: staleAttendance?.oldestDate ? `/operations?tab=daily&date=${encodeURIComponent(staleAttendance.oldestDate)}` : "/operations?tab=daily", tone: staleAttendance?.dayCount ? "danger" : "clear" },
+    { key: "discipline", label: isArabic ? "متابعات تأديبية" : "Disciplinary follow-up", value: (discipline?.warningCount || 0) + (discipline?.incidentCount || 0), href: discipline?.employees?.[0]?.employeeId ? `/operations?tab=employees&employeeId=${encodeURIComponent(discipline.employees[0].employeeId)}` : "/operations?tab=employees", tone: discipline?.employeeCount ? "danger" : "clear" },
+    { key: "leave", label: isArabic ? "طلبات إجازة" : "Leave requests", value: pendingLeave, href: "/operations?tab=time", tone: pendingLeave ? "warning" : "clear" },
+    { key: "stock", label: isArabic ? "تنبيهات مخزون" : "Stock alerts", value: lowStock, href: "/operations?tab=stock", tone: lowStock ? "warning" : "clear" },
+  ];
+  const total = cards.reduce((sum, item) => sum + Number(item.value || 0), 0);
+  return <article className="panel recognition-progress follow-up-map"><header><div><span>LIVE ACTION MAP</span><h3>{isArabic ? "خريطة المتابعة" : "Management follow-up"}</h3><p>{isArabic ? "كل الأعمال المفتوحة في مكان واحد" : "Open operational work in one place"}</p></div><strong>{total}</strong></header><div className="follow-up-map-grid">{cards.map((item) => <Link href={item.href} className={item.tone} key={item.key}><span>{item.label}</span><b>{item.value}</b><small>{item.value ? (isArabic ? "فتح ومتابعة" : "Open and follow up") : (isArabic ? "لا يوجد إجراء" : "No action")}</small></Link>)}</div></article>;
+}
+
 function PerformanceRank({ title, rows = [], source, isArabic, tone }) {
-  return <article className={`panel performance-summary-card ${tone}`}><header><div><span>{tone === "top" ? (isArabic ? "أقوى أداء معتمد" : "TOP APPROVED PERFORMANCE") : (isArabic ? "أولوية تطوير" : "DEVELOPMENT PRIORITY")}</span><h2>{title}</h2></div><small>{source ? `${source.month}/${source.year}` : "—"}</small></header>{rows?.length ? rows.map((item, index) => <div className="performance-rank-row" key={item.employee.id}><span>{index + 1}</span><div><b>{item.employee.nameEn || item.employee.name}</b><small>{item.employee.jobTitle || "—"}</small></div><strong>{item.score}</strong></div>) : <p className="muted">{isArabic ? "لا توجد تقييمات معتمدة كفاية لإظهار ترتيب موثوق." : "No approved appraisals are available for a reliable ranking."}</p>}</article>;
+  const sourceLabel = source?.scope === "YEAR" ? (isArabic ? `${source.year} · ${source.monthCount || 0} أشهر معتمدة` : `${source.year} · ${source.monthCount || 0} approved months`) : source ? `${source.month}/${source.year}` : "—";
+  return <article className={`panel performance-summary-card ${tone}`}><header><div><span>{tone === "top" ? (isArabic ? "إجمالي الأداء المعتمد خلال السنة" : "YEARLY APPROVED PERFORMANCE TOTAL") : (isArabic ? "أولوية تطوير خلال السنة" : "YEARLY DEVELOPMENT PRIORITY")}</span><h2>{title}</h2></div><small>{sourceLabel}</small></header>{rows?.length ? rows.map((item, index) => <div className="performance-rank-row" key={item.employee.id}><span>{index + 1}</span><div><b>{item.employee.nameEn || item.employee.name}</b><small>{item.employee.jobTitle || "—"}{item.months ? ` · ${item.months} ${isArabic ? "شهر" : item.months === 1 ? "month" : "months"}` : ""}</small></div><strong>{item.score}</strong></div>) : <p className="muted">{isArabic ? "لا توجد تقييمات معتمدة كفاية لإظهار ترتيب موثوق." : "No approved appraisals are available for a reliable ranking."}</p>}</article>;
 }
 
 function BillyInsight({ insight, isArabic }) {

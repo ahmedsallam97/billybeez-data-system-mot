@@ -34,9 +34,29 @@ export async function GET(request) {
 export async function POST(request) {
   const body = await request.json();
   const successionAction = String(body.action || "").startsWith("succession");
-  const { user, error } = await authorizeApi(successionAction ? "OPS_SUCCESSION_MANAGE" : "OPS_EOTM_MANAGE");
+  const appraisalAction = String(body.action || "").startsWith("appraisal");
+  const { user, error } = await authorizeApi(successionAction ? "OPS_SUCCESSION_MANAGE" : appraisalAction ? "OPS_APPRAISAL_APPROVE" : "OPS_EOTM_MANAGE");
   if (error) return error;
   try {
+    if (body.action === "appraisalApprove") {
+      const appraisal = await prisma.opsMonthlyAppraisal.findUnique({ where: { id: String(body.appraisalId || "") } });
+      if (!appraisal) throw new Error("Appraisal not found");
+      if (appraisal.status === "SUPERSEDED") throw new Error("A superseded appraisal cannot be approved");
+      const now = new Date();
+      const updated = await prisma.opsMonthlyAppraisal.update({ where: { id: appraisal.id }, data: { status: "APPROVED", reviewedBy: appraisal.reviewedBy || user.id, reviewedAt: appraisal.reviewedAt || now, approvedBy: user.id, approvedAt: now } });
+      await writeAudit({ action: "OPS_APPRAISAL_APPROVED", user, summary: `Approved appraisal ${appraisal.year}-${appraisal.month}`, metadata: { appraisalId: appraisal.id, employeeId: appraisal.employeeId, scorePreserved: appraisal.totalScore } });
+      return NextResponse.json({ success: true, appraisal: updated });
+    }
+    if (body.action === "appraisalApproveAll") {
+      const year = Number(body.year); const month = Number(body.month);
+      if (!Number.isInteger(year) || year < 2020 || year > 2100 || !Number.isInteger(month) || month < 1 || month > 12) throw new Error("Invalid appraisal period");
+      const pending = await prisma.opsMonthlyAppraisal.findMany({ where: { year, month, status: { in: ["DRAFT", "REVIEWED", "REOPENED"] } } });
+      if (!pending.length) throw new Error("No pending appraisals exist for this period");
+      const now = new Date();
+      await prisma.$transaction(pending.map((appraisal) => prisma.opsMonthlyAppraisal.update({ where: { id: appraisal.id }, data: { status: "APPROVED", reviewedBy: appraisal.reviewedBy || user.id, reviewedAt: appraisal.reviewedAt || now, approvedBy: user.id, approvedAt: now } })));
+      await writeAudit({ action: "OPS_APPRAISAL_PERIOD_APPROVED", user, summary: `Approved ${pending.length} appraisals for ${year}-${month}`, metadata: { year, month, appraisalIds: pending.map((item) => item.id), scoresPreserved: true } });
+      return NextResponse.json({ success: true, approved: pending.length });
+    }
     if (body.action === "successionCreate") {
       const employee = await prisma.employee.findUnique({ where: { id: String(body.employeeId || "") } });
       if (!employee) throw new Error("Employee not found");
@@ -61,7 +81,10 @@ export async function POST(request) {
       const year = Number(body.year); const month = Number(body.month);
       const formula = await prisma.opsEotmFormulaVersion.findFirst({ where: { active: true }, orderBy: { createdAt: "desc" } });
       if (!formula) throw new Error("An active EOTM formula is required");
-      const appraisals = await prisma.opsMonthlyAppraisal.findMany({ where: { year, month, status: "APPROVED" }, orderBy: { totalScore: "desc" } });
+      const pendingCount = await prisma.opsMonthlyAppraisal.count({ where: { year, month, status: { in: ["DRAFT", "REVIEWED", "REOPENED"] } } });
+      if (pendingCount) throw new Error("Approve all monthly appraisals before calculating EOTM candidates");
+      const appraisalRows = await prisma.opsMonthlyAppraisal.findMany({ where: { year, month, status: "APPROVED" }, orderBy: [{ version: "desc" }, { totalScore: "desc" }] });
+      const appraisals = [...new Map(appraisalRows.map((item) => [item.employeeId, item])).values()].sort((left, right) => right.totalScore - left.totalScore);
       if (!appraisals.length) throw new Error("Approved appraisals are required for EOTM");
       const latest = await prisma.opsEotmCompetition.findFirst({ where: { year, month }, orderBy: { version: "desc" } });
       const competition = await prisma.$transaction(async (tx) => {

@@ -13,7 +13,7 @@ export async function GET(_request, { params }) {
     employmentPeriods: { orderBy: { startDate: "desc" }, include: { assignments: { orderBy: { effectiveFrom: "desc" } } } },
     employmentEvents: { orderBy: { effectiveDate: "desc" } }, documents: { orderBy: { uploadedAt: "desc" } },
     trainingRecords: { orderBy: { completedDate: "desc" } }, qualifications: { include: { position: true }, orderBy: { createdAt: "desc" } },
-    scheduleAssignments: { include: { schedule: true }, orderBy: { workDate: "desc" }, take: 100 }, attendanceRecords: { include: { attendanceDay: true }, orderBy: { createdAt: "desc" }, take: 100 },
+    scheduleAssignments: { where: { schedule: { status: "PUBLISHED" } }, include: { schedule: true }, orderBy: { workDate: "desc" }, take: 1500 }, attendanceRecords: { include: { attendanceDay: true }, orderBy: { createdAt: "desc" }, take: 1500 },
     leaveAccounts: { include: { transactions: { orderBy: { effectiveDate: "desc" } } } }, overtimeAccount: { include: { transactions: { orderBy: { transactionDate: "desc" } } } },
     dailyEvaluations: { include: { dailyEvaluationDay: true }, orderBy: { createdAt: "desc" }, take: 100 }, monthlyAppraisals: { orderBy: [{ year: "desc" }, { month: "desc" }] },
     eotmWins: { where: { status: "LOCKED" }, orderBy: [{ year: "desc" }, { month: "desc" }] }, successionCandidates: { include: { reviews: { orderBy: { reviewDate: "desc" } } } },

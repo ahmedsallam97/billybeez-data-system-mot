@@ -11,13 +11,15 @@ export async function GET(request, { params }) {
   const { id } = await params;
   const url = new URL(request.url);
   const year = Number(url.searchParams.get("year")) || new Date().getFullYear();
-  const endDate = url.searchParams.get("endDate") || `${year}-12-31`;
+  const requestedEndDate = url.searchParams.get("endDate") || `${year}-12-31`;
   const language = url.searchParams.get("language") === "ar" ? "ar" : "en";
-  if (year < 2000 || year > 2200 || !/^\d{4}-\d{2}-\d{2}$/.test(endDate) || !endDate.startsWith(`${year}-`)) return NextResponse.json({ success: false, error: "Invalid employee file period" }, { status: 400 });
+  if (year < 2000 || year > 2200 || !/^\d{4}-\d{2}-\d{2}$/.test(requestedEndDate) || !requestedEndDate.startsWith(`${year}-`)) return NextResponse.json({ success: false, error: "Invalid employee file period" }, { status: 400 });
+  const today = new Date().toISOString().slice(0, 10);
+  const endDate = year === Number(today.slice(0, 4)) && requestedEndDate > today ? today : requestedEndDate;
   const from = new Date(`${year}-01-01T00:00:00.000Z`); const to = new Date(`${endDate}T23:59:59.999Z`);
   const employee = await prisma.employee.findUnique({ where: { id }, include: {
     documents: { where: { status: "ACTIVE" }, orderBy: { uploadedAt: "asc" } },
-    scheduleAssignments: { where: { workDate: { gte: `${year}-01-01`, lte: endDate } } }, attendanceRecords: { where: { attendanceDay: { workDate: { gte: `${year}-01-01`, lte: endDate } } } },
+    scheduleAssignments: { where: { workDate: { gte: `${year}-01-01`, lte: endDate }, schedule: { status: "PUBLISHED" } } }, attendanceRecords: { where: { attendanceDay: { workDate: { gte: `${year}-01-01`, lte: endDate } } } },
     dailyEvaluations: { where: { dailyEvaluationDay: { evaluationDate: { gte: `${year}-01-01`, lte: endDate } } } }, monthlyAppraisals: { where: { year } },
     guestFeedback: { where: { feedbackDate: { gte: from, lte: to } }, orderBy: { feedbackDate: "desc" } },
     guidanceRecords: { where: { recordDate: { gte: from, lte: to } }, orderBy: { recordDate: "desc" } },

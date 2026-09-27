@@ -7,6 +7,14 @@ test("authenticated employee 360 exposes incidents and protected complete PDF", 
   await expect(page.locator(".operations-employee-list")).toHaveCount(0);
   await expect(page.locator(".employee-directory-profile")).toBeVisible();
   await expect(page.getByRole("button", { name: "Incidents" })).toBeVisible();
+  await page.getByRole("button", { name: "Schedule & Attendance" }).click();
+  await expect(page.getByRole("heading", { name: "Monthly shift totals" })).toBeVisible();
+  await expect(page.locator(".employee-schedule-summary table")).toHaveCount(2);
+  const shiftRows = page.locator(".employee-schedule-summary table").first().locator("tbody tr");
+  await expect(shiftRows.nth(0).locator("td").first()).toHaveText("January");
+  await expect(shiftRows.nth(1).locator("td").first()).toHaveText("February");
+  await expect(page.locator(".employee-schedule-summary")).toContainText("Total to date");
+  await expect(page.locator(".employee-schedule-summary")).not.toContainText("October");
   const employeesResponse = await request.get("/api/operations/employees?status=ACTIVE");
   expect(employeesResponse.ok()).toBeTruthy();
   const employees = (await employeesResponse.json()).employees;

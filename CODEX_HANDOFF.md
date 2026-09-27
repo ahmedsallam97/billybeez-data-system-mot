@@ -4,7 +4,7 @@
 
 This file is the continuity document for a new developer or Codex session with no access to the conversation that produced the current branch. Read it before changing code or data.
 
-The active branch is `ops-migration-local`. The current implementation commit is `e456b0d` (`fix: make production builds coexist with dev server`) and is ready to publish to `origin/ops-migration-local` with this handoff update. The branch was created from `origin/next-level-upgrade` at `a34f409`.
+The active branch is `ops-migration-local`. The current implementation commit is `ee6e01e` (`test: cover operations mutation workflows`) and is ready to publish to `origin/ops-migration-local` with this handoff update. The branch was created from `origin/next-level-upgrade` at `a34f409`.
 
 The local SQLite database, employee files, backups, generated screenshots, generated PDFs, local migration helpers, logs, and environment files are deliberately not in Git. Git contains application code and schema only. Never infer that cloning this branch recreates the current local operational data.
 
@@ -24,7 +24,7 @@ The active application is the Next.js application under `app/`. Root-level stati
 
 ## Current state
 
-As of 2026-09-26:
+As of 2026-09-27:
 
 - the code is on `ops-migration-local` and is pushed to GitHub;
 - `npm test` passes all 72 tests;
@@ -55,6 +55,10 @@ The current local database also contains 23 schedules and 9,087 schedule assignm
 
 ## Important recent commits
 
+- `ee6e01e` — `test: cover operations mutation workflows`
+  - covers attendance completion/finalization/correction, evaluation penalties/guidance/close/correction, employee upload target protection/download/removal, and Employee 360 feedback/guidance/incident follow-up on a disposable database;
+  - keeps CI employee uploads inside disposable ignored storage;
+  - validated by all 72 Node tests, the UI audit, a 49-route build, 4 read-path Playwright tests, and 6 isolated mutation tests.
 - `e456b0d` — `fix: make production builds coexist with dev server`
   - generates Prisma clients during build only when missing, avoiding Windows DLL replacement errors while the development server is active;
   - loads the generated PostgreSQL client at runtime without causing Next file tracing to capture the whole repository.
@@ -501,12 +505,10 @@ Do not deploy the current SQLite file and local `storage/` directory to an ephem
 
 1. Run and review a full SQLite-to-PostgreSQL migration rehearsal on an isolated database.
 2. Configure the S3-compatible employee-file provider and verify upload/download/backup behavior in the deployment environment.
-3. Add isolated attendance-finalization, evaluation-approval, and employee-upload mutation fixtures.
-4. Select the fourth backup cashier and any Team Leader through Settings; these choices were intentionally not invented. Enter real inventory quantities and optional qualification restrictions as operational data becomes available.
-5. Resolve or explicitly accept current operational coverage warnings using real staffing requirements; do not suppress them in code.
-6. Continue visual refinement only from real branch feedback at actual desktop widths and A4 print preview.
-7. Add isolated create/update browser E2E coverage for Guest Feedback, Guidance/Penalties, and Incidents.
-8. Define any additional incident investigation/closure fields only from approved branch requirements; the distinct Incidents workflow is now present.
+3. Select the fourth backup cashier and any Team Leader through Settings; these choices were intentionally not invented. Enter real inventory quantities and optional qualification restrictions as operational data becomes available.
+4. Resolve or explicitly accept current operational coverage warnings using real staffing requirements; do not suppress them in code.
+5. Continue visual refinement only from real branch feedback at actual desktop widths and A4 print preview.
+6. Define any additional incident investigation/closure fields only from approved branch requirements; the distinct Incidents workflow is now present.
 
 ## Recommended next steps in priority order
 
@@ -515,9 +517,8 @@ Do not deploy the current SQLite file and local `storage/` directory to an ephem
 3. Start the server on port 3008 and run a focused runtime smoke test of schedule, roster, attendance, daily evaluation, Employee 360, uploads, protected file access, and both print previews.
 4. Review current Settings data with the branch manager and select the fourth backup cashier, Team Leader, real stock quantities, and any qualification restrictions the branch actually uses.
 5. Verify coverage warnings against the real staffing model and adjust requirements or staffing only with operational approval.
-6. Extend isolated mutation E2E before another large workflow refactor.
-7. Rehearse PostgreSQL and the configured object-storage target in an isolated environment before planning deployment.
-8. Extend Guest Feedback, Guidance/Penalties, and Incidents only from approved operational requirements.
+6. Rehearse PostgreSQL and the configured object-storage target in an isolated environment before planning deployment.
+7. Extend Guest Feedback, Guidance/Penalties, and Incidents only from approved operational requirements.
 
 ## Files to review first
 
@@ -574,7 +575,7 @@ At handoff, the expected repository checks are:
 npm test      # 72 passing
 npm run lint  # UI audit passing
 npm run build # production build passing
-npm run test:e2e # 4 read-path tests pass; 2 mutation tests skip unless E2E_MUTATIONS=1
+npm run test:e2e # 4 read-path tests pass; 6 mutation tests skip unless E2E_MUTATIONS=1
 ```
 
 Re-run them after material changes. Runtime verification remains mandatory for visual or workflow changes.
@@ -607,6 +608,6 @@ Runtime verification on 2026-09-25 covered the roster poster, Settings, every co
 - PostgreSQL has a versioned baseline, generated client, provider switch, provider-aware health endpoint, and deployment commands. A real server was unavailable: no URL is configured and Docker Desktop is installed but its daemon is stopped.
 - Employee storage verification passed against the active local provider. The 90-day cleanup dry run found no stale or orphan objects. S3 live verification remains pending because no S3 provider/bucket is configured.
 - CI and Docker definitions are committed. CI creates a disposable database and runs schema parity, unit, UI audit, build, read-path browser, and opt-in mutation browser tests.
-- Final verification: 72/72 Node tests, UI audit, 49-route production build, PostgreSQL schema/client generation, 4/4 non-mutating Playwright tests, and 2/2 isolated mutation/PNG tests.
+- Final verification: 72/72 Node tests, UI audit, 49-route production build, PostgreSQL schema/client generation, 4/4 non-mutating Playwright tests, and 6/6 isolated mutation tests covering offers, roster PNG/revisions, attendance, evaluation, employee uploads, and Employee 360 records.
 - Fresh verified database backup: `backups/manual-2026-09-27T06-46-03-014Z.db` (SQLite integrity `ok`, zero foreign-key errors, 16 employees, 10 active protected documents).
 - Confidential non-Git restore package: `D:\Projects\billybeez-system-backups\BillyBeez-MOT-restore-2026-09-27T06-46-03Z-r2.zip`.

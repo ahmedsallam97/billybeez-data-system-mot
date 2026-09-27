@@ -1,6 +1,11 @@
 const { test, expect } = require("@playwright/test");
 
+let rehearsalDate;
+let employeeId;
+let secondEmployeeId;
+
 test.describe("isolated operations mutations", () => {
+  test.describe.configure({ mode: "serial" });
   test.skip(process.env.E2E_MUTATIONS !== "1", "Mutation coverage runs only against an isolated disposable database");
 
   test("offer create, update and delete keep one record", async ({ request }) => {
@@ -28,6 +33,15 @@ test.describe("isolated operations mutations", () => {
     const draftResponse = await request.post("/api/operations/schedules", { data: { action: "createBlankDraft", year, month } });
     expect(draftResponse.ok()).toBeTruthy();
     const draft = (await draftResponse.json()).schedule;
+    rehearsalDate = draft.periodStart;
+    const employeesResponse = await request.get("/api/operations/employees?status=ACTIVE");
+    expect(employeesResponse.ok()).toBeTruthy();
+    const employees = (await employeesResponse.json()).employees.filter((employee) => ["OPERATION", "CASHIER"].includes(employee.department));
+    expect(employees.length).toBeGreaterThan(1);
+    employeeId = employees[0].id;
+    secondEmployeeId = employees[1].id;
+    const assignmentResponse = await request.patch("/api/operations/schedules", { data: { scheduleId: draft.id, employeeId, workDate: rehearsalDate, value: "AM" } });
+    expect(assignmentResponse.ok()).toBeTruthy();
 
     const publishedResponse = await request.post("/api/operations/schedules", { data: { action: "publish", scheduleId: draft.id } });
     expect(publishedResponse.ok()).toBeTruthy();
@@ -38,7 +52,7 @@ test.describe("isolated operations mutations", () => {
       try { Object.defineProperty(navigator, "clipboard", { configurable: true, value: undefined }); } catch {}
     });
     await page.goto("/operations/daily-preview", { waitUntil: "networkidle" });
-    await page.locator('input[type="date"]').fill(draft.periodStart);
+    await page.locator('input[type="date"]').fill(rehearsalDate);
     await expect(page.locator(".daily-operations-poster")).toBeVisible();
     const logo = page.locator(".daily-operations-poster img").first();
     await expect(logo).toBeVisible();
@@ -61,5 +75,95 @@ test.describe("isolated operations mutations", () => {
 
     const deletedResponse = await request.post("/api/operations/schedules", { data: { action: "deleteDraft", scheduleId: revision.id } });
     expect(deletedResponse.ok()).toBeTruthy();
+  });
+
+  test("attendance can be opened, completed, finalized and corrected", async ({ request }) => {
+    const openResponse = await request.post("/api/operations/attendance", { data: { action: "open", date: rehearsalDate } });
+    expect(openResponse.ok()).toBeTruthy();
+    const day = (await openResponse.json()).day;
+
+    const openedResponse = await request.get(`/api/operations/attendance?date=${rehearsalDate}`);
+    expect(openedResponse.ok()).toBeTruthy();
+    const openedRecord = (await openedResponse.json()).day.records[0];
+    const completeResponse = await request.patch("/api/operations/attendance", { data: { action: "update", recordId: openedRecord.id, status: "PRESENT", actualIn: "10:00", actualOut: "18:00" } });
+    expect(completeResponse.ok()).toBeTruthy();
+
+    const finalizeResponse = await request.patch("/api/operations/attendance", { data: { action: "finalize", dayId: day.id } });
+    expect(finalizeResponse.ok()).toBeTruthy();
+    expect((await finalizeResponse.json()).day.status).toBe("FINALIZED");
+
+    const attendance = await request.get(`/api/operations/attendance?date=${rehearsalDate}`);
+    const record = (await attendance.json()).day.records[0];
+    const correctionResponse = await request.patch("/api/operations/attendance", { data: { action: "correct", recordId: record.id, status: "PRESENT", actualIn: "10:00", actualOut: "18:00", reason: "E2E correction verification" } });
+    expect(correctionResponse.ok()).toBeTruthy();
+    expect((await correctionResponse.json()).record.source).toBe("CORRECTION");
+  });
+
+  test("daily evaluation can apply actions, close and receive an authorized correction", async ({ request }) => {
+    const openResponse = await request.post("/api/operations/evaluations", { data: { action: "open", date: rehearsalDate } });
+    expect(openResponse.ok()).toBeTruthy();
+
+    const saveResponse = await request.post("/api/operations/evaluations", { data: { action: "save", date: rehearsalDate, evaluations: [{ employeeId, exceptions: [], penaltyNote: "E2E penalty", guidanceNote: "E2E guidance", supervisorNote: "Reviewed" }] } });
+    expect(saveResponse.ok()).toBeTruthy();
+
+    const savedResponse = await request.get(`/api/operations/evaluations?date=${rehearsalDate}`);
+    const saved = (await savedResponse.json()).day.evaluations.find((item) => item.employeeId === employeeId);
+    expect(saved.maxScore).toBe(50);
+    expect(saved.finalScore).toBe(10);
+    expect(saved.penaltyNote).toBe("E2E penalty");
+    expect(saved.guidanceNote).toBe("E2E guidance");
+
+    const closeResponse = await request.post("/api/operations/evaluations", { data: { action: "close", date: rehearsalDate, teamNote: "E2E closed" } });
+    expect(closeResponse.ok()).toBeTruthy();
+    expect((await closeResponse.json()).day.status).toBe("CLOSED");
+
+    const correctionResponse = await request.post("/api/operations/evaluations", { data: { action: "correct", date: rehearsalDate, reason: "E2E correction verification", evaluations: [{ employeeId, exceptions: [], penaltyNote: "", guidanceNote: "", supervisorNote: "Corrected" }] } });
+    expect(correctionResponse.ok()).toBeTruthy();
+    const correctedResponse = await request.get(`/api/operations/evaluations?date=${rehearsalDate}`);
+    const corrected = (await correctedResponse.json()).day.evaluations.find((item) => item.employeeId === employeeId);
+    expect(corrected.status).toBe("MODIFIED");
+    expect(corrected.finalScore).toBe(50);
+  });
+
+  test("employee upload remains bound to the selected employee through download and removal", async ({ request }) => {
+    const png = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=", "base64");
+    const wrongTarget = await request.post(`/api/operations/employees/${employeeId}/documents`, { multipart: { employeeId: secondEmployeeId, documentType: "OTHER", file: { name: "wrong-target.png", mimeType: "image/png", buffer: png } } });
+    expect(wrongTarget.status()).toBe(409);
+
+    const uploadResponse = await request.post(`/api/operations/employees/${employeeId}/documents`, { multipart: { employeeId, documentType: "OTHER", displayName: "E2E restore proof", notes: "Disposable fixture", file: { name: "e2e-proof.png", mimeType: "image/png", buffer: png } } });
+    expect(uploadResponse.ok()).toBeTruthy();
+    const document = (await uploadResponse.json()).document;
+    expect(document.employeeId).toBe(employeeId);
+
+    const downloadResponse = await request.get(`/api/operations/employees/${employeeId}/documents/${document.id}?download=1`);
+    expect(downloadResponse.ok()).toBeTruthy();
+    expect(Buffer.compare(await downloadResponse.body(), png)).toBe(0);
+
+    const deleteResponse = await request.delete(`/api/operations/employees/${employeeId}/documents/${document.id}`);
+    expect(deleteResponse.ok()).toBeTruthy();
+    expect((await request.get(`/api/operations/employees/${employeeId}/documents/${document.id}`)).status()).toBe(404);
+  });
+
+  test("Employee 360 persists feedback, guidance and incident follow-up", async ({ request }) => {
+    const feedbackResponse = await request.post(`/api/operations/employees/${employeeId}/360`, { data: { action: "guestFeedback", feedbackDate: rehearsalDate, rating: 5, category: "E2E", comment: "Fixture feedback" } });
+    expect(feedbackResponse.ok()).toBeTruthy();
+    const feedbackId = (await feedbackResponse.json()).record.id;
+
+    const guidanceResponse = await request.post(`/api/operations/employees/${employeeId}/360`, { data: { action: "guidance", recordDate: rehearsalDate, recordType: "GUIDANCE", title: "Fixture guidance", details: "Fixture details", points: -15 } });
+    expect(guidanceResponse.ok()).toBeTruthy();
+    const guidanceId = (await guidanceResponse.json()).record.id;
+
+    const incidentResponse = await request.post(`/api/operations/employees/${employeeId}/360`, { data: { action: "incident", incidentDate: rehearsalDate, incidentType: "OPERATIONAL", title: "Fixture incident", description: "Fixture description", severity: "LOW", status: "OPEN" } });
+    expect(incidentResponse.ok()).toBeTruthy();
+    const incidentId = (await incidentResponse.json()).incident.id;
+    const updateResponse = await request.post(`/api/operations/employees/${employeeId}/360`, { data: { action: "incidentUpdate", incidentId, status: "CLOSED", followUpAction: "Verified and closed" } });
+    expect(updateResponse.ok()).toBeTruthy();
+
+    const profileResponse = await request.get(`/api/operations/employees/${employeeId}/360`);
+    expect(profileResponse.ok()).toBeTruthy();
+    const profile = (await profileResponse.json()).employee;
+    expect(profile.guestFeedback.some((item) => item.id === feedbackId)).toBeTruthy();
+    expect(profile.guidanceRecords.some((item) => item.id === guidanceId)).toBeTruthy();
+    expect(profile.incidents.find((item) => item.id === incidentId)?.status).toBe("CLOSED");
   });
 });

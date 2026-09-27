@@ -26,6 +26,23 @@ module.exports = async () => {
     const authDir = path.join(process.cwd(), "playwright", ".auth");
     fs.mkdirSync(authDir, { recursive: true });
     fs.writeFileSync(path.join(authDir, "admin.json"), JSON.stringify({ cookies: [{ name: process.env.AUTH_COOKIE_NAME || "billybeez_session", value: `${payload}.${signature}`, domain: "127.0.0.1", path: "/", expires: now + 3600, httpOnly: true, secure: false, sameSite: "Strict" }], origins: [] }, null, 2));
+
+    if (process.env.E2E_MUTATIONS === "1") {
+      await prisma.opsShiftDefinition.upsert({ where: { code: "AM" }, create: { code: "AM", label: "Morning", startTime: "10:00", endTime: "18:00", colorKey: "am", active: true }, update: { startTime: "10:00", endTime: "18:00", colorKey: "am", active: true } });
+      const criteriaVersion = await prisma.opsEvaluationCriteriaVersion.upsert({
+        where: { code: "E2E-DAILY-V1" },
+        create: { code: "E2E-DAILY-V1", label: "E2E Daily Evaluation", effectiveFrom: "2099-01-01", active: true },
+        update: { active: true },
+      });
+      await prisma.opsEvaluationCriteriaVersion.updateMany({ where: { id: { not: criteriaVersion.id } }, data: { active: false } });
+      for (const [index, code] of ["UNIFORM", "POSITION", "SAFETY", "BEHAVIOR", "GUEST"].entries()) {
+        await prisma.opsEvaluationCriterion.upsert({
+          where: { criteriaVersionId_code: { criteriaVersionId: criteriaVersion.id, code } },
+          create: { criteriaVersionId: criteriaVersion.id, code, label: code, category: "DAILY_EVALUATION", maxScore: 10, active: true, sortOrder: (index + 1) * 10 },
+          update: { maxScore: 10, active: true, sortOrder: (index + 1) * 10 },
+        });
+      }
+    }
   } finally {
     await prisma.$disconnect();
   }

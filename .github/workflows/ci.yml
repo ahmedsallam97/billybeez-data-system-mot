@@ -23,6 +23,7 @@ jobs:
       SEED_EMPLOYEE_PASSWORD: CI-Employee-Password-2026
       PLAYWRIGHT_CHANNEL: chromium
       E2E_MUTATIONS: "1"
+      EMPLOYEE_FILE_STORAGE_ROOT: tmp/ci-employee-files
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4

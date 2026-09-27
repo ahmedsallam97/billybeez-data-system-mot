@@ -123,13 +123,17 @@ export default function DailyWorkspace({ initialView = "attendance" }) {
   const [busy, setBusy] = useState(false);
   const auto = useRef(new Set());
 
+  useEffect(() => {
+    const requestedDate = new URLSearchParams(window.location.search).get("date");
+    if (/^\d{4}-\d{2}-\d{2}$/.test(String(requestedDate || ""))) setDate(requestedDate);
+  }, []);
 
   async function load() {
     setBusy(true);
     setError("");
     try {
       const dailyRequest = fetch(`/api/operations/daily?date=${date}`).then((response) => readApiResponse(response, "Daily operations could not be loaded"));
-      const attendanceRequest = !evaluationMode && date === today
+      const attendanceRequest = !evaluationMode
         ? fetch(`/api/operations/attendance?date=${date}`).then((response) => readApiResponse(response, "Attendance could not be loaded"))
         : Promise.resolve(null);
       const [dailyPayload, attendancePayload] = await Promise.all([dailyRequest, attendanceRequest]);
@@ -195,6 +199,12 @@ export default function DailyWorkspace({ initialView = "attendance" }) {
   }
 
   const records = attendance?.day?.records || [];
+  const chooseDate = (nextDate) => {
+    setDate(nextDate);
+    const url = new URL(window.location.href);
+    url.searchParams.set("date", nextDate);
+    window.history.replaceState({}, "", url);
+  };
   const updateAttendance = (record, values) => {
     const finalized = attendance.day.status === "FINALIZED";
     mutate("/api/operations/attendance", "PATCH", {
@@ -218,16 +228,16 @@ export default function DailyWorkspace({ initialView = "attendance" }) {
     </header>
     <section className="panel daily-controls">
       <b>{daily?.branchConfig?.branchCode || daily?.branch || "MOT"}</b>
-      <button type="button" onClick={() => setDate(today)}>{isArabic ? "اليوم" : "Today"}</button>
-      <button type="button" onClick={() => setDate(addDays(today, 1))}>{isArabic ? "غدًا" : "Tomorrow"}</button>
-      <input aria-label={isArabic ? "التاريخ" : "Date"} type="date" value={date} onChange={(event) => setDate(event.target.value)} />
+      <button type="button" onClick={() => chooseDate(today)}>{isArabic ? "اليوم" : "Today"}</button>
+      <button type="button" onClick={() => chooseDate(addDays(today, 1))}>{isArabic ? "غدًا" : "Tomorrow"}</button>
+      <input aria-label={isArabic ? "التاريخ" : "Date"} type="date" value={date} onChange={(event) => chooseDate(event.target.value)} />
       <span>{daily?.schedule ? `${isArabic ? "جدول منشور" : "Published schedule"} v${daily.schedule.version}` : (isArabic ? "لا يوجد جدول منشور" : "No published schedule")}</span>
       <button type="button" disabled={busy} onClick={load}>{isArabic ? "تحديث" : "Refresh"}</button>
       <Link className="button-link" href={`/operations/daily-preview?date=${date}`}>{isArabic ? "فتح الروستر" : "Open roster"}</Link>
     </section>
     {error && <div className="alert danger">{error}</div>}
     {notice && <div className="alert success">{notice}</div>}
-    {!daily?.schedule ? <section className="panel"><Empty>{isArabic ? "لا يوجد جدول منشور يغطي التاريخ المحدد." : "No published schedule covers this date."}</Empty></section> : evaluationMode ? <DailyEvaluationPanel date={date} /> : date !== today ? <section className="panel"><Empty>{isArabic ? "الحضور الفعلي متاح لليوم الحالي؛ استخدم الروستر لمراجعة الأيام الأخرى." : "Actual attendance is available for today; use the roster for other dates."}</Empty></section> : <section className="panel">
+    {!daily?.schedule ? <section className="panel"><Empty>{isArabic ? "لا يوجد جدول منشور يغطي التاريخ المحدد." : "No published schedule covers this date."}</Empty></section> : evaluationMode ? <DailyEvaluationPanel date={date} /> : <section className="panel">
       <h2>{isArabic ? "الحضور الفعلي" : "Actual attendance"}</h2>
       {attendance?.day ? <>
         <div className="record-table-scroll attendance-table-wrap">
@@ -237,7 +247,7 @@ export default function DailyWorkspace({ initialView = "attendance" }) {
           </table>
         </div>
         {attendance.day.status !== "FINALIZED" && <button type="button" disabled={busy || records.some((record) => record.status === "MISSING")} onClick={() => mutate("/api/operations/attendance", "PATCH", { action: "finalize", dayId: attendance.day.id }, isArabic ? "تم اعتماد الحضور" : "Attendance finalized")}>{isArabic ? "اعتماد الحضور" : "Finalize attendance"}</button>}
-      </> : <Empty>{isArabic ? "جارٍ تجهيز الحضور من الجدول المنشور…" : "Opening attendance from the published schedule…"}</Empty>}
+      </> : <div className="daily-empty-action"><Empty>{isArabic ? "لم يتم فتح حضور هذا اليوم بعد." : "Attendance has not been opened for this date."}</Empty><button type="button" disabled={busy} onClick={() => mutate("/api/operations/attendance", "POST", { action: "open", date }, isArabic ? "تم فتح حضور اليوم المحدد" : "Attendance opened for the selected date")}>{isArabic ? "فتح حضور اليوم المحدد" : "Open selected date attendance"}</button></div>}
     </section>}
   </div>;
 }

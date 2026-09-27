@@ -93,10 +93,19 @@ export default function OperationsSettingsClient() {
 function Insights({ summary, health, commerce, isArabic }) {
   const attention = summary?.attention || [];
   const assistantInsights = summary?.assistant?.insights || [];
+  const actionHref = (item) => {
+    const params = new URLSearchParams({ tab: item.target || "roster" });
+    if (item.target === "daily" && summary?.today) params.set("date", summary.today);
+    if (item.target === "performance" && summary?.today) {
+      params.set("year", summary.today.slice(0, 4));
+      params.set("month", String(Number(summary.today.slice(5, 7))));
+    }
+    return `/operations?${params}`;
+  };
   const arabicMessages = { SCHEDULE_NOT_PUBLISHED: "لا يوجد جدول منشور يغطي اليوم.", ATTENDANCE_NOT_STARTED: "الحضور لم يبدأ لليوم.", MISSING_ATTENDANCE: "توجد سجلات حضور تحتاج مراجعة.", APPRAISALS_PENDING: "توجد تقييمات شهرية تنتظر المراجعة أو الاعتماد.", LEAVE_REQUESTS_PENDING: "توجد طلبات إجازة تنتظر القرار.", EMPLOYEE_STATUS_MISMATCH: "توجد ملفات موظفين بحالة نشاط غير متطابقة.", LOW_STOCK: "توجد أصناف وصلت إلى مستوى المخزون المنخفض." };
   return <div className="ops-settings-section insights-workspace">
     <div className="insights-command-grid">
-      <section className="settings-action-required"><header><span>{isArabic ? "قرارات معلقة" : "PENDING DECISIONS"}</span><h2>{isArabic ? "إجراء مطلوب" : "Action required"}</h2></header><div className="operations-insight-grid">{attention.length ? attention.map((item) => <article className={`operations-insight ${item.severity}`} key={item.code}><b>{isArabic ? "إجراء مطلوب" : (item.title || item.code)}</b><span>{isArabic ? (arabicMessages[item.code] || item.message) : item.message}</span>{item.target && <Link href={`/operations?tab=${item.target}`}>{isArabic ? "فتح الإجراء" : "Open action"}</Link>}</article>) : <article className="operations-insight clear"><b>{isArabic ? "لا يوجد إجراء عاجل" : "No urgent action"}</b><span>{isArabic ? "كل القرارات المباشرة المسجلة محسومة حاليًا." : "All directly recorded decisions are currently resolved."}</span></article>}</div></section>
+      <section className="settings-action-required"><header><span>{isArabic ? "قرارات معلقة" : "PENDING DECISIONS"}</span><h2>{isArabic ? "إجراء مطلوب" : "Action required"}</h2></header><div className="operations-insight-grid">{attention.length ? attention.map((item) => <article className={`operations-insight ${item.severity}`} key={item.code}><b>{isArabic ? "إجراء مطلوب" : (item.title || item.code)}</b><span>{isArabic ? (arabicMessages[item.code] || item.message) : item.message}</span>{item.target && <Link href={actionHref(item)}>{isArabic ? "فتح الإجراء" : "Open action"}</Link>}</article>) : <article className="operations-insight clear"><b>{isArabic ? "لا يوجد إجراء عاجل" : "No urgent action"}</b><span>{isArabic ? "كل القرارات المباشرة المسجلة محسومة حاليًا." : "All directly recorded decisions are currently resolved."}</span></article>}</div></section>
       <SystemPulse summary={summary} health={health} commerce={commerce} isArabic={isArabic} />
     </div>
     <section className="panel billy-assistant">
@@ -156,14 +165,17 @@ function BillyInsight({ insight, isArabic }) {
     title = isArabic ? "أولوية متابعة المواعيد" : "Punctuality coaching priority";
     message = isArabic ? `${insight.employees.length} موظفين يحتاجون متابعة عملية للمواعيد بناءً على آخر ${insight.lookbackDays} يومًا.` : `${insight.employees.length} employees need punctuality coaching based on the last ${insight.lookbackDays} days.`;
     evidence = insight.employees.map((item) => isArabic ? `${item.name}: غياب ${item.absences} · تأخير ${item.lateOccurrences} (${item.lateMinutes} دقيقة) · خروج مبكر ${item.earlyLeaveOccurrences}` : `${item.name}: ${item.absences} absent · ${item.lateOccurrences} late (${item.lateMinutes} min) · ${item.earlyLeaveOccurrences} early leave`);
+    if (insight.employees[0]?.employeeId) href = `/operations?tab=employees&employeeId=${encodeURIComponent(insight.employees[0].employeeId)}`;
   } else if (insight.code === "STALE_ATTENDANCE_DAYS") {
     title = isArabic ? "إقفال حضور أيام سابقة" : "Close older attendance days";
     message = isArabic ? `${insight.dayCount} أيام ما زالت مفتوحة وبداخلها ${insight.missingRecords} سجلات حضور غير محسومة.` : `${insight.dayCount} older days remain open with ${insight.missingRecords} unresolved attendance records.`;
     evidence = [isArabic ? `أقدم يوم مفتوح: ${insight.oldestDate}` : `Oldest open day: ${insight.oldestDate}`];
+    href = `/operations?tab=daily&date=${encodeURIComponent(insight.oldestDate)}`;
   } else if (insight.code === "DISCIPLINARY_FOLLOWUP") {
     title = isArabic ? "متابعة الجزاءات التأديبية" : "Disciplinary follow-up";
     message = isArabic ? `${insight.employeeCount} موظفين لديهم إجراء تأديبي أو واقعة عالية الأهمية لم تُغلق.` : `${insight.employeeCount} employees have an open disciplinary action or high-severity incident.`;
     evidence = [isArabic ? `إنذارات وجزاءات: ${insight.warningCount} · وقائع عالية: ${insight.incidentCount} · متابعات متأخرة: ${insight.overdueFollowUps}` : `Warnings/penalties: ${insight.warningCount} · high incidents: ${insight.incidentCount} · overdue follow-ups: ${insight.overdueFollowUps}`, names.join(" · ")].filter(Boolean);
+    if (insight.employees[0]?.employeeId) href = `/operations?tab=employees&employeeId=${encodeURIComponent(insight.employees[0].employeeId)}`;
   } else if (insight.code === "RECOGNITION_MONTHS_PENDING") {
     const monthList = (status) => insight.months.filter((item) => item.status === status).map((item) => item.month);
     const ready = monthList("READY_FOR_WINNER"); const pending = monthList("APPRAISALS_PENDING"); const missing = monthList("NOT_STARTED");

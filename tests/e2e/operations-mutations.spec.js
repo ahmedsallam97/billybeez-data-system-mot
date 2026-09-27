@@ -107,10 +107,14 @@ test.describe("isolated operations mutations", () => {
     expect(deletedOfferResponse.ok()).toBeTruthy();
   });
 
-  test("attendance can be opened, completed, finalized and corrected", async ({ request }) => {
+  test("attendance can be opened from a dated action link, completed, finalized and corrected", async ({ request, page }) => {
     const openResponse = await request.post("/api/operations/attendance", { data: { action: "open", date: rehearsalDate } });
     expect(openResponse.ok()).toBeTruthy();
     const day = (await openResponse.json()).day;
+
+    await page.goto(`/operations?tab=daily&date=${rehearsalDate}`, { waitUntil: "networkidle" });
+    await expect(page.getByLabel(/Date|التاريخ/)).toHaveValue(rehearsalDate);
+    await expect(page.locator(".attendance-table-wrap")).toBeVisible();
 
     const openedResponse = await request.get(`/api/operations/attendance?date=${rehearsalDate}`);
     expect(openedResponse.ok()).toBeTruthy();

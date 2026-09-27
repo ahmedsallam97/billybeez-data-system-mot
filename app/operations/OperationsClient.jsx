@@ -26,10 +26,13 @@ export default function OperationsClient() {
   const [tab, setTab] = useState("roster");
   const [navigationOpen, setNavigationOpen] = useState(false);
   const employeeRequest = useRef(0);
+  const requestedEmployeeId = useRef("");
   const tabKeys = ["roster", "daily", "evaluation", "schedule", "trips", "birthdays", "offers", "stock", "time", "employees", "performance"];
 
   useEffect(() => {
-    const requestedTab = new URLSearchParams(window.location.search).get("tab");
+    const params = new URLSearchParams(window.location.search);
+    const requestedTab = params.get("tab");
+    requestedEmployeeId.current = params.get("employeeId") || "";
     if (tabKeys.includes(requestedTab)) setTab(requestedTab);
   }, []);
   function navigate(nextTab) {
@@ -69,11 +72,15 @@ export default function OperationsClient() {
       const response = await fetch(`/api/operations/employees?${params}`);
       const payload = await readApiResponse(response, "Employee list could not be loaded");
       setEmployees(payload.employees);
-      if (selected && !payload.employees.some((item) => item.id === selected.id)) setSelected(null);
-      if (!selected && payload.employees[0]) {
-        const detailResponse = await fetch(`/api/operations/employees/${payload.employees[0].id}/360`);
+      const requestedEmployee = requestedEmployeeId.current && payload.employees.find((item) => item.id === requestedEmployeeId.current);
+      const selectedIsVisible = selected && payload.employees.some((item) => item.id === selected.id);
+      const targetEmployee = requestedEmployee || (selectedIsVisible ? null : payload.employees[0]);
+      if (selected && !selectedIsVisible && !targetEmployee) setSelected(null);
+      if (targetEmployee && selected?.id !== targetEmployee.id) {
+        const detailResponse = await fetch(`/api/operations/employees/${targetEmployee.id}/360`);
         const detail = await readApiResponse(detailResponse, "Employee profile could not be loaded");
         setSelected(detail.employee);
+        if (requestedEmployee) requestedEmployeeId.current = "";
       }
     } catch (requestError) {
       setError(requestError.message);

@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useI18n } from "../i18n";
+import { readApiResponse } from "@/lib/client/read-api-response";
 
 const WEEKDAYS = [
   [0, "Sunday", "الأحد"], [1, "Monday", "الاثنين"], [2, "Tuesday", "الثلاثاء"],
@@ -13,20 +14,6 @@ function localDate() {
   return new Date(now.getTime() - now.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
 }
 
-async function apiJson(response) {
-  const text = await response.text();
-  let payload = null;
-  try { payload = text ? JSON.parse(text) : null; } catch { /* handled below */ }
-  if (response.status === 401) {
-    if (typeof window !== "undefined") {
-      const next = `${window.location.pathname}${window.location.search}`;
-      window.location.assign(`/login?next=${encodeURIComponent(next)}`);
-    }
-    throw new Error("Your session expired. Redirecting to login…");
-  }
-  if (!response.ok || !payload) throw new Error(payload?.error || "Request failed");
-  return payload;
-}
 
 function FormCard({ title, hint, children, onSubmit, button, secondary }) {
   return <form className="ops-setup-card" onSubmit={onSubmit}>
@@ -66,7 +53,7 @@ export default function DailySetupWorkspace({ section = "trips" }) {
   const [editingEvent, setEditingEvent] = useState(null);
   const [editingStock, setEditingStock] = useState(null);
 
-  const request = useCallback((url, options = {}) => fetch(url, { credentials: "same-origin", ...options }).then(apiJson), []);
+  const request = useCallback((url, options = {}) => fetch(url, { credentials: "same-origin", ...options }).then((response) => readApiResponse(response)), []);
 
   const load = useCallback(async () => {
     setMessage("");

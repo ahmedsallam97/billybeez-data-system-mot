@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useI18n } from "../i18n";
+import { readApiResponse } from "@/lib/client/read-api-response";
 
 const ARABIC_CRITERIA = { UNIFORM: "الزي والمظهر", POSITION: "الأداء في الموقع", SAFETY: "السلامة", BEHAVIOR: "السلوك والعمل الجماعي", GUEST: "التعامل مع الضيوف" };
 function localToday() { const now = new Date(); return new Date(now.getTime() - now.getTimezoneOffset() * 60000).toISOString().slice(0, 10); }
@@ -54,7 +55,7 @@ export default function DailyEvaluationPanel({ date }) {
   const [notice, setNotice] = useState("");
   const [drafts, setDrafts] = useState({});
   const automaticOpen = useRef(new Set());
-  async function load() { const response = await fetch(`/api/operations/evaluations?date=${date}`); const payload = await response.json(); if (!response.ok) setError(payload.error); else setData(payload); }
+  async function load() { try { const response = await fetch(`/api/operations/evaluations?date=${date}`); setData(await readApiResponse(response, "Daily evaluation could not be loaded")); } catch (requestError) { setError(requestError.message); } }
   useEffect(() => { load(); }, [date]);
   useEffect(() => { if (!data || data.day || !data.team.length || automaticOpen.current.has(date)) return; automaticOpen.current.add(date); action({ action: "open" }); }, [data, date]);
   useEffect(() => {
@@ -67,7 +68,7 @@ export default function DailyEvaluationPanel({ date }) {
     const criteria = data.day.criteriaVersion?.criteria || data.criteriaVersion?.criteria || [];
     setDrafts(Object.fromEntries(data.day.evaluations.map((item) => [item.employeeId, draftFor(item, criteria)])));
   }, [data]);
-  async function action(body, successMessage = "") { setError(""); setNotice(""); const response = await fetch("/api/operations/evaluations", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ ...body, date }) }); const payload = await response.json(); if (!response.ok) return setError(payload.error); setSelected(null); if (successMessage) setNotice(successMessage); await load(); }
+  async function action(body, successMessage = "") { setError(""); setNotice(""); try { const response = await fetch("/api/operations/evaluations", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ ...body, date }) }); await readApiResponse(response, "Daily evaluation could not be saved"); setSelected(null); if (successMessage) setNotice(successMessage); await load(); } catch (requestError) { setError(requestError.message); } }
   const criteria = data?.criteriaVersion?.criteria || [];
   const maximum = useMemo(() => criteria.reduce((sum, item) => sum + Number(item.maxScore), 0), [criteria]);
   const penaltyDeduction = Math.max(0, Number(data?.rules?.penaltyDeduction ?? 25));

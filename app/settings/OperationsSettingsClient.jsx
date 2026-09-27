@@ -3,8 +3,11 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useI18n } from "../i18n";
+import dailyTemplateConfig from "@/lib/operations/daily-template-config";
+import { readApiResponse } from "@/lib/client/read-api-response";
 
-async function read(response) { const text = await response.text(); const data = text ? JSON.parse(text) : {}; if (!response.ok) throw new Error(data.error || "Request failed"); return data; }
+const { normalizeDailyOperationsTemplateConfig, normalizeMotivationPhrases } = dailyTemplateConfig;
+
 function Field({ label, children }) { return <label className="ops-setting-field"><span>{label}</span>{children}</label>; }
 
 export default function OperationsSettingsClient() {
@@ -22,10 +25,10 @@ export default function OperationsSettingsClient() {
     setMessage("");
     try {
       const [configuration, insights, systemHealth, systemDashboard] = await Promise.all([
-        fetch("/api/operations/config", { cache: "no-store" }).then(read),
-        fetch("/api/operations/summary", { cache: "no-store" }).then(read),
-        fetch("/api/operations/health", { cache: "no-store" }).then(read),
-        fetch("/api/dashboard?light=1", { cache: "no-store" }).then(read),
+        fetch("/api/operations/config", { cache: "no-store" }).then((response) => readApiResponse(response)),
+        fetch("/api/operations/summary", { cache: "no-store" }).then((response) => readApiResponse(response)),
+        fetch("/api/operations/health", { cache: "no-store" }).then((response) => readApiResponse(response)),
+        fetch("/api/dashboard?light=1", { cache: "no-store" }).then((response) => readApiResponse(response)),
       ]);
       setConfig(configuration); setSummary(insights); setHealth(systemHealth); setCommerce(systemDashboard);
     } catch (error) { setMessage(error.message); }
@@ -34,18 +37,18 @@ export default function OperationsSettingsClient() {
 
   async function saveSetting(key, value, notice) {
     setBusy(true); setMessage("");
-    try { await fetch("/api/settings", { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ key, value: JSON.stringify(value) }) }).then(read); setMessage(notice || (isArabic ? "تم حفظ الإعدادات" : "Settings saved")); await load(); }
+    try { await fetch("/api/settings", { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ key, value: JSON.stringify(value) }) }).then((response) => readApiResponse(response)); setMessage(notice || (isArabic ? "تم حفظ الإعدادات" : "Settings saved")); await load(); }
     catch (error) { setMessage(error.message); } finally { setBusy(false); }
   }
   async function saveRecord(action, form) {
     setBusy(true); setMessage("");
-    try { const body = { action, ...Object.fromEntries(new FormData(form).entries()) }; body.critical = body.critical === "on"; body.requiresQualification = body.requiresQualification === "on"; body.operationsTeamLeader = body.operationsTeamLeader === "on"; await fetch("/api/operations/config", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) }).then(read); form.reset(); setMessage(isArabic ? "تم الحفظ" : "Saved"); await load(); return true; }
+    try { const body = { action, ...Object.fromEntries(new FormData(form).entries()) }; body.critical = body.critical === "on"; body.requiresQualification = body.requiresQualification === "on"; body.operationsTeamLeader = body.operationsTeamLeader === "on"; await fetch("/api/operations/config", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) }).then((response) => readApiResponse(response)); form.reset(); setMessage(isArabic ? "تم الحفظ" : "Saved"); await load(); return true; }
     catch (error) { setMessage(error.message); return false; } finally { setBusy(false); }
   }
   async function runRecordAction(action, payload, confirmation) {
     if (confirmation && !window.confirm(confirmation)) return false;
     setBusy(true); setMessage("");
-    try { await fetch("/api/operations/config", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ action, ...payload }) }).then(read); setMessage(isArabic ? "تم الحذف" : "Deleted"); await load(); return true; }
+    try { await fetch("/api/operations/config", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ action, ...payload }) }).then((response) => readApiResponse(response)); setMessage(isArabic ? "تم الحذف" : "Deleted"); await load(); return true; }
     catch (error) { setMessage(error.message); return false; } finally { setBusy(false); }
   }
 
@@ -206,8 +209,8 @@ function RosterSettings({ config, settings, isArabic, busy, saveSetting, saveRec
 }
 
 function TemplateSettings({ settings, isArabic, busy, saveSetting }) {
-  const [template, setTemplate] = useState(settings.DAILY_OPERATIONS_TEMPLATE_CONFIG || {});
-  const [phrases, setPhrases] = useState((settings.OPS_MOTIVATION_PHRASES || []).join("\n"));
+  const [template, setTemplate] = useState(() => normalizeDailyOperationsTemplateConfig(settings.DAILY_OPERATIONS_TEMPLATE_CONFIG));
+  const [phrases, setPhrases] = useState(() => normalizeMotivationPhrases(settings.OPS_MOTIVATION_PHRASES).join("\n"));
   const setVisibleCard = (key, value) => setTemplate((current) => ({ ...current, visibleCards: { ...(current.visibleCards || {}), [key]: value } }));
   const setVisibleSection = (key, value) => setTemplate((current) => ({ ...current, visibleSections: { ...(current.visibleSections || {}), [key]: value } }));
   const setLabel = (key, value) => setTemplate((current) => ({ ...current, labels: { ...(current.labels || {}), [key]: value } }));
@@ -228,7 +231,7 @@ function RecognitionSettings({ config, settings, isArabic, busy, saveSetting, re
   const setEmployeeName = (id, value) => setArtwork((current) => ({ ...current, employeeNameOverrides: { ...(current.employeeNameOverrides || {}), [id]: value } }));
   async function uploadPhoto(employeeId, file) {
     if (!file) return; const form = new FormData(); form.set("file", file); form.set("employeeId", employeeId); form.set("documentType", "EMPLOYEE_PHOTO"); form.set("displayName", file.name);
-    try { const payload = await fetch(`/api/operations/employees/${employeeId}/documents`, { method: "POST", body: form }).then(read); if (payload.document?.employeeId !== employeeId) throw new Error("Upload target verification failed"); setMessage(isArabic ? "تم تحديث صورة الموظف" : "Employee photo updated"); await reload(); }
+    try { const payload = await fetch(`/api/operations/employees/${employeeId}/documents`, { method: "POST", body: form }).then((response) => readApiResponse(response)); if (payload.document?.employeeId !== employeeId) throw new Error("Upload target verification failed"); setMessage(isArabic ? "تم تحديث صورة الموظف" : "Employee photo updated"); await reload(); }
     catch (error) { setMessage(error.message); }
   }
   const fontPicker = (value, onChange) => <select aria-label="Artwork font" value={value || '"Avenir Next", "Segoe UI", Arial, sans-serif'} onChange={(event) => onChange(event.target.value)}>{RECOGNITION_FONT_OPTIONS.map(([label, font]) => <option value={font} key={label}>{label}</option>)}</select>;

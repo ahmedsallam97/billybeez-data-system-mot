@@ -1,0 +1,16 @@
+services:
+  billybeez:
+    build: .
+    restart: unless-stopped
+    env_file: .env.production
+    ports:
+      - "127.0.0.1:3000:3000"
+    volumes:
+      - billybeez_database:/app/prisma
+      - billybeez_employee_files:/app/storage/employee-files
+      - billybeez_backups:/app/backups
+
+volumes:
+  billybeez_database:
+  billybeez_employee_files:
+  billybeez_backups:

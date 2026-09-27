@@ -149,6 +149,8 @@ Synchronize and validate the PostgreSQL parity schema:
 npm run db:pg:sync-schema
 $env:POSTGRES_DATABASE_URL="postgresql://user:password@localhost:5432/isolated_billybeez_validation"
 npm run db:pg:validate
+npm run db:pg:status
+npm run db:pg:migrate
 Remove-Item Env:POSTGRES_DATABASE_URL
 ```
 
@@ -258,7 +260,7 @@ public/
 
 ## Notes For Next Level
 
-- `prisma/schema.postgres.prisma` is generated from the authoritative SQLite schema. Rehearse migration on an isolated PostgreSQL database before cutover.
+- `prisma/postgres/schema.prisma` is generated from the authoritative SQLite schema and `prisma/postgres/migrations/` contains reviewed, versioned PostgreSQL migrations. Rehearse `npm run db:pg:migrate` on an isolated PostgreSQL database before cutover.
 - Multi-instance production should use PostgreSQL and the S3-compatible employee-file provider instead of local SQLite and local protected-file storage.
 - Silent printing to a specific remote printer will require a local print agent/service.
 - Keep `.env` private and never upload real secrets.

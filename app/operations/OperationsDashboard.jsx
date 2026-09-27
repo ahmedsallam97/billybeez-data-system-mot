@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useI18n } from "../i18n";
+import { readApiResponse } from "@/lib/client/read-api-response";
 
 export default function OperationsDashboard({ onNavigate }) {
   const { isArabic } = useI18n();
@@ -9,8 +10,7 @@ export default function OperationsDashboard({ onNavigate }) {
   const [error, setError] = useState("");
   useEffect(() => {
     fetch("/api/operations/summary").then(async (response) => {
-      const payload = await response.json();
-      if (!response.ok) throw new Error(payload.error || "Request failed");
+      const payload = await readApiResponse(response, "Operations summary could not be loaded");
       setData(payload);
     }).catch((requestError) => setError(requestError.message));
   }, []);

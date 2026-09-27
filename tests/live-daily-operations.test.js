@@ -4,6 +4,7 @@ const {
   buildExpectedTeam,
   mergeExpectedActual,
   canAssign,
+  hasPositionConflict,
   generateRotation,
   buildReadiness,
   needsAttention,
@@ -136,6 +137,14 @@ test("fully staffed shifts distribute remaining employees across distinct option
   assert.equal(result.assignments.length, 3);
   assert.equal(new Set(result.assignments.map((item) => item.positionCode)).size, 3);
   assert.ok(result.assignments.some((item) => item.positionCode !== "DATA"));
+});
+
+test("manual position conflict detection blocks a second employee in an overlapping slot", () => {
+  const assignments = [{ id: "one", employeeId: "a", operationalPositionId: "locker", startTime: "15:00", endTime: "16:00" }];
+  assert.equal(hasPositionConflict(assignments, { operationalPositionId: "locker", startTime: "15:30", endTime: "16:30" }), true);
+  assert.equal(hasPositionConflict(assignments, { operationalPositionId: "locker", startTime: "16:00", endTime: "17:00" }), false);
+  assert.equal(hasPositionConflict(assignments, { operationalPositionId: "tower", startTime: "15:30", endTime: "16:30" }), false);
+  assert.equal(hasPositionConflict(assignments, { operationalPositionId: "locker", startTime: "15:30", endTime: "16:30", excludeAssignmentId: "one" }), false);
 });
 
 test("overlapping shifts never duplicate the same position in the same hour", () => {

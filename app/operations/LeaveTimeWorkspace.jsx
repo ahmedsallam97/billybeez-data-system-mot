@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useI18n } from "../i18n";
+import { readApiResponse } from "@/lib/client/read-api-response";
 
 function localToday() { const now = new Date(); return new Date(now.getTime() - now.getTimezoneOffset() * 60000).toISOString().slice(0, 10); }
 const TYPE_LABELS = { SMART: "ذكي: سنوي ثم بديل", ANNUAL: "سنوي", REPLACEMENT: "بديل" };
@@ -31,9 +32,9 @@ export default function LeaveTimeWorkspace() {
   const [booking, setBooking] = useState({ employeeId: "", startDate: localToday(), endDate: localToday(), requestedType: "SMART", reason: "" });
   const [adjustment, setAdjustment] = useState({ employeeId: "", kind: "leave", leaveType: "ANNUAL", amount: "", hours: "", reason: "", date: localToday() });
   const [holiday, setHoliday] = useState({ name: "", startDate: localToday(), endDate: localToday(), reason: "" });
-  async function load() { setError(""); const response = await fetch(`/api/operations/leave-time?year=${year}`); const payload = await response.json(); if (!response.ok) return setError(payload.error); setData(payload); const first = payload.employees[0]?.id || ""; setSelectedEmployeeId((current) => current || first); setBooking((current) => ({ ...current, employeeId: current.employeeId || first })); setAdjustment((current) => ({ ...current, employeeId: current.employeeId || first })); }
+  async function load() { setError(""); try { const response = await fetch(`/api/operations/leave-time?year=${year}`); const payload = await readApiResponse(response, "Leave and overtime data could not be loaded"); setData(payload); const first = payload.employees[0]?.id || ""; setSelectedEmployeeId((current) => current || first); setBooking((current) => ({ ...current, employeeId: current.employeeId || first })); setAdjustment((current) => ({ ...current, employeeId: current.employeeId || first })); } catch (requestError) { setError(requestError.message); } }
   useEffect(() => { load(); }, [year]);
-  async function mutate(body) { setBusy(true); setError(""); setNotice(""); try { const response = await fetch("/api/operations/leave-time", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) }); const payload = await response.json(); if (!response.ok) return setError(payload.error); setNotice(isArabic ? "تم الحفظ وتحديث السجل بنجاح" : "Saved and ledger updated successfully"); setModal(null); await load(); } finally { setBusy(false); } }
+  async function mutate(body) { setBusy(true); setError(""); setNotice(""); try { const response = await fetch("/api/operations/leave-time", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) }); await readApiResponse(response, "Leave or overtime change could not be saved"); setNotice(isArabic ? "تم الحفظ وتحديث السجل بنجاح" : "Saved and ledger updated successfully"); setModal(null); await load(); } catch (requestError) { setError(requestError.message); } finally { setBusy(false); } }
   async function createBooking(event) { event.preventDefault(); await mutate({ action: "createBooking", ...booking }); setBooking((current) => ({ ...current, reason: "" })); }
   async function saveAdjustment(event) { event.preventDefault(); await mutate({ action: adjustment.kind === "leave" ? "adjustLeave" : "adjustOvertime", ...adjustment, year }); setAdjustment((current) => ({ ...current, amount: "", hours: "", reason: "" })); }
   async function createHoliday(event) { event.preventDefault(); await mutate({ action: "createHoliday", ...holiday }); setHoliday((current) => ({ ...current, name: "", reason: "" })); }

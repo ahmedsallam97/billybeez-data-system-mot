@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useI18n } from "../i18n";
 import DailyEvaluationPanel from "./DailyEvaluationPanel";
 import { formatTime12 } from "@/lib/operations/roster";
+import { readApiResponse } from "@/lib/client/read-api-response";
 
 const STATUSES = [
   "PRESENT",
@@ -122,21 +123,14 @@ export default function DailyWorkspace({ initialView = "attendance" }) {
   const [busy, setBusy] = useState(false);
   const auto = useRef(new Set());
 
-  async function responseJson(response, fallback) {
-    const raw = await response.text();
-    let payload = null;
-    try { payload = raw ? JSON.parse(raw) : null; } catch { /* use fallback */ }
-    if (!response.ok || !payload) throw new Error(payload?.error || fallback);
-    return payload;
-  }
 
   async function load() {
     setBusy(true);
     setError("");
     try {
-      const dailyRequest = fetch(`/api/operations/daily?date=${date}`).then((response) => responseJson(response, "Daily operations could not be loaded"));
+      const dailyRequest = fetch(`/api/operations/daily?date=${date}`).then((response) => readApiResponse(response, "Daily operations could not be loaded"));
       const attendanceRequest = !evaluationMode && date === today
-        ? fetch(`/api/operations/attendance?date=${date}`).then((response) => responseJson(response, "Attendance could not be loaded"))
+        ? fetch(`/api/operations/attendance?date=${date}`).then((response) => readApiResponse(response, "Attendance could not be loaded"))
         : Promise.resolve(null);
       const [dailyPayload, attendancePayload] = await Promise.all([dailyRequest, attendanceRequest]);
       setDaily(dailyPayload);
@@ -176,7 +170,7 @@ export default function DailyWorkspace({ initialView = "attendance" }) {
       method,
       headers: { "content-type": "application/json" },
       body: JSON.stringify(body),
-    }).then((response) => responseJson(response, "Automatic daily preparation failed"))))
+    }).then((response) => readApiResponse(response, "Automatic daily preparation failed"))))
       .then(load)
       .catch((requestError) => setError(requestError.message));
   }, [daily, attendance, date, today, evaluationMode]);
@@ -190,7 +184,7 @@ export default function DailyWorkspace({ initialView = "attendance" }) {
         method,
         headers: { "content-type": "application/json" },
         body: JSON.stringify(body),
-      }).then((response) => responseJson(response, "Save failed"));
+      }).then((response) => readApiResponse(response, "Save failed"));
       setNotice(successMessage);
       await load();
     } catch (requestError) {

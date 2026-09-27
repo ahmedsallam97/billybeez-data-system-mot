@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useI18n } from "../i18n";
+import { readApiResponse } from "@/lib/client/read-api-response";
 
 const SCHEDULE_VALUES = ["AM", "PM", "BW", "BW1", "BW2", "AM Front", "PM Front", "OFF", "Annual", "Rep", "SL", "Holiday", "H", "Mission", "M", "ANP", "AWP", "Unpaid", "OverTime", "N/A"];
 function localToday() { const now = new Date(); return new Date(now.getTime() - now.getTimezoneOffset() * 60000).toISOString().slice(0, 10); }
@@ -25,20 +26,20 @@ export default function ScheduleWorkspace() {
 
   async function loadSchedule(preferredId = scheduleId) {
     setBusy(true); setError("");
-    try { const query = new URLSearchParams({ year: String(year), month: String(month) }); if (preferredId) query.set("scheduleId", preferredId); const response = await fetch(`/api/operations/schedules?${query}`); const data = await response.json(); if (!response.ok) throw new Error(data.error); setPayload(data); setScheduleId(data.schedule?.id || ""); }
+    try { const query = new URLSearchParams({ year: String(year), month: String(month) }); if (preferredId) query.set("scheduleId", preferredId); const response = await fetch(`/api/operations/schedules?${query}`); const data = await readApiResponse(response, "Schedule request failed"); setPayload(data); setScheduleId(data.schedule?.id || ""); }
     catch (requestError) { setError(requestError.message); } finally { setBusy(false); }
   }
   useEffect(() => { setScheduleId(""); loadSchedule(""); }, [year, month]);
-  useEffect(() => { fetch("/api/settings?keys=OPS_SCHEDULE_CODE_CONFIG").then((response) => response.json()).then((data) => { const row = data.settings?.[0]; if (row?.value) setCodeColors(JSON.parse(row.value)); }).catch(() => {}); }, []);
+  useEffect(() => { fetch("/api/settings?keys=OPS_SCHEDULE_CODE_CONFIG").then((response) => readApiResponse(response, "Schedule colors could not be loaded")).then((data) => { const row = data.settings?.[0]; if (row?.value) setCodeColors(JSON.parse(row.value)); }).catch(() => {}); }, []);
 
   const dates = payload ? dateRange(payload.period.startDate, payload.period.endDate) : [];
   const employeeRows = useMemo(() => { const map = new Map(); for (const assignment of payload?.schedule?.assignments || []) { if (!map.has(assignment.employeeId)) map.set(assignment.employeeId, { employee: assignment.employee, cells: {} }); map.get(assignment.employeeId).cells[assignment.workDate] = assignment; } const query = employeeQuery.trim().toLowerCase(); return [...map.values()].filter((row) => { const matchesEmployee = !query || [row.employee.name, row.employee.nameEn, row.employee.hrisNumber, row.employee.localEmployeeCode, row.employee.jobTitle].filter(Boolean).some((value) => String(value).toLowerCase().includes(query)); const values = Object.values(row.cells).map(cellValue); const matchesAssignment = assignmentFilter === "ALL" || (assignmentFilter === "LEAVE" ? values.some((value) => ["Annual", "Rep", "SL", "Unpaid"].includes(value)) : values.some((value) => value === assignmentFilter)); return matchesEmployee && matchesAssignment; }); }, [payload, employeeQuery, assignmentFilter]);
   const operationalRows = employeeRows.filter((row) => row.employee.department !== "CASHIER");
   const cashierRows = employeeRows.filter((row) => row.employee.department === "CASHIER");
   const scheduleRows = (rows) => rows.map((row) => <tr key={row.employee.id}><td><b>{row.employee.name}</b><small>{row.employee.hrisNumber || row.employee.localEmployeeCode}</small></td>{dates.map((item) => { const cell = row.cells[item]; const key = `${row.employee.id}:${item}`; return <td key={item} className={`schedule-cell-state-${cellStates[key] || "idle"}`} title={cellValue(cell)}>{payload.schedule.status === "DRAFT" ? <select aria-label={`${row.employee.name} ${item}`} value={cellValue(cell)} onChange={(event) => updateCell(row.employee, item, event.target.value)}>{cellValue(cell) && !SCHEDULE_VALUES.includes(cellValue(cell)) && <option value={cellValue(cell)}>{cellValue(cell)}</option>}{SCHEDULE_VALUES.map((value) => <option key={value}>{value}</option>)}</select> : <span>{cellValue(cell)}</span>}{cellStates[key] === "saving" && <i>{isArabic ? "حفظ" : "Saving"}</i>}{cellStates[key] === "saved" && <i>✓</i>}</td>; })}</tr>);
-  async function createRevision() { if (!payload?.schedule) return; setBusy(true); setError(""); try { const response = await fetch("/api/operations/schedules", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ action: "createRevision", scheduleId: payload.schedule.id }) }); const data = await response.json(); if (!response.ok) throw new Error(data.error); setScheduleId(data.schedule.id); await loadSchedule(data.schedule.id); } catch (requestError) { setError(requestError.message); } finally { setBusy(false); } }
-  async function publish() { if (!payload?.schedule || !window.confirm(isArabic ? "نشر هذه النسخة واعتمادها؟" : "Publish and approve this revision?")) return; setBusy(true); setError(""); try { const response = await fetch("/api/operations/schedules", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ action: "publish", scheduleId: payload.schedule.id }) }); const data = await response.json(); if (!response.ok) throw new Error(data.error); await loadSchedule(data.schedule.id); } catch (requestError) { setError(requestError.message); } finally { setBusy(false); } }
-  async function deleteDraft() { if (!payload?.schedule || !window.confirm(isArabic ? "حذف الدرافت فقط؟ النسخة المنشورة لن تتأثر." : "Delete this draft only? The published revision will remain.")) return; setBusy(true); try { const response = await fetch("/api/operations/schedules", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ action: "deleteDraft", scheduleId: payload.schedule.id }) }); const data = await response.json(); if (!response.ok) throw new Error(data.error); setScheduleId(""); await loadSchedule(""); } catch (requestError) { setError(requestError.message); } finally { setBusy(false); } }
+  async function createRevision() { if (!payload?.schedule) return; setBusy(true); setError(""); try { const response = await fetch("/api/operations/schedules", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ action: "createRevision", scheduleId: payload.schedule.id }) }); const data = await readApiResponse(response, "Schedule request failed"); setScheduleId(data.schedule.id); await loadSchedule(data.schedule.id); } catch (requestError) { setError(requestError.message); } finally { setBusy(false); } }
+  async function publish() { if (!payload?.schedule || !window.confirm(isArabic ? "نشر هذه النسخة واعتمادها؟" : "Publish and approve this revision?")) return; setBusy(true); setError(""); try { const response = await fetch("/api/operations/schedules", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ action: "publish", scheduleId: payload.schedule.id }) }); const data = await readApiResponse(response, "Schedule request failed"); await loadSchedule(data.schedule.id); } catch (requestError) { setError(requestError.message); } finally { setBusy(false); } }
+  async function deleteDraft() { if (!payload?.schedule || !window.confirm(isArabic ? "حذف الدرافت فقط؟ النسخة المنشورة لن تتأثر." : "Delete this draft only? The published revision will remain.")) return; setBusy(true); try { const response = await fetch("/api/operations/schedules", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ action: "deleteDraft", scheduleId: payload.schedule.id }) }); const data = await readApiResponse(response, "Schedule request failed"); setScheduleId(""); await loadSchedule(""); } catch (requestError) { setError(requestError.message); } finally { setBusy(false); } }
   async function cancelDraft() {
     const published = payload?.versions?.find((item) => item.status === "PUBLISHED");
     if (!published) return setError(isArabic ? "لا توجد نسخة منشورة للرجوع إليها." : "There is no published revision to return to.");
@@ -49,7 +50,7 @@ export default function ScheduleWorkspace() {
     const key = `${employee.id}:${workDate}`; const previous = payload;
     setCellStates((current) => ({ ...current, [key]: "saving" }));
     setPayload((current) => { const assignments = current.schedule.assignments; const index = assignments.findIndex((item) => item.employeeId === employee.id && item.workDate === workDate); const optimistic = { ...(index >= 0 ? assignments[index] : { employeeId: employee.id, workDate, employee }), importRawValue: value, code: value }; return { ...current, schedule: { ...current.schedule, assignments: index >= 0 ? assignments.map((item, itemIndex) => itemIndex === index ? optimistic : item) : [...assignments, optimistic] } }; });
-    try { const response = await fetch("/api/operations/schedules", { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ scheduleId: payload.schedule.id, employeeId: employee.id, workDate, value }) }); const data = await response.json(); if (!response.ok) throw new Error(data.error); setPayload((current) => ({ ...current, schedule: { ...current.schedule, assignments: current.schedule.assignments.map((item) => item.employeeId === employee.id && item.workDate === workDate ? { ...data.assignment, employee } : item) } })); setCellStates((current) => ({ ...current, [key]: "saved" })); window.setTimeout(() => setCellStates((current) => ({ ...current, [key]: "" })), 1200); }
+    try { const response = await fetch("/api/operations/schedules", { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ scheduleId: payload.schedule.id, employeeId: employee.id, workDate, value }) }); const data = await readApiResponse(response, "Schedule request failed"); setPayload((current) => ({ ...current, schedule: { ...current.schedule, assignments: current.schedule.assignments.map((item) => item.employeeId === employee.id && item.workDate === workDate ? { ...data.assignment, employee } : item) } })); setCellStates((current) => ({ ...current, [key]: "saved" })); window.setTimeout(() => setCellStates((current) => ({ ...current, [key]: "" })), 1200); }
     catch (requestError) { setPayload(previous); setCellStates((current) => ({ ...current, [key]: "error" })); setError(requestError.message); }
   }
   function exportRoster() { window.open(`/api/operations/schedules/export?year=${year}&month=${month}&scheduleId=${encodeURIComponent(payload?.schedule?.id || "")}`, "_blank", "noopener"); }
@@ -69,21 +70,19 @@ export default function ScheduleWorkspace() {
       let target = payload.schedule;
       if (!target) {
         const createResponse = await fetch("/api/operations/schedules", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ action: "createBlankDraft", year, month }) });
-        const created = await createResponse.json();
-        if (!createResponse.ok) throw new Error(created.error);
+        const created = await readApiResponse(createResponse, "Schedule draft could not be created");
         target = created.schedule;
         setScheduleId(target.id);
       }
       if (target.status !== "DRAFT") {
         const revisionResponse = await fetch("/api/operations/schedules", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ action: "createRevision", scheduleId: target.id }) });
-        const revision = await revisionResponse.json();
-        if (!revisionResponse.ok) throw new Error(revision.error);
+        const revision = await readApiResponse(revisionResponse, "Schedule revision could not be created");
         target = revision.schedule;
         setScheduleId(target.id);
       }
       const form = new FormData(); form.set("scheduleId", target.id); form.set("file", file);
       const response = await fetch("/api/operations/schedules", { method: "POST", body: form });
-      const data = await response.json(); if (!response.ok) throw new Error(data.error);
+      const data = await readApiResponse(response, "Schedule request failed");
       setImportReport({ ...data, createdDraft: !payload.schedule || payload.schedule.status !== "DRAFT" });
       await loadSchedule(target.id);
     } catch (requestError) { setError(requestError.message); } finally { setBusy(false); }

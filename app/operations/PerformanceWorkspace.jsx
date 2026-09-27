@@ -5,6 +5,7 @@ import { useSearchParams } from "next/navigation";
 import { useI18n } from "../i18n";
 import HallOfFame from "./HallOfFame";
 import { MonthlyWinnerArtwork } from "./RecognitionArtwork";
+import { readApiResponse } from "@/lib/client/read-api-response";
 
 export default function PerformanceWorkspace() {
   const { isArabic } = useI18n();
@@ -19,9 +20,9 @@ export default function PerformanceWorkspace() {
   const [section, setSection] = useState("workspace");
   const [artworkOpen, setArtworkOpen] = useState(false);
   const [variant, setVariant] = useState("T01");
-  async function load() { const response = await fetch(`/api/operations/performance?year=${year}&month=${month}`); const payload = await response.json(); if (!response.ok) setError(payload.error); else setData(payload); }
+  async function load() { try { const response = await fetch(`/api/operations/performance?year=${year}&month=${month}`); setData(await readApiResponse(response, "Performance data could not be loaded")); setError(""); } catch (requestError) { setError(requestError.message); } }
   useEffect(() => { load(); }, [year, month]);
-  async function action(body) { setError(""); const response = await fetch("/api/operations/performance", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) }); const payload = await response.json(); if (!response.ok) return setError(payload.error); await load(); }
+  async function action(body) { setError(""); try { const response = await fetch("/api/operations/performance", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) }); await readApiResponse(response, "Performance action could not be saved"); await load(); } catch (requestError) { setError(requestError.message); } }
   const competition = data?.competitions[0];
   const templateWinner = competition?.winner ? { ...competition, employee: competition.winner, branch: data?.branch?.branchCode || "MOT" } : null;
   const currentScores = data?.appraisals.filter((item) => item.status === "APPROVED").map((item) => item.totalScore) || [];

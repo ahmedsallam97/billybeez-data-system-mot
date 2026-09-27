@@ -3,7 +3,7 @@ import { prisma } from "@/lib/db";
 import { authorizeApi } from "@/lib/api-auth";
 import { writeAudit } from "@/lib/audit";
 import { getSetting } from "@/lib/settings";
-import { buildExpectedTeam, mergeExpectedActual, canAssign, overlaps, generateRotation, normalizeRotationRules, coverageFor, buildReadiness, needsAttention, closeDayValidation } from "@/lib/operations/live-daily";
+import { buildExpectedTeam, mergeExpectedActual, canAssign, overlaps, hasPositionConflict, generateRotation, normalizeRotationRules, coverageFor, buildReadiness, needsAttention, closeDayValidation } from "@/lib/operations/live-daily";
 import { colorNameFor, normalizeWeekdays, offerAppliesOnDate, selectBraceletStock, stockAvailable, stockCanDelete, stockIssueUpdate, stockKey } from "@/lib/operations/planning";
 import { applyCashierFallbacks } from "@/lib/operations/cashiers";
 
@@ -240,6 +240,7 @@ export async function POST(request) {
       if (body.startTime >= body.endTime) throw new Error("A valid assignment time range is required");
       if (data.breaks.some((item) => item.employeeId === member.employeeId && item.status !== "CANCELLED" && overlaps(item.startTime, item.endTime, body.startTime, body.endTime))) throw new Error("Assignment conflicts with an employee break");
       if (data.assignments.some((item) => item.employeeId === member.employeeId && overlaps(item.startTime, item.endTime, body.startTime, body.endTime))) throw new Error("Employee already has a rotation assignment in this time range");
+      if (hasPositionConflict(data.assignments, { operationalPositionId: position.id, startTime: body.startTime, endTime: body.endTime })) throw new Error("Operational position already has an employee in this time range");
       let plan = data.plan; if (!plan || !["ACTIVE", "DRAFT"].includes(plan.status)) plan = await prisma.opsRotationPlan.create({ data: { operationsDayId: data.day.id, branch, version: (data.day.rotationPlans?.[0]?.version || 0) + 1, status: "ACTIVE", generatedBy: user.id, generatedAt: new Date() } });
       const assignment = await prisma.opsRotationAssignment.create({ data: { rotationPlanId: plan.id, employeeId: member.employeeId, operationalPositionId: position.id, startTime: body.startTime, endTime: body.endTime, source: "MANUAL", manualLock: Boolean(body.manualLock || position.code === "CASHIER"), overrideReason: String(body.reason).trim(), createdBy: user.id, updatedBy: user.id } });
       await writeAudit({ action: "OPS_ROTATION_MANUAL_ASSIGNMENT", user, summary: `Manually assigned ${member.employee.name} to ${position.label}`, metadata: { dayId: data.day.id, planId: plan.id, assignmentId: assignment.id, employeeId: member.employeeId, positionId: position.id, branch, date }, reason: body.reason });

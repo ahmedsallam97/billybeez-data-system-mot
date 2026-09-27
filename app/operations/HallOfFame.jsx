@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useI18n } from "../i18n";
 import { HallOfFameArtwork, MonthlyWinnerArtwork } from "./RecognitionArtwork";
+import { readApiResponse } from "@/lib/client/read-api-response";
 
 const BREAKDOWN_LABELS = {
   discipline: ["الالتزام", "Discipline"], appearance: ["المظهر", "Appearance"],
@@ -26,7 +27,7 @@ export default function HallOfFame() {
   useEffect(() => {
     const suffix = year === "ALL" ? "" : `?year=${year}`;
     fetch(`/api/operations/recognition${suffix}`).then(async (response) => {
-      const payload = await response.json(); if (!response.ok) throw new Error(payload.error || "Request failed"); setData(payload);
+      setData(await readApiResponse(response, "Recognition data could not be loaded"));
     }).catch((requestError) => setError(requestError.message));
   }, [year]);
   const monthFormatter = useMemo(() => new Intl.DateTimeFormat(isArabic ? "ar-EG" : "en-US", { month: "long", timeZone: "UTC" }), [isArabic]);

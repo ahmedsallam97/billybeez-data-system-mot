@@ -1,0 +1,44 @@
+name: Billy Beez CI
+
+on:
+  push:
+    branches: [ops-migration-local]
+  pull_request:
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      DATABASE_URL: file:./ci.db
+      DATABASE_PROVIDER: sqlite
+      SESSION_SECRET: ci-only-session-secret-at-least-32-characters
+      AUTH_COOKIE_NAME: billybeez_session
+      COOKIE_SECURE: "false"
+      SEED_ADMIN_PASSWORD: CI-Admin-Password-2026
+      SEED_MANAGER_PASSWORD: CI-Manager-Password-2026
+      SEED_DATA_PASSWORD: CI-Data-Password-2026
+      SEED_CASHIER_PASSWORD: CI-Cashier-Password-2026
+      SEED_KITCHEN_PASSWORD: CI-Kitchen-Password-2026
+      SEED_EMPLOYEE_PASSWORD: CI-Employee-Password-2026
+      PLAYWRIGHT_CHANNEL: chromium
+      E2E_MUTATIONS: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Verify generated PostgreSQL schema
+        run: |
+          npm run db:pg:sync-schema
+          git diff --exit-code -- prisma/postgres/schema.prisma
+          npm run db:pg:validate
+      - run: npm run db:push
+      - run: npm run db:seed
+      - run: npm test
+      - run: npm run lint
+      - run: npm run build
+      - run: npx playwright install --with-deps chromium
+      - run: npm run test:e2e

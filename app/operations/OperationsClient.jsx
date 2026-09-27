@@ -9,6 +9,7 @@ import PerformanceWorkspace from "./PerformanceWorkspace";
 import Employee360View from "./Employee360View";
 import DailyApprovalPreview from "./daily-preview/DailyApprovalPreview";
 import DailySetupWorkspace from "./DailySetupWorkspace";
+import { readApiResponse } from "@/lib/client/read-api-response";
 
 function dateOnly(value) {
   return value ? String(value).slice(0, 10) : "—";
@@ -66,14 +67,13 @@ export default function OperationsClient() {
       if (query.trim()) params.set("q", query.trim());
       if (status !== "ALL") params.set("status", status);
       const response = await fetch(`/api/operations/employees?${params}`);
-      const payload = await response.json();
-      if (!response.ok) throw new Error(payload.error || "Request failed");
+      const payload = await readApiResponse(response, "Employee list could not be loaded");
       setEmployees(payload.employees);
       if (selected && !payload.employees.some((item) => item.id === selected.id)) setSelected(null);
       if (!selected && payload.employees[0]) {
         const detailResponse = await fetch(`/api/operations/employees/${payload.employees[0].id}/360`);
-        const detail = await detailResponse.json();
-        if (detailResponse.ok) setSelected(detail.employee);
+        const detail = await readApiResponse(detailResponse, "Employee profile could not be loaded");
+        setSelected(detail.employee);
       }
     } catch (requestError) {
       setError(requestError.message);
@@ -90,11 +90,14 @@ export default function OperationsClient() {
   async function openEmployee(id) {
     const requestNumber = ++employeeRequest.current;
     setError("");
-    const response = await fetch(`/api/operations/employees/${id}/360`);
-    const payload = await response.json();
-    if (requestNumber !== employeeRequest.current) return;
-    if (!response.ok) return setError(payload.error || "Request failed");
-    setSelected(payload.employee);
+    try {
+      const response = await fetch(`/api/operations/employees/${id}/360`);
+      const payload = await readApiResponse(response, "Employee profile could not be loaded");
+      if (requestNumber !== employeeRequest.current) return;
+      setSelected(payload.employee);
+    } catch (requestError) {
+      if (requestNumber === employeeRequest.current) setError(requestError.message);
+    }
   }
 
   const tabs = isArabic

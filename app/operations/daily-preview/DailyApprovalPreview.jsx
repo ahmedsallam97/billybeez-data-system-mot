@@ -12,6 +12,11 @@ import { previewCardLines } from "@/lib/operations/daily-preview";
 import { colorNameFor, stockAvailable } from "@/lib/operations/planning";
 import { useI18n } from "@/app/i18n";
 import { employeeGenderClass } from "@/app/employeeDisplay";
+import dailyTemplateConfig from "@/lib/operations/daily-template-config";
+import { toBlob as htmlNodeToBlob } from "html-to-image";
+import { readApiResponse } from "@/lib/client/read-api-response";
+
+const { DEFAULT_DAILY_OPERATIONS_TEMPLATE_CONFIG, normalizeDailyOperationsTemplateConfig } = dailyTemplateConfig;
 
 const cardLabels = {
   trips: "TODAY'S TRIP(S)",
@@ -41,69 +46,8 @@ function contrastColor(hex) {
   const [r, g, b] = [0, 2, 4].map((index) => parseInt(value.slice(index, index + 2), 16));
   return (r * 299 + g * 587 + b * 114) / 1000 < 145 ? "#ffffff" : "#20113d";
 }
-const fallback = {
-  logoUrl: "/bb-logo-fast.png",
-  branchName: "MOT Branch",
-  title: "DAILY OPERATIONS",
-  subtitle: "Great teams make great days.",
-  footerMotto: "Great teams make great days.",
-  primary: "#301848",
-  accent: "#f8c800",
-  text: "#20113d",
-  amColor: "#cfe8ff",
-  bwColor: "#fff2ac",
-  pmColor: "#eadcff",
-  cardOrder: ["trips", "birthdays", "offers", "bracelets"],
-  visibleCards: { trips: true, birthdays: true, offers: true, bracelets: true },
-  sectionOrder: ["roster", "leaves", "notes", "footer"],
-  visibleSections: {
-    roster: true,
-    leaves: true,
-    notes: true,
-    footer: true,
-    attendance: true,
-    breaks: true,
-    rotation: true,
-  },
-  cardContent: {
-    trips: "No trips added",
-    birthdays: "No birthdays added",
-    offers: "No offers added",
-    bracelets:
-      "Kids: Red\nToddlers: Light blue\nTrip: Green\nS.N: Purple\nVisitor: Brown",
-  },
-  operationalNotes:
-    "• Follow your assigned rotation.\n• Fill break times when leaving and returning.\n• Contact the shift leader for any changes.",
-  roleColors: { female: "#fff0a8", male: "#e7d6f6", cashier: "#b9e2c3", leader: "#c3e9f6", cashierLeader: "#d5b9ec" },
-  cardColors: { trips: "#3182bd", birthdays: "#4f8c5c", offers: "#d98a31", bracelets: "#2e7da5" },
-  labels: {
-    ...cardLabels, employee: "EMPLOYEE", attendance: "ATTENDANCE", break: "BREAK", rotation: "ROTATION (HOURLY)", rotationTime: "ROTATION TIME",
-    in: "IN", out: "OUT", from: "FROM", to: "TO", morningShift: "MORNING SHIFT (AM)", betweenShift: "BETWEEN SHIFT (BW)", nightShift: "NIGHT SHIFT (PM)",
-    frontCashier: "Front Cashier", cashier: "Cashier", teamLeader: "Team Leader", cashierLeader: "Front Cashier | Team Leader",
-    leaves: "TODAY'S LEAVES / OFF", notes: "OPERATIONAL NOTES", noLeaves: "No leave / off in the published schedule", noNotices: "No operational notices recorded", noOffers: "No active offers", noBracelets: "No wristband stock recorded",
-    offerAdmits: "Admits", childSingular: "child", childPlural: "children", remaining: "remaining", page: "Page",
-  },
-  currency: "EGP", weekdayLocale: "en-US",
-};
-function mergeConfig(value) {
-  const input = value && typeof value === "object" ? value : {};
-  return {
-    ...fallback,
-    ...input,
-    visibleCards: { ...fallback.visibleCards, ...input.visibleCards },
-    visibleSections: { ...fallback.visibleSections, ...input.visibleSections },
-    cardContent: { ...fallback.cardContent, ...input.cardContent },
-    roleColors: { ...fallback.roleColors, ...input.roleColors },
-    cardColors: { ...fallback.cardColors, ...input.cardColors },
-    labels: { ...fallback.labels, ...input.labels },
-    cardOrder: Array.isArray(input.cardOrder)
-      ? input.cardOrder
-      : fallback.cardOrder,
-    sectionOrder: Array.isArray(input.sectionOrder)
-      ? input.sectionOrder
-      : fallback.sectionOrder,
-  };
-}
+const fallback = DEFAULT_DAILY_OPERATIONS_TEMPLATE_CONFIG;
+function mergeConfig(value) { return normalizeDailyOperationsTemplateConfig(value); }
 function localIsoDate(date = new Date()) {
   const offset = date.getTimezoneOffset() * 60000;
   return new Date(date.getTime() - offset).toISOString().slice(0, 10);
@@ -170,13 +114,33 @@ function BraceletCardContent({ items = [], config }) {
     </p>
   ))}</div>;
 }
-async function readApiJson(response, fallbackMessage) {
-  const raw = await response.text();
-  let body;
-  try { body = raw ? JSON.parse(raw) : null; } catch { throw new Error(fallbackMessage); }
-  if (!body) throw new Error(fallbackMessage);
-  if (!response.ok) throw new Error(body.error || fallbackMessage);
-  return body;
+async function capturePosterPngBlob(node) {
+  if (!node) throw new Error("Roster preview is not ready");
+  if (document.fonts?.ready) await document.fonts.ready;
+  const width = Math.max(node.scrollWidth, node.offsetWidth);
+  const height = Math.max(node.scrollHeight, node.offsetHeight);
+  const blob = await htmlNodeToBlob(node, {
+    backgroundColor: "#ffffff",
+    cacheBust: true,
+    pixelRatio: 2,
+    width,
+    height,
+    style: { width: `${width}px`, maxWidth: "none", height: `${height}px`, overflow: "visible", boxShadow: "none" },
+  });
+  if (!blob) throw new Error("Roster image generation failed");
+  return blob;
+}
+async function dataUrlForImage(source) {
+  if (!source) return "";
+  const response = await fetch(source, { cache: "force-cache" });
+  if (!response.ok) throw new Error("Logo could not be loaded");
+  const blob = await response.blob();
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result || ""));
+    reader.onerror = () => reject(reader.error || new Error("Logo could not be embedded"));
+    reader.readAsDataURL(blob);
+  });
 }
 async function posterPngBlob({ data, config, weekday, grouped, scheduleColors }) {
   const slotCount = Math.max(1, Number(config.rotationSlotCount) || 8);
@@ -195,7 +159,10 @@ async function posterPngBlob({ data, config, weekday, grouped, scheduleColors })
   const rosterRows = WORKING_SHIFTS.reduce((total, shift) => total + (grouped[shift]?.length ? grouped[shift].length + 2 : 0), 0);
   const cardHeight = cardRows.length ? cardRowHeights.reduce((sum, value) => sum + value, 0) + (cardRows.length - 1) * 12 + 20 : 0;
   const leavesHeight = config.visibleSections.leaves ? 52 + Math.max(1, nonWorking.length) * 34 : 0;
-  const offersHeight = config.visibleCards.offers !== false && data.offers?.length ? 164 : 0;
+  const offerCount = config.visibleCards.offers !== false ? (data.offers?.length || 0) : 0;
+  const offerColumns = Math.min(3, Math.max(1, offerCount));
+  const offerRows = offerCount ? Math.ceil(offerCount / offerColumns) : 0;
+  const offersHeight = offerRows ? 46 + offerRows * 116 + Math.max(0, offerRows - 1) * 12 : 0;
   const notesHeight = config.visibleSections.notes ? 52 + Math.max(1, data.notices?.length || 0) * 52 : 0;
   const height = 150 + cardHeight + 76 + rosterRows * 42 + leavesHeight + offersHeight + notesHeight + 100;
   const xml = (value) => String(value ?? "").replace(/[&<>"']/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&apos;" })[char]);
@@ -204,8 +171,11 @@ async function posterPngBlob({ data, config, weekday, grouped, scheduleColors })
   const rect = (x, y, w, h, fill, stroke = "none", radius = 0) => nodes.push(`<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="${radius}" fill="${fill}" stroke="${stroke}"/>`);
   const text = (value, x, y, size = 20, weight = 700, fill = config.text, anchor = "start") => nodes.push(`<text x="${x}" y="${y}" font-family="Arial, sans-serif" font-size="${size}" font-weight="${weight}" fill="${fill}" text-anchor="${anchor}">${xml(value)}</text>`);
   let y = 0;
+  let embeddedLogo = "";
+  try { embeddedLogo = await dataUrlForImage(config.logoUrl); } catch { embeddedLogo = ""; }
   rect(0, 0, width, height, "#ffffff");
   rect(0, 0, width, 126, config.primary);
+  if (embeddedLogo) nodes.push(`<image href="${xml(embeddedLogo)}" x="${width - 230}" y="15" width="190" height="94" preserveAspectRatio="xMidYMid meet"/>`);
   text(config.title, width / 2, 53, 38, 900, "#ffffff", "middle");
   text(data.motivationalPhrase || config.subtitle, width / 2, 88, 17, 800, config.accent, "middle");
   text(config.branchName, margin, 48, 24, 900, "#ffffff");
@@ -286,18 +256,18 @@ async function posterPngBlob({ data, config, weekday, grouped, scheduleColors })
   }
   if (config.visibleCards.offers !== false && data.offers?.length) {
     y += 14; rect(margin, y, contentWidth, 38, config.cardColors?.offers || "#d98a31", "none", 8); text(config.labels.offers, margin + contentWidth - 14, y + 25, 16, 900, "#ffffff", "end"); y += 46;
-    const gap = 12; const offerWidth = (contentWidth - gap * (data.offers.length - 1)) / data.offers.length;
+    const gap = 12; const columns = Math.min(3, data.offers.length); const offerWidth = (contentWidth - gap * (columns - 1)) / columns;
     data.offers.forEach((offer, index) => {
-      const x = margin + index * (offerWidth + gap);
-      rect(x, y, offerWidth, 104, "#fffaf2", config.cardColors?.offers || "#d98a31", 10);
-      text(short(offer.title, 26), x + 12, y + 25, 15, 900);
-      if (offer.discountPercent != null) text(`-${offer.discountPercent}%`, x + offerWidth - 12, y + 25, 13, 900, "#c61f3c", "end");
+      const column = index % columns; const row = Math.floor(index / columns); const offerY = y + row * (116 + gap); const x = margin + column * (offerWidth + gap);
+      rect(x, offerY, offerWidth, 116, "#fffaf2", config.cardColors?.offers || "#d98a31", 10);
+      text(short(offer.title, 42), x + 12, offerY + 25, 15, 900);
+      if (offer.discountPercent != null) text(`-${offer.discountPercent}%`, x + offerWidth - 12, offerY + 25, 13, 900, "#c61f3c", "end");
       const prices = `${offer.priceBefore != null ? `Was ${offer.priceBefore}` : ""}${offer.priceAfter != null ? `  Now ${offer.priceAfter} ${config.currency}` : ""}`.trim();
-      if (prices) text(short(prices, 30), x + 12, y + 51, 13, 800);
-      text(`${config.labels.offerAdmits} ${offer.childrenCount || 1} ${(offer.childrenCount || 1) === 1 ? config.labels.childSingular : config.labels.childPlural}`, x + 12, y + 76, 13, 800, "#176837");
-      if (offer.details) text(short(offer.details, 34), x + 12, y + 96, 11, 600);
+      if (prices) text(short(prices, 48), x + 12, offerY + 51, 13, 800);
+      text(`${config.labels.offerAdmits} ${offer.childrenCount || 1} ${(offer.childrenCount || 1) === 1 ? config.labels.childSingular : config.labels.childPlural}`, x + 12, offerY + 76, 13, 800, "#176837");
+      if (offer.details) text(short(offer.details, 58), x + 12, offerY + 100, 11, 600);
     });
-    y += 104;
+    y += Math.ceil(data.offers.length / columns) * 116 + Math.max(0, Math.ceil(data.offers.length / columns) - 1) * gap;
   }
   if (config.visibleSections.notes) {
     y += 14; rect(margin, y, contentWidth, 38, config.primary, "none", 8); text(config.labels.notes, margin + contentWidth - 14, y + 25, 16, 900, "#ffffff", "end"); y += 38;
@@ -574,13 +544,13 @@ export default function DailyApprovalPreview() {
     setError("");
     Promise.all([
       fetch(`/api/operations/roster?date=${date}`).then(async (response) => {
-        let roster = await readApiJson(response, "Roster data could not be loaded. Refresh and try again.");
+        let roster = await readApiResponse(response, "Roster data could not be loaded. Refresh and try again.");
         if (roster.schedule && !roster.rotation) {
           try {
-            const post = (action) => fetch("/api/operations/daily", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ action, date }) }).then((result) => readApiJson(result, "Automatic rotation could not be prepared."));
+            const post = (action) => fetch("/api/operations/daily", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ action, date }) }).then((result) => readApiResponse(result, "Automatic rotation could not be prepared."));
             await post("open");
             await post("generateRotation");
-            roster = await fetch(`/api/operations/roster?date=${date}`).then((result) => readApiJson(result, "Roster data could not be reloaded."));
+            roster = await fetch(`/api/operations/roster?date=${date}`).then((result) => readApiResponse(result, "Roster data could not be reloaded."));
           } catch (automationError) {
             console.warn("Automatic daily rotation was not prepared", automationError);
           }
@@ -589,7 +559,7 @@ export default function DailyApprovalPreview() {
       }),
       fetch("/api/settings?keys=DAILY_OPERATIONS_TEMPLATE_CONFIG,OPS_MOTIVATION_PHRASES,OPS_SCHEDULE_CODE_CONFIG,OPS_ROTATION_RULES,OPS_BRANCH_CONFIG").then(
         async (response) => {
-          const body = await readApiJson(response, "Template settings could not be loaded. Refresh and try again.");
+          const body = await readApiResponse(response, "Template settings could not be loaded. Refresh and try again.");
           const row = body.settings?.find(
             (setting) => setting.key === "DAILY_OPERATIONS_TEMPLATE_CONFIG",
           );
@@ -646,10 +616,10 @@ export default function DailyApprovalPreview() {
   const generateRotationNow = async () => {
     setSaving(true); setError(""); setActionMessage("");
     try {
-      const post = (action) => fetch("/api/operations/daily", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ action, date }) }).then((response) => readApiJson(response, "Rotation generation failed"));
+      const post = (action) => fetch("/api/operations/daily", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ action, date }) }).then((response) => readApiResponse(response, "Rotation generation failed"));
       await post("open");
       await post("generateRotation");
-      const roster = await fetch(`/api/operations/roster?date=${date}`).then((response) => readApiJson(response, "Roster reload failed"));
+      const roster = await fetch(`/api/operations/roster?date=${date}`).then((response) => readApiResponse(response, "Roster reload failed"));
       setData(roster);
       setActionMessage(isArabic ? "تم توليد روتيشن جديد بالقواعد" : "A new rules-based rotation was generated");
     } catch (requestError) { setError(requestError.message); } finally { setSaving(false); }
@@ -659,7 +629,13 @@ export default function DailyApprovalPreview() {
     const popup = window.open("about:blank", "_blank");
     try {
       if (!data?.schedule) throw new Error("Roster preview is not ready");
-      const blob = await posterPngBlob({ data, config, weekday, grouped, scheduleColors });
+      let blob;
+      try {
+        blob = await capturePosterPngBlob(document.querySelector(".daily-operations-poster"));
+      } catch (captureError) {
+        console.warn("Exact roster capture failed; using the safe renderer", captureError);
+        blob = await posterPngBlob({ data, config, weekday, grouped, scheduleColors });
+      }
       const branchCode = config.branchCode || "MOT";
       const file = new File([blob], `BillyBeez-${branchCode}-roster-${date}.png`, { type: "image/png" });
       const message = isArabic ? `روستر Billy Beez ${branchCode} - ${date}` : `Billy Beez ${branchCode} roster - ${date}`;
@@ -675,13 +651,16 @@ export default function DailyApprovalPreview() {
           // asynchronous image generation. Continue to clipboard/download fallback.
         }
       }
-      if (!navigator.clipboard?.write || typeof ClipboardItem === "undefined") throw new Error("Image clipboard is not supported in this browser");
-      let copied = true;
-      try {
-        await navigator.clipboard.write([new ClipboardItem({ "image/png": blob })]);
-      } catch (clipboardError) {
-        if (!/permission|notallowed/i.test(`${clipboardError?.name || ""} ${clipboardError?.message || ""}`)) throw clipboardError;
-        copied = false;
+      let copied = false;
+      if (navigator.clipboard?.write && typeof ClipboardItem !== "undefined") {
+        try {
+          await navigator.clipboard.write([new ClipboardItem({ "image/png": blob })]);
+          copied = true;
+        } catch (clipboardError) {
+          console.warn("Clipboard image copy was unavailable; downloading instead", clipboardError);
+        }
+      }
+      if (!copied) {
         const downloadUrl = URL.createObjectURL(blob);
         const download = document.createElement("a");
         download.href = downloadUrl;

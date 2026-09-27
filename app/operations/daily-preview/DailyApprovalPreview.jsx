@@ -151,20 +151,23 @@ async function posterPngBlob({ data, config, weekday, grouped, scheduleColors })
   const nonWorking = Object.entries(grouped)
     .filter(([key]) => !WORKING_SHIFTS.includes(key))
     .flatMap(([group, people]) => people.map((person) => ({ ...person, group })));
-  const visibleCards = config.cardOrder.filter((card) => card !== "offers" && config.visibleCards[card] && (card !== "trips" || data.trips?.length) && (card !== "birthdays" || data.events?.length));
+  const visibleCards = config.cardOrder.filter((card) => !["offers", "bracelets"].includes(card) && config.visibleCards[card] && (card !== "trips" || data.trips?.length) && (card !== "birthdays" || data.events?.length));
   const cardLinesByCard = Object.fromEntries(visibleCards.map((card) => [card, previewCardLines(card, data)]));
   const compactCards = visibleCards.filter((card) => ["trips", "birthdays"].includes(card));
   const cardRows = [...(compactCards.length ? [compactCards] : []), ...visibleCards.filter((card) => !["trips", "birthdays"].includes(card)).map((card) => [card])];
   const cardRowHeights = cardRows.map((row) => Math.max(132, 58 + Math.max(1, ...row.map((card) => cardLinesByCard[card]?.length || 0)) * 21));
   const rosterRows = WORKING_SHIFTS.reduce((total, shift) => total + (grouped[shift]?.length ? grouped[shift].length + 2 : 0), 0);
   const cardHeight = cardRows.length ? cardRowHeights.reduce((sum, value) => sum + value, 0) + (cardRows.length - 1) * 12 + 20 : 0;
-  const leavesHeight = config.visibleSections.leaves ? 52 + Math.max(1, nonWorking.length) * 34 : 0;
+  const braceletStock = (data.wristbands || []).filter((item) => !item.stockCategory || item.stockCategory === "BRACELET");
+  const showBraceletSummary = config.cardOrder.includes("bracelets") && config.visibleCards.bracelets;
+  const dailySummaryRows = Math.max(config.visibleSections.leaves ? Math.max(1, nonWorking.length) : 0, showBraceletSummary ? Math.max(1, braceletStock.length) : 0);
+  const dailySummaryHeight = dailySummaryRows ? 52 + dailySummaryRows * 34 : 0;
   const offerCount = config.visibleCards.offers !== false ? (data.offers?.length || 0) : 0;
   const offerColumns = Math.min(3, Math.max(1, offerCount));
   const offerRows = offerCount ? Math.ceil(offerCount / offerColumns) : 0;
   const offersHeight = offerRows ? 46 + offerRows * 116 + Math.max(0, offerRows - 1) * 12 : 0;
   const notesHeight = config.visibleSections.notes ? 52 + Math.max(1, data.notices?.length || 0) * 52 : 0;
-  const height = 150 + cardHeight + 76 + rosterRows * 42 + leavesHeight + offersHeight + notesHeight + 100;
+  const height = 150 + cardHeight + 76 + rosterRows * 42 + dailySummaryHeight + offersHeight + notesHeight + 100;
   const xml = (value) => String(value ?? "").replace(/[&<>"']/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&apos;" })[char]);
   const short = (value, limit = 34) => { const text = String(value || ""); return text.length > limit ? `${text.slice(0, limit - 1)}…` : text; };
   const nodes = [];
@@ -250,9 +253,41 @@ async function posterPngBlob({ data, config, weekday, grouped, scheduleColors })
     });
   });
 
-  if (config.visibleSections.leaves) {
-    y += 14; rect(margin, y, contentWidth, 38, config.primary, "none", 8); text(config.labels.leaves, margin + contentWidth - 14, y + 25, 16, 900, "#ffffff", "end"); y += 38;
-    (nonWorking.length ? nonWorking : [{ group: "—", employee: { name: config.labels.noLeaves } }]).forEach((item) => { const badgeColor = scheduleColor(item.group, scheduleColors); rect(margin, y, contentWidth, 34, "#fff", "#d4ced8"); if (item.group !== "—") { rect(margin + 10, y + 5, 86, 24, badgeColor, "none", 5); text(item.group, margin + 53, y + 22, 12, 900, contrastColor(badgeColor), "middle"); } else text(item.group, margin + 14, y + 23, 13, 900); text(rosterName(item.employee), margin + 110, y + 23, 14, 700); y += 34; });
+  if (dailySummaryRows) {
+    y += 14;
+    const panels = [
+      ...(showBraceletSummary ? [{ type: "bracelets", title: config.labels.bracelets, tone: config.cardColors?.bracelets || "#2e7da5" }] : []),
+      ...(config.visibleSections.leaves ? [{ type: "leaves", title: config.labels.leaves, tone: config.primary }] : []),
+    ];
+    const gap = panels.length > 1 ? 12 : 0;
+    const panelWidth = (contentWidth - gap) / panels.length;
+    panels.forEach((panel, panelIndex) => {
+      const panelX = margin + panelIndex * (panelWidth + gap);
+      rect(panelX, y, panelWidth, 38 + dailySummaryRows * 34, "#ffffff", panel.tone, 8);
+      rect(panelX, y, panelWidth, 38, panel.tone, "none", 8);
+      text(panel.title, panelX + panelWidth - 14, y + 25, 16, 900, "#ffffff", "end");
+      if (panel.type === "bracelets") {
+        const rows = braceletStock.length ? braceletStock : [{ usageType: config.labels.noBracelets, material: "", colorName: "" }];
+        rows.forEach((item, index) => {
+          const rowY = y + 38 + index * 34;
+          if (index) nodes.push(`<line x1="${panelX}" y1="${rowY}" x2="${panelX + panelWidth}" y2="${rowY}" stroke="#d4ced8"/>`);
+          if (item.color) rect(panelX + 12, rowY + 9, 16, 16, item.color, "rgba(48,24,72,.2)", 8);
+          const braceletLabel = `${item.usageType || item.wristbandType || ""}${item.material ? ` ⇒ ${item.material}` : ""}${item.color ? ` ${item.colorName || colorNameFor(item.color)}` : ""}`;
+          text(short(braceletLabel, 48), panelX + (item.color ? 38 : 12), rowY + 22, 13, 800);
+          if (item.id || item.wristbandType) text(`${stockAvailable(item)} ${config.labels.remaining}`, panelX + panelWidth - 12, rowY + 22, 12, 800, config.text, "end");
+        });
+      } else {
+        const rows = nonWorking.length ? nonWorking : [{ group: "—", employee: { name: config.labels.noLeaves } }];
+        rows.forEach((item, index) => {
+          const rowY = y + 38 + index * 34;
+          if (index) nodes.push(`<line x1="${panelX}" y1="${rowY}" x2="${panelX + panelWidth}" y2="${rowY}" stroke="#d4ced8"/>`);
+          const badgeColor = scheduleColor(item.group, scheduleColors);
+          if (item.group !== "—") { rect(panelX + 10, rowY + 5, 86, 24, badgeColor, "none", 5); text(item.group, panelX + 53, rowY + 22, 12, 900, contrastColor(badgeColor), "middle"); }
+          text(rosterName(item.employee), panelX + (item.group !== "—" ? 110 : 12), rowY + 23, 14, 700);
+        });
+      }
+    });
+    y += 38 + dailySummaryRows * 34;
   }
   if (config.visibleCards.offers !== false && data.offers?.length) {
     y += 14; rect(margin, y, contentWidth, 38, config.cardColors?.offers || "#d98a31", "none", 8); text(config.labels.offers, margin + contentWidth - 14, y + 25, 16, 900, "#ffffff", "end"); y += 46;
@@ -324,7 +359,7 @@ function OperationsPoster({ config, weekday, data, grouped, scheduleColors }) {
     );
   const show = config.visibleSections;
   const assignments = data.rotation?.assignments || [];
-  const topCards = config.cardOrder.filter((card) => card !== "offers" && config.visibleCards[card] && (card !== "trips" || data.trips?.length) && (card !== "birthdays" || data.events?.length));
+  const topCards = config.cardOrder.filter((card) => !["offers", "bracelets"].includes(card) && config.visibleCards[card] && (card !== "trips" || data.trips?.length) && (card !== "birthdays" || data.events?.length));
   const shiftBlock = (shift) => {
     const people = grouped[shift] || [];
     if (!people.length) return null;
@@ -404,6 +439,7 @@ function OperationsPoster({ config, weekday, data, grouped, scheduleColors }) {
       </section>
     );
   };
+  const showBracelets = config.cardOrder.includes("bracelets") && config.visibleCards.bracelets;
   const sections = {
     roster: (
       <section className="ops-table" key="roster">
@@ -440,23 +476,33 @@ function OperationsPoster({ config, weekday, data, grouped, scheduleColors }) {
         {WORKING_SHIFTS.map(shiftBlock)}
       </section>
     ),
-    leaves: (
-      <section className="ops-bottom-card" key="leaves">
-        <h3>{config.labels.leaves}</h3>
-        {nonWorking.length ? (
-          nonWorking.map((item) => (
-            <p key={item.id}>
-              <b style={{ backgroundColor: scheduleColor(item.group, scheduleColors), color: contrastColor(scheduleColor(item.group, scheduleColors)) }}>{item.group}</b>
-              <span>{rosterName(item.employee)}</span>
-            </p>
-          ))
-        ) : (
-          <p>
-            <span>{config.labels.noLeaves}</span>
-          </p>
+    dailyStatus: (showBracelets || show.leaves) ? (
+      <section className={`ops-daily-summary ${showBracelets && show.leaves ? "ops-daily-summary-pair" : ""}`} key="dailyStatus">
+        {showBracelets && (
+          <article className="ops-bottom-card ops-bracelet-section" style={{ borderColor: config.cardColors?.bracelets }}>
+            <h3 style={{ background: config.cardColors?.bracelets }}>{config.labels.bracelets || cardLabels.bracelets}</h3>
+            <BraceletCardContent items={data.wristbands || []} config={config} />
+          </article>
+        )}
+        {show.leaves && (
+          <article className="ops-bottom-card ops-leaves-section">
+            <h3>{config.labels.leaves}</h3>
+            {nonWorking.length ? (
+              nonWorking.map((item) => (
+                <p key={item.id}>
+                  <b style={{ backgroundColor: scheduleColor(item.group, scheduleColors), color: contrastColor(scheduleColor(item.group, scheduleColors)) }}>{item.group}</b>
+                  <span>{rosterName(item.employee)}</span>
+                </p>
+              ))
+            ) : (
+              <p>
+                <span>{config.labels.noLeaves}</span>
+              </p>
+            )}
+          </article>
         )}
       </section>
-    ),
+    ) : null,
     offers: data.offers?.length ? (
       <section className="ops-bottom-card ops-offers-section" key="offers">
         <h3>{config.labels.offers}</h3>
@@ -482,10 +528,16 @@ function OperationsPoster({ config, weekday, data, grouped, scheduleColors }) {
       </footer>
     ),
   };
-  const posterSectionOrder = (config.sectionOrder || []).filter((part) => part !== "offers");
+  const posterSectionOrder = (config.sectionOrder || []).filter((part) => !["offers", "leaves"].includes(part));
   if (config.visibleCards.offers !== false && data.offers?.length) {
     const notesIndex = posterSectionOrder.indexOf("notes");
     posterSectionOrder.splice(notesIndex < 0 ? posterSectionOrder.length : notesIndex, 0, "offers");
+  }
+  if (showBracelets || show.leaves) {
+    const offersIndex = posterSectionOrder.indexOf("offers");
+    const notesIndex = posterSectionOrder.indexOf("notes");
+    const insertIndex = offersIndex >= 0 ? offersIndex : notesIndex >= 0 ? notesIndex : posterSectionOrder.length;
+    posterSectionOrder.splice(insertIndex, 0, "dailyStatus");
   }
   return (
     <article className="daily-operations-poster" style={style}>
@@ -516,7 +568,7 @@ function OperationsPoster({ config, weekday, data, grouped, scheduleColors }) {
           ))}
       </section>}
       {posterSectionOrder
-        .filter((part) => part === "offers" || show[part])
+        .filter((part) => ["offers", "dailyStatus"].includes(part) || show[part])
         .map((part) => sections[part])}
     </article>
   );
@@ -624,56 +676,45 @@ export default function DailyApprovalPreview() {
       setActionMessage(isArabic ? "تم توليد روتيشن جديد بالقواعد" : "A new rules-based rotation was generated");
     } catch (requestError) { setError(requestError.message); } finally { setSaving(false); }
   };
-  const copyToWhatsApp = async () => {
+  const createRosterImage = async () => {
+    try {
+      return await capturePosterPngBlob(document.querySelector(".daily-operations-poster"));
+    } catch (captureError) {
+      console.warn("Exact roster capture failed; using the safe renderer", captureError);
+      return posterPngBlob({ data, config, weekday, grouped, scheduleColors });
+    }
+  };
+  const downloadRosterImage = (blob, branchCode) => {
+    const downloadUrl = URL.createObjectURL(blob);
+    const download = document.createElement("a");
+    download.href = downloadUrl;
+    download.download = `BillyBeez-${branchCode}-roster-${date}.png`;
+    download.click();
+    window.setTimeout(() => URL.revokeObjectURL(downloadUrl), 1500);
+  };
+  const copyRosterImage = async () => {
     setError(""); setActionMessage("");
-    const popup = window.open("about:blank", "_blank");
     try {
       if (!data?.schedule) throw new Error("Roster preview is not ready");
-      let blob;
-      try {
-        blob = await capturePosterPngBlob(document.querySelector(".daily-operations-poster"));
-      } catch (captureError) {
-        console.warn("Exact roster capture failed; using the safe renderer", captureError);
-        blob = await posterPngBlob({ data, config, weekday, grouped, scheduleColors });
-      }
       const branchCode = config.branchCode || "MOT";
-      const file = new File([blob], `BillyBeez-${branchCode}-roster-${date}.png`, { type: "image/png" });
-      const message = isArabic ? `روستر Billy Beez ${branchCode} - ${date}` : `Billy Beez ${branchCode} roster - ${date}`;
-      if (navigator.share && navigator.canShare?.({ files: [file] })) {
-        try {
-          await navigator.share({ files: [file], title: message, text: message });
-          if (popup) popup.close();
-          setActionMessage(isArabic ? "تم فتح المشاركة بصورة الروستر؛ اختر واتساب" : "The roster image is ready to share; choose WhatsApp");
-          return;
-        } catch (nativeShareError) {
-          if (nativeShareError?.name === "AbortError") { if (popup) popup.close(); return; }
-          // Desktop browsers can expose navigator.share while rejecting it after
-          // asynchronous image generation. Continue to clipboard/download fallback.
-        }
-      }
-      let copied = false;
+      const blobPromise = createRosterImage();
       if (navigator.clipboard?.write && typeof ClipboardItem !== "undefined") {
         try {
-          await navigator.clipboard.write([new ClipboardItem({ "image/png": blob })]);
-          copied = true;
+          await navigator.clipboard.write([new ClipboardItem({ "image/png": blobPromise })]);
+          setActionMessage(isArabic ? "تم نسخ صورة الروستر؛ الصقها مباشرة في واتساب" : "Roster image copied; paste it directly into WhatsApp");
+          return;
         } catch (clipboardError) {
           console.warn("Clipboard image copy was unavailable; downloading instead", clipboardError);
         }
       }
-      if (!copied) {
-        const downloadUrl = URL.createObjectURL(blob);
-        const download = document.createElement("a");
-        download.href = downloadUrl;
-        download.download = `BillyBeez-${branchCode}-roster-${date}.png`;
-        download.click();
-        window.setTimeout(() => URL.revokeObjectURL(downloadUrl), 1500);
-      }
-      const fallbackMessage = isArabic ? `${message}\nصورة الروستر جاهزة؛ الصقها أو أرفق الملف المنزل.` : `${message}\nThe roster image is ready; paste it or attach the downloaded file.`;
-      if (popup) popup.location.href = `https://wa.me/?text=${encodeURIComponent(fallbackMessage)}`;
-      setActionMessage(copied
-        ? (isArabic ? "تم نسخ صورة الروستر وفتح واتساب" : "Roster image copied and WhatsApp opened")
-        : (isArabic ? "المتصفح منع النسخ التلقائي؛ تم تنزيل صورة الروستر وفتح واتساب" : "Clipboard access was blocked; the roster image was downloaded and WhatsApp opened"));
-    } catch (shareError) { if (popup) popup.close(); setError(shareError.message); }
+      downloadRosterImage(await blobPromise, branchCode);
+      setActionMessage(isArabic ? "المتصفح منع نسخ الصورة؛ تم تنزيلها بدلًا من فتح أي تاب" : "The browser blocked image copy, so the image was downloaded without opening another tab");
+    } catch (shareError) { setError(shareError.message); }
+  };
+  const openWhatsApp = () => {
+    const branchCode = config.branchCode || "MOT";
+    const message = isArabic ? `روستر Billy Beez ${branchCode} - ${date}` : `Billy Beez ${branchCode} roster - ${date}`;
+    window.location.assign(`https://wa.me/?text=${encodeURIComponent(message)}`);
   };
   return (
     <section className="daily-approval-preview">
@@ -707,15 +748,18 @@ export default function DailyApprovalPreview() {
           >
             {isArabic ? "غدًا" : "Tomorrow"}
           </button>
-          <Link className="button-link" href="/settings">{isArabic ? "إعدادات التيمبلت" : "Template settings"}</Link>
+          <Link className="button-link" href="/settings?tab=template">{isArabic ? "إعدادات التيمبلت" : "Template settings"}</Link>
           <button className="secondary" onClick={print}>
             {isArabic ? "طباعة / PDF" : "Print / PDF"}
           </button>
           <button onClick={generateRotationNow} disabled={saving}>
             {isArabic ? "توليد روتيشن عشوائي" : "Generate random rotation"}
           </button>
-          <button className="whatsapp-button" onClick={copyToWhatsApp}>
-            {isArabic ? "نسخ الصورة وفتح واتساب" : "Copy image & open WhatsApp"}
+          <button className="whatsapp-button" onClick={copyRosterImage}>
+            {isArabic ? "نسخ صورة الروستر" : "Copy roster image"}
+          </button>
+          <button className="secondary" onClick={openWhatsApp}>
+            {isArabic ? "فتح واتساب" : "Open WhatsApp"}
           </button>
           <Link className="button-link" href="/operations">
             {isArabic ? "رجوع" : "Back"}

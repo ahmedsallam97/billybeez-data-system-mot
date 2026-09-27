@@ -27,9 +27,12 @@ test.describe("isolated operations mutations", () => {
     expect(deleted.active).toBeFalsy();
   });
 
-  test("schedule publishing supports exact roster PNG download fallback, revision and deletion", async ({ request, page }) => {
+  test("schedule publishing supports exact roster image copy, PNG fallback, revision and deletion", async ({ request, page, context }) => {
     const year = 2099;
     const month = 11;
+    const layoutOfferResponse = await request.post("/api/operations/daily", { data: { action: "createOffer", date: "2099-11-01", branch: "MOT", title: "E2E poster layout", offerMode: "PERMANENT", priceBefore: 400, priceAfter: 300, discountPercent: 25, childrenCount: 2, weekdays: [] } });
+    expect(layoutOfferResponse.ok()).toBeTruthy();
+    const layoutOffer = (await layoutOfferResponse.json()).record;
     const draftResponse = await request.post("/api/operations/schedules", { data: { action: "createBlankDraft", year, month } });
     expect(draftResponse.ok()).toBeTruthy();
     const draft = (await draftResponse.json()).schedule;
@@ -54,11 +57,18 @@ test.describe("isolated operations mutations", () => {
     await page.goto("/operations/daily-preview", { waitUntil: "networkidle" });
     await page.locator('input[type="date"]').fill(rehearsalDate);
     await expect(page.locator(".daily-operations-poster")).toBeVisible();
+    const dailySummary = page.locator(".ops-daily-summary-pair");
+    await expect(dailySummary).toBeVisible();
+    await expect(dailySummary.locator(":scope > .ops-bottom-card")).toHaveCount(2);
+    const summaryBox = await dailySummary.boundingBox();
+    const offersBox = await page.locator(".ops-offers-section").boundingBox();
+    expect(summaryBox.y + summaryBox.height).toBeLessThanOrEqual(offersBox.y + 1);
     const logo = page.locator(".daily-operations-poster img").first();
     await expect(logo).toBeVisible();
     expect(await logo.evaluate((image) => image.complete && image.naturalWidth > 0)).toBeTruthy();
+    const openPagesBeforeFallback = context.pages().length;
     const downloadPromise = page.waitForEvent("download");
-    await page.getByRole("button", { name: /Copy image & open WhatsApp|نسخ الصورة وفتح واتساب/ }).click();
+    await page.getByRole("button", { name: /Copy roster image|نسخ صورة الروستر/ }).click();
     const download = await downloadPromise;
     const stream = await download.createReadStream();
     const chunks = [];
@@ -67,6 +77,24 @@ test.describe("isolated operations mutations", () => {
     expect(png.subarray(0, 8).toString("hex")).toBe("89504e470d0a1a0a");
     expect(png.readUInt32BE(16)).toBeGreaterThan(700);
     expect(png.readUInt32BE(20)).toBeGreaterThan(400);
+    expect(context.pages()).toHaveLength(openPagesBeforeFallback);
+
+    const copyPage = await context.newPage();
+    await copyPage.addInitScript(() => {
+      window.__clipboardWrites = 0;
+      class TestClipboardItem { constructor(items) { this.items = items; } }
+      Object.defineProperty(window, "ClipboardItem", { configurable: true, value: TestClipboardItem });
+      Object.defineProperty(navigator, "clipboard", { configurable: true, value: { write: async (items) => { await items[0].items["image/png"]; window.__clipboardWrites += 1; } } });
+    });
+    await copyPage.goto("/operations/daily-preview", { waitUntil: "networkidle" });
+    await copyPage.locator('input[type="date"]').fill(rehearsalDate);
+    await expect(copyPage.locator(".daily-operations-poster")).toBeVisible();
+    const openPagesBeforeCopy = context.pages().length;
+    await copyPage.getByRole("button", { name: /Copy roster image|نسخ صورة الروستر/ }).click();
+    await expect(copyPage.locator(".alert.success")).toContainText(/copied|تم نسخ/);
+    expect(await copyPage.evaluate(() => window.__clipboardWrites)).toBe(1);
+    expect(context.pages()).toHaveLength(openPagesBeforeCopy);
+    await copyPage.close();
 
     const revisionResponse = await request.post("/api/operations/schedules", { data: { action: "createRevision", scheduleId: draft.id } });
     expect(revisionResponse.ok()).toBeTruthy();
@@ -75,6 +103,8 @@ test.describe("isolated operations mutations", () => {
 
     const deletedResponse = await request.post("/api/operations/schedules", { data: { action: "deleteDraft", scheduleId: revision.id } });
     expect(deletedResponse.ok()).toBeTruthy();
+    const deletedOfferResponse = await request.patch("/api/operations/daily", { data: { action: "deleteOffer", branch: "MOT", offerId: layoutOffer.id } });
+    expect(deletedOfferResponse.ok()).toBeTruthy();
   });
 
   test("attendance can be opened, completed, finalized and corrected", async ({ request }) => {

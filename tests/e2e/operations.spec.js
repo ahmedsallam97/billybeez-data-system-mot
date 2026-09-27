@@ -37,6 +37,9 @@ test("core operations tabs and settings render without JSON/session errors", asy
   await expect(page.locator(".performance-summary-card.top")).toBeVisible();
   await expect(page.locator(".performance-summary-card.support")).toBeVisible();
   await expect(page.locator("body")).not.toContainText("Business-day sales");
+
+  await page.goto("/settings?tab=template", { waitUntil: "networkidle" });
+  await expect(page.getByRole("heading", { name: /Daily operations template|تيمبلت العمليات/ })).toBeVisible();
 });
 
 test("mobile workspaces stay inside the viewport and collapse navigation after selection", async ({ page }) => {

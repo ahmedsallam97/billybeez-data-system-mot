@@ -1,7 +1,7 @@
 {
   "scripts": {
     "dev": "next dev --webpack -H 127.0.0.1 -p 3008",
-    "build": "npm run db:clients && next build",
+    "build": "node scripts/ensure-prisma-clients.js && next build",
     "start": "next start -H 0.0.0.0 -p 3000",
     "test": "node --test",
     "lint": "node scripts/ui-audit.js",

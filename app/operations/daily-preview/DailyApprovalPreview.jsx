@@ -13,10 +13,12 @@ import { colorNameFor, stockAvailable } from "@/lib/operations/planning";
 import { useI18n } from "@/app/i18n";
 import { employeeGenderClass } from "@/app/employeeDisplay";
 import dailyTemplateConfig from "@/lib/operations/daily-template-config";
+import stockCatalogConfig from "@/lib/operations/stock-catalog";
 import { toBlob as htmlNodeToBlob } from "html-to-image";
 import { readApiResponse } from "@/lib/client/read-api-response";
 
 const { DEFAULT_DAILY_OPERATIONS_TEMPLATE_CONFIG, normalizeDailyOperationsTemplateConfig } = dailyTemplateConfig;
+const { normalizeBraceletTypes } = stockCatalogConfig;
 
 const cardLabels = {
   trips: "TODAY'S TRIP(S)",
@@ -45,6 +47,24 @@ function contrastColor(hex) {
   if (!/^[0-9a-f]{6}$/i.test(value)) return "#20113d";
   const [r, g, b] = [0, 2, 4].map((index) => parseInt(value.slice(index, index + 2), 16));
   return (r * 299 + g * 587 + b * 114) / 1000 < 145 ? "#ffffff" : "#20113d";
+}
+function rosterBracelets(items = [], config = {}) {
+  const bracelets = items.filter((item) => !item.stockCategory || item.stockCategory === "BRACELET");
+  return normalizeBraceletTypes(config.braceletTypes).filter((type) => type.showInRoster).map((type) => {
+    const matches = bracelets.filter((item) => (item.usageType || item.wristbandType) === type.code);
+    const remaining = matches.reduce((total, item) => total + stockAvailable(item), 0);
+    return {
+      ...type,
+      wristbandType: type.code,
+      usageType: type.code,
+      availableStock: remaining,
+      cashierQuantity: 0,
+      warehouseQuantity: remaining,
+      allocated: 0,
+      issued: 0,
+      missingRequired: type.required && remaining <= 0,
+    };
+  });
 }
 const fallback = DEFAULT_DAILY_OPERATIONS_TEMPLATE_CONFIG;
 function mergeConfig(value) { return normalizeDailyOperationsTemplateConfig(value); }
@@ -104,15 +124,17 @@ function OfferCardContent({ offers = [], config }) {
 }
 
 function BraceletCardContent({ items = [], config }) {
-  const bracelets = items.filter((item) => !item.stockCategory || item.stockCategory === "BRACELET");
-  if (!bracelets.length) return <p>{config.labels.noBracelets}</p>;
-  return <div className="ops-bracelet-list">{bracelets.map((item) => (
-    <p key={item.id || item.wristbandType}>
-      <i className="ops-bracelet-swatch" style={{ backgroundColor: item.color || "#cccccc" }} aria-hidden="true" />
-      <b style={{ backgroundColor: item.color || "#e8e0ed", color: contrastColor(item.color || "#e8e0ed") }}>{item.usageType || item.wristbandType} ⇒ {item.material || "Bracelet"} {item.colorName || colorNameFor(item.color)}</b>
+  const rows = rosterBracelets(items, config);
+  if (!rows.length) return <p>{config.labels.noBracelets}</p>;
+  return <div className="ops-bracelet-list">{rows.map((item) => {
+    const braceletTone = item.color || "#e8e0ed";
+    return <p className={item.missingRequired ? "required-missing" : ""} key={item.code}>
+      <strong>{item.label}</strong>
+      <i className="ops-bracelet-swatch" style={{ backgroundColor: braceletTone }} aria-hidden="true" />
+      <b style={{ backgroundColor: braceletTone, color: contrastColor(braceletTone) }}>{[item.material, item.colorName || colorNameFor(item.color)].filter(Boolean).join(" ")}</b>
       <span>{stockAvailable(item)} {config.labels.remaining}</span>
-    </p>
-  ))}</div>;
+    </p>;
+  })}</div>;
 }
 async function capturePosterPngBlob(node) {
   if (!node) throw new Error("Roster preview is not ready");
@@ -158,9 +180,9 @@ async function posterPngBlob({ data, config, weekday, grouped, scheduleColors })
   const cardRowHeights = cardRows.map((row) => Math.max(132, 58 + Math.max(1, ...row.map((card) => cardLinesByCard[card]?.length || 0)) * 21));
   const rosterRows = WORKING_SHIFTS.reduce((total, shift) => total + (grouped[shift]?.length ? grouped[shift].length + 2 : 0), 0);
   const cardHeight = cardRows.length ? cardRowHeights.reduce((sum, value) => sum + value, 0) + (cardRows.length - 1) * 12 + 20 : 0;
-  const braceletStock = (data.wristbands || []).filter((item) => !item.stockCategory || item.stockCategory === "BRACELET");
+  const braceletRows = rosterBracelets(data.wristbands || [], config);
   const showBraceletSummary = config.cardOrder.includes("bracelets") && config.visibleCards.bracelets;
-  const dailySummaryRows = Math.max(config.visibleSections.leaves ? Math.max(1, nonWorking.length) : 0, showBraceletSummary ? Math.max(1, braceletStock.length) : 0);
+  const dailySummaryRows = Math.max(config.visibleSections.leaves ? Math.max(1, nonWorking.length) : 0, showBraceletSummary ? Math.max(1, braceletRows.length) : 0);
   const dailySummaryHeight = dailySummaryRows ? 52 + dailySummaryRows * 34 : 0;
   const offerCount = config.visibleCards.offers !== false ? (data.offers?.length || 0) : 0;
   const offerColumns = Math.min(3, Math.max(1, offerCount));
@@ -267,18 +289,21 @@ async function posterPngBlob({ data, config, weekday, grouped, scheduleColors })
       rect(panelX, y, panelWidth, 38, panel.tone, "none", 8);
       text(panel.title, panelX + panelWidth - 14, y + 25, 16, 900, "#ffffff", "end");
       if (panel.type === "bracelets") {
-        const rows = braceletStock.length ? braceletStock : [{ usageType: config.labels.noBracelets, material: "", colorName: "" }];
+        const rows = braceletRows.length ? braceletRows : [{ material: config.labels.noBracelets, label: "", color: "#f2edf5" }];
         rows.forEach((item, index) => {
           const rowY = y + 38 + index * 34;
           if (index) nodes.push(`<line x1="${panelX}" y1="${rowY}" x2="${panelX + panelWidth}" y2="${rowY}" stroke="#d4ced8"/>`);
-          if (item.color) rect(panelX + 12, rowY + 9, 16, 16, item.color, "rgba(48,24,72,.2)", 8);
-          const braceletLabel = `${item.usageType || item.wristbandType || ""}${item.material ? ` ⇒ ${item.material}` : ""}${item.color ? ` ${item.colorName || colorNameFor(item.color)}` : ""}`;
-          const braceletTone = item.color || "#e8e0ed";
-          const labelX = panelX + (item.color ? 38 : 12);
-          const labelWidth = Math.max(110, panelWidth - (item.color ? 220 : 194));
+          const typeWidth = 88;
+          text(short(item.label, 12), panelX + 12, rowY + 22, 13, 900);
+          rect(panelX + 12 + typeWidth, rowY + 9, 16, 16, item.color || "#cccccc", "rgba(48,24,72,.2)", 8);
+          const braceletLabel = [item.material, item.colorName || colorNameFor(item.color)].filter(Boolean).join(" ") || "Bracelet";
+          const braceletTone = item.color || "#f2edf5";
+          const labelX = panelX + 12 + typeWidth + 26;
+          const remainingWidth = 160;
+          const labelWidth = Math.max(110, panelWidth - (labelX - panelX) - remainingWidth);
           rect(labelX, rowY + 5, labelWidth, 24, braceletTone, "none", 4);
           text(short(braceletLabel, 48), labelX + labelWidth / 2, rowY + 22, 13, 800, contrastColor(braceletTone), "middle");
-          if (item.id || item.wristbandType) text(`${stockAvailable(item)} ${config.labels.remaining}`, panelX + panelWidth - 12, rowY + 22, 12, 800, config.text, "end");
+          if (item.wristbandType) text(`${stockAvailable(item)} ${config.labels.remaining}`, panelX + panelWidth - 12, rowY + 22, 12, 800, item.missingRequired ? "#c21d3a" : config.text, "end");
         });
       } else {
         const rows = nonWorking.length ? nonWorking : [{ group: "—", employee: { name: config.labels.noLeaves } }];
@@ -615,7 +640,7 @@ export default function DailyApprovalPreview() {
         }
         return roster;
       }),
-      fetch("/api/settings?keys=DAILY_OPERATIONS_TEMPLATE_CONFIG,OPS_MOTIVATION_PHRASES,OPS_SCHEDULE_CODE_CONFIG,OPS_ROTATION_RULES,OPS_BRANCH_CONFIG").then(
+      fetch("/api/settings?keys=DAILY_OPERATIONS_TEMPLATE_CONFIG,OPS_MOTIVATION_PHRASES,OPS_SCHEDULE_CODE_CONFIG,OPS_ROTATION_RULES,OPS_BRANCH_CONFIG,OPS_PLANNING_CATALOGS").then(
         async (response) => {
           const body = await readApiResponse(response, "Template settings could not be loaded. Refresh and try again.");
           const row = body.settings?.find(
@@ -627,6 +652,7 @@ export default function DailyApprovalPreview() {
             scheduleColors: JSON.parse(body.settings?.find((setting) => setting.key === "OPS_SCHEDULE_CODE_CONFIG")?.value || "{}"),
             rotationRules: JSON.parse(body.settings?.find((setting) => setting.key === "OPS_ROTATION_RULES")?.value || "{}"),
             branch: JSON.parse(body.settings?.find((setting) => setting.key === "OPS_BRANCH_CONFIG")?.value || "{}"),
+            stockCatalog: JSON.parse(body.settings?.find((setting) => setting.key === "OPS_PLANNING_CATALOGS")?.value || "{}").stockCatalog || {},
           };
         },
       ),
@@ -634,7 +660,7 @@ export default function DailyApprovalPreview() {
       .then(([roster, template]) => {
         if (active) {
           setData(roster);
-          setConfig({ ...template.config, rotationSlotCount: template.rotationRules?.slotsPerShift || 8, rotationHighlightedCodes: template.rotationRules?.highlightedPositionCodes || ["DROP", "TOWER", "DATA"], branchCode: template.branch?.branchCode || "MOT", branchName: template.branch?.branchName || "MOT Branch" });
+          setConfig({ ...template.config, rotationSlotCount: template.rotationRules?.slotsPerShift || 8, rotationHighlightedCodes: template.rotationRules?.highlightedPositionCodes || ["DROP", "TOWER", "DATA"], branchCode: template.branch?.branchCode || "MOT", branchName: template.branch?.branchName || "MOT Branch", braceletTypes: normalizeBraceletTypes(template.stockCatalog?.braceletUsages) });
           setPhrases(Array.isArray(template.phrases) ? template.phrases : []);
           setScheduleColors(template.scheduleColors || {});
         }

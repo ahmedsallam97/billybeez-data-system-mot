@@ -6,6 +6,9 @@ import { getSetting } from "@/lib/settings";
 import { buildExpectedTeam, mergeExpectedActual, canAssign, overlaps, hasPositionConflict, generateRotation, normalizeRotationRules, coverageFor, buildReadiness, needsAttention, closeDayValidation } from "@/lib/operations/live-daily";
 import { colorNameFor, normalizeWeekdays, offerAppliesOnDate, selectBraceletStock, stockAvailable, stockCanDelete, stockIssueUpdate, stockKey } from "@/lib/operations/planning";
 import { applyCashierFallbacks } from "@/lib/operations/cashiers";
+import stockCatalogConfig from "@/lib/operations/stock-catalog";
+
+const { normalizeBraceletTypes } = stockCatalogConfig;
 
 const validDate = (value) => /^\d{4}-\d{2}-\d{2}$/.test(String(value || ""));
 const parseJson = (value) => { try { return JSON.parse(value || "{}"); } catch { return {}; } };
@@ -63,16 +66,23 @@ function mealCounts(body) {
   }
   return counts;
 }
-function stockValues(body) {
+async function stockValues(body) {
   const number = (key) => Math.max(0, Number(body[key] || 0));
   const stockCategory = String(body.stockCategory || "BRACELET").trim().toUpperCase();
   const usageType = String(body.usageType || body.wristbandType || "").trim().toUpperCase() || null;
   const size = String(body.size || "").trim().toUpperCase() || null;
   const rollStyle = String(body.rollStyle || "").trim().toUpperCase() || null;
-  const material = String(body.material || "").trim().toUpperCase() || null;
-  const color = String(body.color || "").trim() || null;
-  const colorName = String(body.colorName || "").trim() || (color ? colorNameFor(color) : null);
-  if (stockCategory === "BRACELET" && !usageType) throw new Error("Bracelet usage is required");
+  let material = String(body.material || "").trim().toUpperCase() || null;
+  let color = String(body.color || "").trim() || null;
+  let colorName = String(body.colorName || "").trim() || (color ? colorNameFor(color) : null);
+  if (stockCategory === "BRACELET") {
+    const catalogues = parseJson(await getSetting("OPS_PLANNING_CATALOGS", "{}"));
+    const type = normalizeBraceletTypes(catalogues.stockCatalog?.braceletUsages).find((item) => item.code === usageType);
+    if (!type) throw new Error("A configured bracelet type is required");
+    material = type.material;
+    color = type.color;
+    colorName = type.colorName || colorNameFor(type.color);
+  }
   if (stockCategory === "SOCKS" && !size) throw new Error("Sock size is required");
   if (["CASH_ROLL", "VISA_ROLL"].includes(stockCategory) && !rollStyle) throw new Error("Roll style is required");
   const cashierQuantity = number("cashierQuantity");
@@ -295,7 +305,7 @@ export async function POST(request) {
       return NextResponse.json({ success: true, record });
     }
     if (body.action === "setWristband" || body.action === "setStock") {
-      const { wristbandType, values } = stockValues(body);
+      const { wristbandType, values } = await stockValues(body);
       const { stockCategory, usageType } = values;
       const record = await prisma.$transaction(async (tx) => {
         const saved = await tx.opsWristbandStock.upsert({ where: { branch_workDate_wristbandType: { branch, workDate: "ALL", wristbandType } }, update: { ...values, updatedBy: user.id }, create: { branch, workDate: "ALL", wristbandType, ...values, allocated: 0, issued: 0, createdBy: user.id, updatedBy: user.id } });
@@ -323,7 +333,7 @@ export async function PATCH(request) {
       const branch = String(body.branch || defaultBranch);
       const current = await prisma.opsWristbandStock.findFirst({ where: { id: String(body.stockId || ""), branch, workDate: "ALL" } });
       if (!current) throw new Error("Stock row not found");
-      const { wristbandType, values } = stockValues(body);
+      const { wristbandType, values } = await stockValues(body);
       const committed = Number(current.allocated || 0) + Number(current.issued || 0);
       if (current.wristbandType !== wristbandType && committed > 0) throw new Error("Stock with reservation or issue history cannot change category, type or color");
       if (values.availableStock < committed) throw new Error("Cashier and warehouse stock cannot be lower than reserved and issued quantities");

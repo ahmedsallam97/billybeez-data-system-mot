@@ -112,8 +112,12 @@ test.describe("isolated operations mutations", () => {
     await page.addInitScript(() => {
       try { Object.defineProperty(navigator, "share", { configurable: true, value: undefined }); } catch {}
       try { Object.defineProperty(navigator, "clipboard", { configurable: true, value: undefined }); } catch {}
+      window.__whatsappOpenCalls = [];
+      window.open = (url, target) => { window.__whatsappOpenCalls.push({ url, target }); return { closed: false, location: { href: url }, focus() {} }; };
     });
     await page.goto("/operations/daily-preview", { waitUntil: "networkidle" });
+    const expectedTomorrow = await page.evaluate(() => { const date = new Date(); date.setDate(date.getDate() + 1); return new Date(date.getTime() - date.getTimezoneOffset() * 60000).toISOString().slice(0, 10); });
+    await expect(page.locator('input[type="date"]')).toHaveValue(expectedTomorrow);
     await page.locator('input[type="date"]').fill(rehearsalDate);
     await expect(page.locator(".daily-operations-poster")).toBeVisible();
     const dailySummary = page.locator(".ops-daily-summary-pair");
@@ -125,9 +129,12 @@ test.describe("isolated operations mutations", () => {
     const logo = page.locator(".daily-operations-poster img").first();
     await expect(logo).toBeVisible();
     expect(await logo.evaluate((image) => image.complete && image.naturalWidth > 0)).toBeTruthy();
+    const firstBraceletRow = page.locator(".ops-bracelet-list p").first();
+    await expect(firstBraceletRow).toBeVisible();
+    expect(await firstBraceletRow.evaluate((row) => getComputedStyle(row.querySelector("b")).backgroundColor === getComputedStyle(row.querySelector("i")).backgroundColor)).toBeTruthy();
     const openPagesBeforeFallback = context.pages().length;
     const downloadPromise = page.waitForEvent("download");
-    await page.getByRole("button", { name: /Copy roster image|نسخ صورة الروستر/ }).click();
+    await page.getByRole("button", { name: /Copy & open WhatsApp|نسخ وفتح واتساب/ }).click();
     const download = await downloadPromise;
     const stream = await download.createReadStream();
     const chunks = [];
@@ -137,22 +144,29 @@ test.describe("isolated operations mutations", () => {
     expect(png.readUInt32BE(16)).toBeGreaterThan(700);
     expect(png.readUInt32BE(20)).toBeGreaterThan(400);
     expect(context.pages()).toHaveLength(openPagesBeforeFallback);
+    expect(await page.evaluate(() => window.__whatsappOpenCalls)).toEqual([{ url: expect.stringContaining("https://web.whatsapp.com/send?text="), target: "billybeez-whatsapp" }]);
 
     const copyPage = await context.newPage();
     await copyPage.addInitScript(() => {
       window.__clipboardWrites = 0;
+      window.__whatsappOpenCalls = [];
       class TestClipboardItem { constructor(items) { this.items = items; } }
       Object.defineProperty(window, "ClipboardItem", { configurable: true, value: TestClipboardItem });
       Object.defineProperty(navigator, "clipboard", { configurable: true, value: { write: async (items) => { await items[0].items["image/png"]; window.__clipboardWrites += 1; } } });
+      window.open = (url, target) => { window.__whatsappOpenCalls.push({ url, target }); return { closed: false, location: { href: url }, focus() {} }; };
     });
     await copyPage.goto("/operations/daily-preview", { waitUntil: "networkidle" });
     await copyPage.locator('input[type="date"]').fill(rehearsalDate);
     await expect(copyPage.locator(".daily-operations-poster")).toBeVisible();
     const openPagesBeforeCopy = context.pages().length;
-    await copyPage.getByRole("button", { name: /Copy roster image|نسخ صورة الروستر/ }).click();
+    await copyPage.getByRole("button", { name: /Copy & open WhatsApp|نسخ وفتح واتساب/ }).click();
     await expect(copyPage.locator(".alert.success")).toContainText(/copied|تم نسخ/);
     expect(await copyPage.evaluate(() => window.__clipboardWrites)).toBe(1);
+    expect(await copyPage.evaluate(() => window.__whatsappOpenCalls[0]?.target)).toBe("billybeez-whatsapp");
     expect(context.pages()).toHaveLength(openPagesBeforeCopy);
+    await copyPage.getByRole("button", { name: /Copy & open WhatsApp|نسخ وفتح واتساب/ }).click();
+    await expect.poll(() => copyPage.evaluate(() => window.__clipboardWrites)).toBe(2);
+    expect(await copyPage.evaluate(() => window.__whatsappOpenCalls)).toHaveLength(1);
     await copyPage.close();
 
     const revisionResponse = await request.post("/api/operations/schedules", { data: { action: "createRevision", scheduleId: draft.id } });

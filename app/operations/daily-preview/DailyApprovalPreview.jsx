@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import {
   formatTime12,
@@ -109,7 +109,7 @@ function BraceletCardContent({ items = [], config }) {
   return <div className="ops-bracelet-list">{bracelets.map((item) => (
     <p key={item.id || item.wristbandType}>
       <i className="ops-bracelet-swatch" style={{ backgroundColor: item.color || "#cccccc" }} aria-hidden="true" />
-      <b>{item.usageType || item.wristbandType} ⇒ {item.material || "Bracelet"} {item.colorName || colorNameFor(item.color)}</b>
+      <b style={{ backgroundColor: item.color || "#e8e0ed", color: contrastColor(item.color || "#e8e0ed") }}>{item.usageType || item.wristbandType} ⇒ {item.material || "Bracelet"} {item.colorName || colorNameFor(item.color)}</b>
       <span>{stockAvailable(item)} {config.labels.remaining}</span>
     </p>
   ))}</div>;
@@ -273,7 +273,11 @@ async function posterPngBlob({ data, config, weekday, grouped, scheduleColors })
           if (index) nodes.push(`<line x1="${panelX}" y1="${rowY}" x2="${panelX + panelWidth}" y2="${rowY}" stroke="#d4ced8"/>`);
           if (item.color) rect(panelX + 12, rowY + 9, 16, 16, item.color, "rgba(48,24,72,.2)", 8);
           const braceletLabel = `${item.usageType || item.wristbandType || ""}${item.material ? ` ⇒ ${item.material}` : ""}${item.color ? ` ${item.colorName || colorNameFor(item.color)}` : ""}`;
-          text(short(braceletLabel, 48), panelX + (item.color ? 38 : 12), rowY + 22, 13, 800);
+          const braceletTone = item.color || "#e8e0ed";
+          const labelX = panelX + (item.color ? 38 : 12);
+          const labelWidth = Math.max(110, panelWidth - (item.color ? 220 : 194));
+          rect(labelX, rowY + 5, labelWidth, 24, braceletTone, "none", 4);
+          text(short(braceletLabel, 48), labelX + labelWidth / 2, rowY + 22, 13, 800, contrastColor(braceletTone), "middle");
           if (item.id || item.wristbandType) text(`${stockAvailable(item)} ${config.labels.remaining}`, panelX + panelWidth - 12, rowY + 22, 12, 800, config.text, "end");
         });
       } else {
@@ -577,10 +581,11 @@ function OperationsPoster({ config, weekday, data, grouped, scheduleColors }) {
 export default function DailyApprovalPreview() {
   const { isArabic } = useI18n();
   const today = localIsoDate();
+  const tomorrow = addDays(today, 1);
   const [date, setDate] = useState(() =>
     typeof window === "undefined"
-      ? today
-      : new URLSearchParams(window.location.search).get("date") || today,
+      ? tomorrow
+      : new URLSearchParams(window.location.search).get("date") || tomorrow,
   );
   const [data, setData] = useState(null);
   const [config, setConfig] = useState(fallback);
@@ -590,6 +595,7 @@ export default function DailyApprovalPreview() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [actionMessage, setActionMessage] = useState("");
+  const whatsappWindowRef = useRef(null);
   useEffect(() => {
     let active = true;
     setLoading(true);
@@ -692,29 +698,43 @@ export default function DailyApprovalPreview() {
     download.click();
     window.setTimeout(() => URL.revokeObjectURL(downloadUrl), 1500);
   };
-  const copyRosterImage = async () => {
+  const copyRosterAndOpenWhatsApp = async () => {
     setError(""); setActionMessage("");
     try {
       if (!data?.schedule) throw new Error("Roster preview is not ready");
       const branchCode = config.branchCode || "MOT";
       const blobPromise = createRosterImage();
+      let clipboardPromise = null;
       if (navigator.clipboard?.write && typeof ClipboardItem !== "undefined") {
         try {
-          await navigator.clipboard.write([new ClipboardItem({ "image/png": blobPromise })]);
-          setActionMessage(isArabic ? "تم نسخ صورة الروستر؛ الصقها مباشرة في واتساب" : "Roster image copied; paste it directly into WhatsApp");
+          clipboardPromise = navigator.clipboard.write([new ClipboardItem({ "image/png": blobPromise })]);
+        } catch (clipboardError) {
+          console.warn("Clipboard image copy could not be started; downloading instead", clipboardError);
+        }
+      }
+      const message = isArabic ? `روستر Billy Beez ${branchCode} - ${date}` : `Billy Beez ${branchCode} roster - ${date}`;
+      const whatsappUrl = `https://web.whatsapp.com/send?text=${encodeURIComponent(message)}`;
+      let whatsappWindow = whatsappWindowRef.current;
+      if (!whatsappWindow || whatsappWindow.closed) {
+        whatsappWindow = window.open(whatsappUrl, "billybeez-whatsapp");
+        whatsappWindowRef.current = whatsappWindow;
+      } else {
+        try { whatsappWindow.location.href = whatsappUrl; } catch { whatsappWindow = window.open(whatsappUrl, "billybeez-whatsapp"); whatsappWindowRef.current = whatsappWindow; }
+      }
+      whatsappWindow?.focus();
+      if (!whatsappWindow) setError(isArabic ? "المتصفح منع فتح واتساب. اسمح بالنوافذ المنبثقة لهذه الصفحة وحاول مرة أخرى." : "The browser blocked WhatsApp. Allow pop-ups for this page and try again.");
+      if (clipboardPromise) {
+        try {
+          await clipboardPromise;
+          setActionMessage(isArabic ? "تم نسخ صورة الروستر وفتح واتساب؛ الصق الصورة مباشرة" : "Roster image copied and WhatsApp opened; paste the image directly");
           return;
         } catch (clipboardError) {
           console.warn("Clipboard image copy was unavailable; downloading instead", clipboardError);
         }
       }
       downloadRosterImage(await blobPromise, branchCode);
-      setActionMessage(isArabic ? "المتصفح منع نسخ الصورة؛ تم تنزيلها بدلًا من فتح أي تاب" : "The browser blocked image copy, so the image was downloaded without opening another tab");
+      setActionMessage(isArabic ? "تم فتح واتساب وتنزيل صورة الروستر لأن المتصفح منع النسخ" : "WhatsApp opened and the roster image was downloaded because clipboard copy was blocked");
     } catch (shareError) { setError(shareError.message); }
-  };
-  const openWhatsApp = () => {
-    const branchCode = config.branchCode || "MOT";
-    const message = isArabic ? `روستر Billy Beez ${branchCode} - ${date}` : `Billy Beez ${branchCode} roster - ${date}`;
-    window.location.assign(`https://wa.me/?text=${encodeURIComponent(message)}`);
   };
   return (
     <section className="daily-approval-preview">
@@ -739,27 +759,24 @@ export default function DailyApprovalPreview() {
               onChange={(event) => setDate(event.target.value)}
             />
           </label>
-          <button onClick={() => setDate(today)}>
-            {isArabic ? "اليوم" : "Today"}
+          <button onClick={() => setDate(addDays(today, -1))}>
+            {isArabic ? "أمس" : "Yesterday"}
           </button>
           <button
             className="secondary"
-            onClick={() => setDate(addDays(today, 1))}
+            onClick={() => setDate(tomorrow)}
           >
             {isArabic ? "غدًا" : "Tomorrow"}
           </button>
-          <Link className="button-link" href="/settings?tab=template">{isArabic ? "إعدادات التيمبلت" : "Template settings"}</Link>
+          <Link className="button-link" href="/settings?tab=template">{isArabic ? "إعدادات" : "Settings"}</Link>
           <button className="secondary" onClick={print}>
-            {isArabic ? "طباعة / PDF" : "Print / PDF"}
+            {isArabic ? "طباعة" : "Print"}
           </button>
           <button onClick={generateRotationNow} disabled={saving}>
-            {isArabic ? "توليد روتيشن عشوائي" : "Generate random rotation"}
+            {isArabic ? "روتيشن" : "Rotation"}
           </button>
-          <button className="whatsapp-button" onClick={copyRosterImage}>
-            {isArabic ? "نسخ صورة الروستر" : "Copy roster image"}
-          </button>
-          <button className="secondary" onClick={openWhatsApp}>
-            {isArabic ? "فتح واتساب" : "Open WhatsApp"}
+          <button className="whatsapp-button" onClick={copyRosterAndOpenWhatsApp}>
+            {isArabic ? "نسخ وفتح واتساب" : "Copy & open WhatsApp"}
           </button>
           <Link className="button-link" href="/operations">
             {isArabic ? "رجوع" : "Back"}

@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useI18n } from "../i18n";
 import { readApiResponse } from "@/lib/client/read-api-response";
 import stockCatalogConfig from "@/lib/operations/stock-catalog";
+import { formatOfferWeekdays } from "@/lib/operations/planning";
 
 const { normalizeBraceletTypes } = stockCatalogConfig;
 
@@ -35,9 +36,7 @@ function displayOfferDate(value) {
 }
 
 function offerSchedule(offer, isArabic) {
-  const selected = parseWeekdays(offer.weekdaysJson);
-  const names = WEEKDAYS.filter(([day]) => selected.includes(day)).map(([, en, ar]) => isArabic ? ar : en);
-  const days = selected.length === 7 ? (isArabic ? "كل الأيام" : "Every day") : names.join("، ");
+  const days = formatOfferWeekdays(offer.weekdaysJson, isArabic);
   const dates = offer.permanent ? (isArabic ? "دائم" : "Permanent") : [displayOfferDate(offer.effectiveFrom), displayOfferDate(offer.effectiveTo)].filter(Boolean).join(" → ") || (isArabic ? "بدون حد زمني" : "Open ended");
   return `${days} · ${dates}`;
 }

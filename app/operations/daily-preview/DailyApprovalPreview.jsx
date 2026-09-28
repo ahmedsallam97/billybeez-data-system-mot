@@ -9,7 +9,7 @@ import {
   WORKING_SHIFTS,
 } from "@/lib/operations/roster";
 import { previewCardLines } from "@/lib/operations/daily-preview";
-import { colorNameFor, stockAvailable } from "@/lib/operations/planning";
+import { colorNameFor, formatOfferWeekdays, stockAvailable } from "@/lib/operations/planning";
 import { useI18n } from "@/app/i18n";
 import { employeeGenderClass } from "@/app/employeeDisplay";
 import dailyTemplateConfig from "@/lib/operations/daily-template-config";
@@ -104,10 +104,7 @@ function employeeTone(person, labels) {
 
 function OfferCardContent({ offers = [], config }) {
   if (!offers.length) return <p>{config.labels.noOffers}</p>;
-  const dayNames = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
   return <div className="ops-offer-grid">{offers.map((offer) => {
-    let weekdays = [];
-    try { weekdays = JSON.parse(offer.weekdaysJson || "[]"); } catch { weekdays = []; }
     return <article className="ops-offer-item" key={offer.id}>
       <b>{offer.title} {offer.discountPercent != null && <em className="ops-discount-badge">-{offer.discountPercent}%</em>}</b>
       {(offer.priceBefore != null || offer.priceAfter != null) && (
@@ -117,7 +114,7 @@ function OfferCardContent({ offers = [], config }) {
         </span>
       )}
       <span className="ops-offer-children">{config.labels.offerAdmits} {offer.childrenCount || 1} {(offer.childrenCount || 1) === 1 ? config.labels.childSingular : config.labels.childPlural}</span>
-      {weekdays.length > 0 && <small>{weekdays.map((day) => dayNames[day]).filter(Boolean).join(" · ")}</small>}
+      <small>{formatOfferWeekdays(offer.weekdaysJson)}</small>
       {offer.details && <small>{offer.details}</small>}
     </article>;
   })}</div>;

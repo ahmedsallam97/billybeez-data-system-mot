@@ -79,7 +79,7 @@ test("mobile workspaces stay inside the viewport and collapse navigation after s
   expect(performanceBox.x + performanceBox.width).toBeLessThanOrEqual(391);
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
 
-  await page.goto("/operations?tab=daily", { waitUntil: "networkidle" });
+  await page.goto("/operations?tab=daily&date=2026-09-27", { waitUntil: "networkidle" });
   const dailyControls = page.locator(".daily-controls");
   const dailyControlsBox = await dailyControls.boundingBox();
   expect(dailyControlsBox.x).toBeGreaterThanOrEqual(0);
@@ -99,12 +99,20 @@ test("mobile workspaces stay inside the viewport and collapse navigation after s
 });
 
 test("daily tables fit their panels and roster settings use focused editors", async ({ page }) => {
-  await page.goto("/operations?tab=daily", { waitUntil: "networkidle" });
+  await page.goto("/operations?tab=performance", { waitUntil: "networkidle" });
+  await page.getByRole("button", { name: /Manual scores|إدخال \/ تعديل يدوي/ }).click();
+  const manualDialog = page.getByRole("dialog", { name: /Enter monthly scores manually|إدخال نتائج التقييم يدويًا/ });
+  await expect(manualDialog).toBeVisible();
+  await expect(manualDialog.locator('input[type="number"]')).not.toHaveCount(0);
+  await expect(manualDialog.getByLabel(/Manual override reason|سبب التعديل اليدوي/)).toBeVisible();
+  await manualDialog.getByRole("button", { name: /Close|إغلاق/ }).click();
+
+  await page.goto("/operations?tab=daily&date=2026-09-27", { waitUntil: "networkidle" });
   const attendance = page.locator(".attendance-table-wrap");
   await expect(attendance).toBeVisible();
   expect(await attendance.evaluate((element) => element.scrollWidth <= element.clientWidth + 1)).toBeTruthy();
 
-  await page.goto("/operations?tab=evaluation", { waitUntil: "networkidle" });
+  await page.goto("/operations?tab=evaluation&date=2026-09-27", { waitUntil: "networkidle" });
   const evaluation = page.locator(".evaluation-table-wrap");
   await expect(evaluation).toBeVisible();
   expect(await evaluation.evaluate((element) => element.scrollWidth <= element.clientWidth + 1)).toBeTruthy();

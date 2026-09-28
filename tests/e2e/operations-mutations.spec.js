@@ -38,6 +38,21 @@ test.describe("isolated operations mutations", () => {
     const initial = await initialResponse.json();
     expect(initial.appraisals.filter((item) => item.status === "DRAFT")).toHaveLength(2);
 
+    const manualTarget = initial.appraisals[0];
+    const manualResponse = await request.post("/api/operations/performance", { data: { action: "appraisalManualOverride", year: 2099, month: 10, reason: "Historical signed appraisal entered during E2E", rows: [{ employeeId: manualTarget.employeeId, totalScore: 95 }] } });
+    expect(manualResponse.ok()).toBeTruthy();
+    const manualAppraisal = (await manualResponse.json()).appraisals[0];
+    expect(manualAppraisal.version).toBe(2);
+    expect(manualAppraisal.totalScore).toBe(95);
+    expect(manualAppraisal.status).toBe("DRAFT");
+    const manualPeriodResponse = await request.get("/api/operations/performance?year=2099&month=10");
+    const manualPeriod = await manualPeriodResponse.json();
+    const visibleManual = manualPeriod.appraisals.find((item) => item.employeeId === manualTarget.employeeId);
+    expect(visibleManual.totalScore).toBe(95);
+    expect(visibleManual.entryMode).toBe("MANUAL");
+    expect(visibleManual.manualReason).toContain("Historical signed appraisal");
+    expect(manualPeriod.appraisals).toHaveLength(2);
+
     const approvalResponse = await request.post("/api/operations/performance", { data: { action: "appraisalApproveAll", year: 2099, month: 10 } });
     expect(approvalResponse.ok()).toBeTruthy();
     expect((await approvalResponse.json()).approved).toBe(2);
@@ -60,6 +75,10 @@ test.describe("isolated operations mutations", () => {
     const lockResponse = await request.post("/api/operations/performance", { data: { action: "eotmLock", competitionId } });
     expect(lockResponse.ok()).toBeTruthy();
     expect((await lockResponse.json()).competition.status).toBe("LOCKED");
+
+    const lockedOverride = await request.post("/api/operations/performance", { data: { action: "appraisalManualOverride", year: 2099, month: 10, reason: "This should be rejected after lock", rows: [{ employeeId: manualTarget.employeeId, totalScore: 99 }] } });
+    expect(lockedOverride.status()).toBe(400);
+    expect((await lockedOverride.json()).error).toContain("Reopen the locked Employee of the Month competition");
 
     const finalResponse = await request.get("/api/operations/performance?year=2099&month=10");
     const finalCompetition = (await finalResponse.json()).competitions.find((item) => item.id === competitionId);

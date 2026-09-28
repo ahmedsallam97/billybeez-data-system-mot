@@ -3,6 +3,7 @@ import { prisma } from "@/lib/db";
 import { authorizeApi } from "@/lib/api-auth";
 import { writeAudit } from "@/lib/audit";
 import { assertSuccessionPath } from "@/lib/operations/succession";
+import { manualAppraisalMeta, manualAppraisalSnapshots, normalizeManualAppraisalRows } from "@/lib/operations/manual-appraisal";
 import { getSetting } from "@/lib/settings";
 
 const READINESS = ["NOT_ASSESSED", "DEVELOPING", "READY_SOON", "READY_NOW", "ON_HOLD", "PROMOTED", "COMPLETED", "CLOSED"];
@@ -15,18 +16,23 @@ export async function GET(request) {
   const month = Number(params.get("month") || new Date().getMonth() + 1);
   const previousMonth = month === 1 ? 12 : month - 1;
   const previousYear = month === 1 ? year - 1 : year;
-  const [appraisals, previousAppraisals, competitions, succession, employees, artworkRaw, branchRaw] = await Promise.all([
-    prisma.opsMonthlyAppraisal.findMany({ where: { year, month }, include: { employee: { select: { id: true, name: true, nameEn: true, hrisNumber: true, localEmployeeCode: true, jobTitle: true } }, formulaVersion: { select: { code: true, label: true } } }, orderBy: [{ totalScore: "desc" }, { employee: { name: "asc" } }] }),
+  const [appraisalRows, previousAppraisals, competitions, succession, employees, artworkRaw, branchRaw] = await Promise.all([
+    prisma.opsMonthlyAppraisal.findMany({ where: { year, month }, include: { employee: { select: { id: true, name: true, nameEn: true, hrisNumber: true, localEmployeeCode: true, jobTitle: true } }, formulaVersion: { select: { code: true, label: true } } }, orderBy: [{ version: "desc" }, { totalScore: "desc" }, { employee: { name: "asc" } }] }),
     prisma.opsMonthlyAppraisal.findMany({ where: { year: previousYear, month: previousMonth, status: "APPROVED" }, select: { totalScore: true } }),
     prisma.opsEotmCompetition.findMany({ where: { year, month }, include: { winner: { select: { id: true, name: true, nameAr: true, nameEn: true, operationalName: true, documents: { where: { documentType: "EMPLOYEE_PHOTO", status: "ACTIVE" }, orderBy: { uploadedAt: "desc" }, take: 1 } } }, candidates: { include: { employee: { select: { id: true, name: true } } }, orderBy: { rank: "asc" } }, formulaVersion: true }, orderBy: { version: "desc" } }),
     prisma.opsSuccessionCandidate.findMany({ where: { active: true }, include: { employee: { select: { id: true, name: true, jobTitle: true } }, developmentActions: true, reviews: { orderBy: { reviewDate: "desc" } } }, orderBy: { updatedAt: "desc" } }),
-    prisma.employee.findMany({ where: { active: true }, select: { id: true, name: true, jobTitle: true }, orderBy: { name: "asc" } }),
+    prisma.employee.findMany({ select: { id: true, name: true, jobTitle: true, active: true, employmentStatus: true, hrisNumber: true, localEmployeeCode: true }, orderBy: [{ active: "desc" }, { name: "asc" }] }),
     getSetting("RECOGNITION_ARTWORK_CONFIG", "{}"),
     getSetting("OPS_BRANCH_CONFIG", "{}"),
   ]);
   let artworkConfig = {}; let branch = {};
   try { artworkConfig = JSON.parse(artworkRaw); } catch {}
   try { branch = JSON.parse(branchRaw); } catch {}
+  const latestAppraisals = new Map();
+  appraisalRows.forEach((item) => { if (!latestAppraisals.has(item.employeeId)) latestAppraisals.set(item.employeeId, item); });
+  const appraisals = [...latestAppraisals.values()]
+    .map((item) => ({ ...item, ...manualAppraisalMeta(item) }))
+    .sort((left, right) => right.totalScore - left.totalScore || left.employee.name.localeCompare(right.employee.name));
   const serializedCompetitions = competitions.map((competition) => ({ ...competition, winner: competition.winner ? { ...competition.winner, photoUrl: competition.winner.documents?.[0] ? `/api/operations/employees/${competition.winner.id}/documents/${competition.winner.documents[0].id}` : null, documents: undefined } : null }));
   return NextResponse.json({ success: true, year, month, previousPeriod: { year: previousYear, month: previousMonth }, appraisals, previousAppraisals, competitions: serializedCompetitions, succession, employees, artworkConfig, branch });
 }
@@ -38,6 +44,37 @@ export async function POST(request) {
   const { user, error } = await authorizeApi(successionAction ? "OPS_SUCCESSION_MANAGE" : appraisalAction ? "OPS_APPRAISAL_APPROVE" : "OPS_EOTM_MANAGE");
   if (error) return error;
   try {
+    if (body.action === "appraisalManualOverride") {
+      const year = Number(body.year); const month = Number(body.month); const reason = String(body.reason || "").trim();
+      if (!Number.isInteger(year) || year < 2020 || year > 2100 || !Number.isInteger(month) || month < 1 || month > 12) throw new Error("Invalid appraisal period");
+      if (reason.length < 5) throw new Error("A clear manual override reason is required");
+      const rows = normalizeManualAppraisalRows(body.rows);
+      const [lockedCompetition, employees, activeFormulas] = await Promise.all([
+        prisma.opsEotmCompetition.findFirst({ where: { year, month, status: "LOCKED" }, select: { id: true } }),
+        prisma.employee.findMany({ where: { id: { in: rows.map((item) => item.employeeId) } }, select: { id: true, name: true } }),
+        prisma.opsAppraisalFormulaVersion.findMany({ where: { active: true }, orderBy: { createdAt: "desc" } }),
+      ]);
+      if (lockedCompetition) throw new Error("Reopen the locked Employee of the Month competition before changing historical appraisal scores");
+      if (employees.length !== rows.length) throw new Error("One or more employees could not be found");
+      const periodKey = `${year}-${String(month).padStart(2, "0")}-01`;
+      const activeFormula = activeFormulas.find((formula) => formula.effectiveFrom <= periodKey && (!formula.effectiveTo || formula.effectiveTo >= periodKey));
+      const names = new Map(employees.map((employee) => [employee.id, employee.name]));
+      const created = await prisma.$transaction(async (tx) => {
+        const results = [];
+        for (const row of rows) {
+          const previous = await tx.opsMonthlyAppraisal.findFirst({ where: { employeeId: row.employeeId, year, month }, orderBy: { version: "desc" } });
+          const formulaVersionId = previous?.formulaVersionId || activeFormula?.id;
+          if (!formulaVersionId) throw new Error("An active monthly appraisal formula is required before entering a manual score");
+          await tx.opsMonthlyAppraisal.updateMany({ where: { employeeId: row.employeeId, year, month, status: { not: "SUPERSEDED" } }, data: { status: "SUPERSEDED" } });
+          const snapshots = manualAppraisalSnapshots({ totalScore: row.totalScore, reason, userId: user.id, priorAppraisal: previous });
+          const appraisal = await tx.opsMonthlyAppraisal.create({ data: { employeeId: row.employeeId, year, month, version: (previous?.version || 0) + 1, formulaVersionId, status: "DRAFT", totalScore: row.totalScore, ...snapshots } });
+          results.push({ appraisal, employeeName: names.get(row.employeeId), previousScore: previous?.totalScore ?? null });
+        }
+        return results;
+      });
+      await writeAudit({ action: "OPS_APPRAISAL_MANUAL_OVERRIDE", user, summary: `Entered ${created.length} manual appraisal score(s) for ${year}-${month}`, metadata: { year, month, changes: created.map((item) => ({ appraisalId: item.appraisal.id, employeeId: item.appraisal.employeeId, employeeName: item.employeeName, previousScore: item.previousScore, newScore: item.appraisal.totalScore, version: item.appraisal.version })) }, reason });
+      return NextResponse.json({ success: true, appraisals: created.map((item) => item.appraisal) });
+    }
     if (body.action === "appraisalApprove") {
       const appraisal = await prisma.opsMonthlyAppraisal.findUnique({ where: { id: String(body.appraisalId || "") } });
       if (!appraisal) throw new Error("Appraisal not found");

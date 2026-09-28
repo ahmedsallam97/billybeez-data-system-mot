@@ -49,7 +49,8 @@ export async function POST(request) {
       const code = String(body.code || "").trim().toUpperCase();
       if (!code) throw new Error("Position code is required");
       const sortOrder = Number.isFinite(Number(body.sortOrder)) ? Number(body.sortOrder) : 0;
-      record = await prisma.opsOperationalPosition.upsert({ where: { code }, update: { label: String(body.label || code), labelAr: String(body.labelAr || "") || null, critical: Boolean(body.critical), requiresQualification: body.requiresQualification !== false, active: body.active !== false, sortOrder }, create: { code, label: String(body.label || code), labelAr: String(body.labelAr || "") || null, critical: Boolean(body.critical), requiresQualification: body.requiresQualification !== false, sortOrder } });
+      const color = /^#[0-9a-f]{6}$/i.test(String(body.color || "")) ? String(body.color).toLowerCase() : null;
+      record = await prisma.opsOperationalPosition.upsert({ where: { code }, update: { label: String(body.label || code), labelAr: String(body.labelAr || "") || null, color, critical: Boolean(body.critical), requiresQualification: body.requiresQualification !== false, active: body.active !== false, sortOrder }, create: { code, label: String(body.label || code), labelAr: String(body.labelAr || "") || null, color, critical: Boolean(body.critical), requiresQualification: body.requiresQualification !== false, sortOrder } });
     } else if (body.action === "saveRequirement") {
       const position = await prisma.opsOperationalPosition.findUnique({ where: { id: String(body.operationalPositionId || "") } });
       const shiftCode = String(body.shiftCode || "").trim().toUpperCase();
@@ -88,9 +89,9 @@ export async function POST(request) {
     } else if (body.action === "saveOperationalName") {
       record = await prisma.employee.update({ where: { id: String(body.employeeId || "") }, data: { operationalName: String(body.operationalName || "").trim() || null, gender: ["MALE", "FEMALE"].includes(body.gender) ? body.gender : null, operationsTeamLeader: body.operationsTeamLeader === true || body.operationsTeamLeader === "on" } });
     } else if (body.action === "saveNotice") {
-      const title = String(body.title || "").trim(); const message = String(body.message || "").trim(); const effectiveFrom = String(body.effectiveFrom || "");
-      if (!title || !message || !effectiveFrom) throw new Error("Notice title, message and start date are required");
-      const values = { title, message, priority: String(body.priority || "INFO"), effectiveFrom, effectiveTo: String(body.effectiveTo || "") || null, startTime: String(body.startTime || "") || null, endTime: String(body.endTime || "") || null, active: body.active !== false, updatedBy: user.id };
+      const title = String(body.title || "").trim(); const titleAr = String(body.titleAr || "").trim(); const message = String(body.message || "").trim(); const messageAr = String(body.messageAr || "").trim(); const effectiveFrom = String(body.effectiveFrom || "");
+      if (!title || !titleAr || !message || !messageAr || !effectiveFrom) throw new Error("English and Arabic notice text and start date are required");
+      const values = { title, titleAr, message, messageAr, priority: String(body.priority || "INFO"), effectiveFrom, effectiveTo: String(body.effectiveTo || "") || null, startTime: String(body.startTime || "") || null, endTime: String(body.endTime || "") || null, active: body.active !== false, updatedBy: user.id };
       if (body.noticeId) {
         const current = await prisma.opsOperationalNotice.findFirst({ where: { id: String(body.noticeId), branch: defaultBranch } });
         if (!current) throw new Error("Operational notice not found");

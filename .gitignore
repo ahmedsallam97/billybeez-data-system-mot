@@ -6,6 +6,7 @@ prisma/dev.db
 prisma/dev.db-journal
 prisma/dev.pre-*.db
 dev-server*.log
+.next-dev.*.log
 build.log
 prisma-studio*.log
 next-production*.log

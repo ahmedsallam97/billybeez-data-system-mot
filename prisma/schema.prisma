@@ -1277,6 +1277,7 @@ model OpsOperationalPosition {
   code                  String                           @unique
   label                 String
   labelAr               String?
+  color                 String?
   critical              Boolean                          @default(false)
   requiresQualification Boolean                          @default(true)
   active                Boolean                          @default(true)
@@ -1493,7 +1494,9 @@ model OpsOperationalNotice {
   id            String   @id @default(cuid())
   branch        String   @default("MOT")
   title         String
+  titleAr       String?
   message       String
+  messageAr     String?
   priority      String   @default("INFO")
   effectiveFrom String
   effectiveTo   String?

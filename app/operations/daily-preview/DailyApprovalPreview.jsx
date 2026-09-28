@@ -48,6 +48,10 @@ function contrastColor(hex) {
   const [r, g, b] = [0, 2, 4].map((index) => parseInt(value.slice(index, index + 2), 16));
   return (r * 299 + g * 587 + b * 114) / 1000 < 145 ? "#ffffff" : "#20113d";
 }
+function positionDisplayName(position) {
+  const value = String(position?.label || position?.code || "").trim().toLowerCase().replace(/_/g, " ");
+  return value.replace(/(^|[\s/-])([a-z])/g, (_, prefix, letter) => `${prefix}${letter.toUpperCase()}`);
+}
 function rosterBracelets(items = [], config = {}) {
   const bracelets = items.filter((item) => !item.stockCategory || item.stockCategory === "BRACELET");
   return normalizeBraceletTypes(config.braceletTypes).filter((type) => type.showInRoster).map((type) => {
@@ -185,7 +189,7 @@ async function posterPngBlob({ data, config, weekday, grouped, scheduleColors })
   const offerColumns = Math.min(3, Math.max(1, offerCount));
   const offerRows = offerCount ? Math.ceil(offerCount / offerColumns) : 0;
   const offersHeight = offerRows ? 46 + offerRows * 116 + Math.max(0, offerRows - 1) * 12 : 0;
-  const notesHeight = config.visibleSections.notes ? 52 + Math.max(1, data.notices?.length || 0) * 52 : 0;
+  const notesHeight = config.visibleSections.notes ? 52 + Math.max(1, data.notices?.length || 0) * 88 : 0;
   const height = 150 + cardHeight + 76 + rosterRows * 42 + dailySummaryHeight + offersHeight + notesHeight + 100;
   const xml = (value) => String(value ?? "").replace(/[&<>"']/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&apos;" })[char]);
   const short = (value, limit = 34) => { const text = String(value || ""); return text.length > limit ? `${text.slice(0, limit - 1)}…` : text; };
@@ -264,8 +268,12 @@ async function posterPngBlob({ data, config, weekday, grouped, scheduleColors })
           const slotHour = (startHour + index) % 24;
           const assignment = assignments.find((item) => item.employeeId === person.employee.id && Number(item.startTime?.slice(0, 2)) === slotHour);
           const cellX = rotationX + rotationWidth / slotCount * index;
+          const cellWidth = rotationWidth / slotCount;
+          const strong = (config.rotationHighlightedCodes || ["DROP", "TOWER", "DATA"]).includes(assignment?.position?.code);
+          const positionColor = assignment?.position?.color || (strong ? "#f41743" : "#ffffff");
+          if (assignment) rect(cellX, y, cellWidth, 42, positionColor, "#bcb5c3");
           if (index) nodes.push(`<line x1="${cellX}" y1="${y}" x2="${cellX}" y2="${y + 42}" stroke="#bcb5c3"/>`);
-          text(short(assignment?.position?.code || "", 10), cellX + rotationWidth / (slotCount * 2), y + 27, 12, 800, config.text, "middle");
+          text(short(positionDisplayName(assignment?.position), 14), cellX + cellWidth / 2, y + 27, 12, strong ? 900 : 700, assignment ? contrastColor(positionColor) : config.text, "middle");
         });
       }
       y += 42;
@@ -335,11 +343,13 @@ async function posterPngBlob({ data, config, weekday, grouped, scheduleColors })
     const notices = data.notices?.length ? data.notices : [{ title: config.labels.noNotices, message: "", priority: "INFO" }];
     notices.forEach((notice) => {
       const critical = String(notice.priority || "").toUpperCase() === "CRITICAL";
-      rect(margin, y, contentWidth, 52, critical ? "#fee7eb" : "#ffffff", critical ? "#d7193f" : "#d4ced8", 4);
-      text(short(notice.title, 44), margin + 14, y + 22, 14, 900, critical ? "#a50f2d" : config.text);
-      if (notice.message) text(short(notice.message, 145), margin + 14, y + 42, 12, 650, critical ? "#8f1730" : config.text);
+      rect(margin, y, contentWidth, 88, critical ? "#fee7eb" : "#ffffff", critical ? "#d7193f" : "#d4ced8", 4);
+      text(short(notice.title, 64), margin + 14, y + 20, 14, 900, critical ? "#a50f2d" : config.text);
+      if (notice.titleAr) text(short(notice.titleAr, 64), margin + contentWidth - 14, y + 39, 14, 900, critical ? "#a50f2d" : config.text, "end");
+      if (notice.message) text(short(notice.message, 145), margin + 14, y + 59, 12, 650, critical ? "#8f1730" : config.text);
+      if (notice.messageAr) text(short(notice.messageAr, 145), margin + contentWidth - 14, y + 78, 12, 650, critical ? "#8f1730" : config.text, "end");
       if (critical) text("CRITICAL", margin + contentWidth - 14, y + 22, 12, 900, "#d7193f", "end");
-      y += 52;
+      y += 88;
     });
   }
   y += 22; rect(margin, y, contentWidth, 5, config.accent); text(data.motivationalPhrase || config.footerMotto, width / 2, y + 35, 15, 900, config.text, "middle");
@@ -450,12 +460,14 @@ function OperationsPoster({ config, weekday, data, grouped, scheduleColors }) {
                   const strong = (config.rotationHighlightedCodes || ["DROP", "TOWER", "DATA"]).includes(
                     assignment?.position?.code,
                   );
+                  const positionColor = assignment?.position?.color || (strong ? "#f41743" : "#ffffff");
                   return (
                     <i
                       className={strong ? "rotation-strong" : ""}
+                      style={assignment ? { backgroundColor: positionColor, color: contrastColor(positionColor) } : undefined}
                       key={`${hour}-${cell}`}
                     >
-                      {assignment?.position?.code || ""}
+                      {positionDisplayName(assignment?.position)}
                     </i>
                   );
                 })}
@@ -540,8 +552,8 @@ function OperationsPoster({ config, weekday, data, grouped, scheduleColors }) {
         <h3>{config.labels.notes}</h3>
         {data.notices?.length ? data.notices.map((notice) => (
           <article className={`ops-notice-item priority-${String(notice.priority || "INFO").toLowerCase()}`} key={notice.id}>
-            <b>{notice.title}</b>
-            <span>{notice.message}</span>
+            <div><b>{notice.title}</b>{notice.titleAr && <small lang="ar" dir="rtl">{notice.titleAr}</small>}</div>
+            <div><span>{notice.message}</span>{notice.messageAr && <small lang="ar" dir="rtl">{notice.messageAr}</small>}</div>
           </article>
         )) : <p>{config.labels.noNotices}</p>}
       </section>
@@ -736,7 +748,7 @@ export default function DailyApprovalPreview() {
         }
       }
       const message = isArabic ? `روستر Billy Beez ${branchCode} - ${date}` : `Billy Beez ${branchCode} roster - ${date}`;
-      const whatsappUrl = `https://web.whatsapp.com/send?text=${encodeURIComponent(message)}`;
+      const whatsappUrl = `https://api.whatsapp.com/send/?text=${encodeURIComponent(message)}&type=custom_url&app_absent=0`;
       let whatsappWindow = whatsappWindowRef.current;
       if (!whatsappWindow || whatsappWindow.closed) {
         whatsappWindow = window.open(whatsappUrl, "billybeez-whatsapp");

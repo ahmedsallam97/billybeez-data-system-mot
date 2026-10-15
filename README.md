@@ -2,9 +2,9 @@
 
 Next.js + Prisma Operations Management System for Billy Beez.
 
-The active system is Operations Management, with `/opmanager` as the ADMIN/MANAGER home. The repository also preserves a dormant POS/Core system. Its routes, code and database tables are retained, but its UI and workflows are outside Operations release readiness. Do not restore or reconnect legacy modules during this phase. The old Google Apps Script/static HTML files remain legacy migration references.
+This branch is the enabled workplace application, with `/opmanager` as the Operations dashboard. Globally excluded POS/Core and old Apps Script routes, dedicated APIs, components and exclusive tools have been separated from this active code. Their complete code-only source remains recoverable on `archive/full-system-before-separation`. All existing database tables and historical records remain compatible; no database cleanup or destructive migration is part of separation.
 
-This branch is the stable daily-operation version. Larger upgrades should continue on a separate upgrade branch/worktree so this version can still be run when needed.
+Treat `active-workplace-base` as the clean integration base. Develop changes on a separate branch/worktree. Follow [OLD_LAPTOP_APP_INTEGRATION.md](OLD_LAPTOP_APP_INTEGRATION.md) before integrating any recovered application.
 
 ## Current Stack
 
@@ -27,7 +27,7 @@ This branch is the stable daily-operation version. Larger upgrades should contin
 | Operations Management | `/opmanager` | ADMIN/MANAGER home and Operations insights |
 | Operations | `/operations` | Roster, attendance, schedule, daily setup, Employee 360, and recognition |
 | Settings | `/settings` | Operations rules, templates, shifts, roles, and configuration |
-Legacy `/manager` is inactive (404 after authorization). Front, Data, Kitchen, Kitchen Cashier, Orders, Customers, Children, Payments and Loyalty remain preserved but hidden from Operations navigation. They are **LEGACY / OUT OF CURRENT SCOPE**.
+Legacy `/manager`, `/front`, `/data`, `/cashier`, `/kitchen`, `/kitchen-cashier`, order invoices and kitchen tickets have no page routes in this branch. Their dedicated POS/Core APIs are absent and direct requests return 404. Existing active Operations redirects, user accounts, permissions and shared APIs remain intact.
 
 Operations clients use `/api/operations/settings`, which allows only explicit Operations keys. `BUSINESS_DAY_PASSWORD` stays in the legacy subsystem and is neither readable nor editable through this endpoint. Shared `/api/settings` continues to redact secret values for legacy compatibility.
 
@@ -41,7 +41,7 @@ Current roles in the database:
 - `KITCHEN`
 - `DATA`
 
-`ADMIN` and `MANAGER` enter `/opmanager`. `CASHIER`, `DATA` and `KITCHEN` retain their internal legacy role homes and are not integrated into Operations workflows.
+Operations access continues to use the existing account profiles and permission scopes. Legacy role metadata remains for database compatibility; removing old pages does not grant those roles access to Operations workflows.
 
 ## Departments
 
@@ -202,59 +202,20 @@ Latest update scope:
 - Generated PostgreSQL parity schema and local/S3-compatible employee-file storage
 - Unit, UI audit, build, and authenticated browser validation
 
-## Features
+## Enabled Workplace Workflows
 
-- Data interface for order creation and editing
-- Kitchen interface for preparation, delivery, payment, and Geidea registration
-- Manager interface with orders, reports, records, settings, activity, and health checks
-- Business day open/close workflow
-- Order history and archive/unarchive
-- Duplicate bracelet protection for active orders
-- Order merge tools for managers
-- Transaction records for order lifecycle events
-- Alerts configurable from manager settings
-- Employee styling configurable from manager settings
-- Product/category management
-- User management with general and employee-linked accounts
-- Kitchen ticket print flow
-- Invoice print flow
-- Daily reports and export support
-- Modern reports dashboard with area chart, donut chart, KPI cards, activity, and top orders
-- Report cards configurable from manager settings: icon URL, gradient colors, and text color
-- Local product images, no random external image URLs
+- Operations dashboard, employees and Employee 360.
+- Published monthly schedules, attendance, roster, configurable rotation generation and distribution preview.
+- Trips, birthdays, offers, stock, leave and time.
+- Trip, Birthday and Shift Leader reports, source evidence, approvals and files.
+- Daily and monthly evaluations, Recognition, Guest Feedback, Employee of the Month and Hall of Fame.
+- Succession, development, manual readiness decisions and performance reports.
+- Settings, users, roles, scoped permissions, audit, printing and PDFs.
+- Persistent deployment, protected storage, encrypted backup/restore and sanitized pilot tooling.
 
-## Important Workflow Rules
+## Full Source Recovery
 
-- Payment is blocked until delivery unless workflow settings allow otherwise.
-- Geidea registration can auto-archive an order only after the customer has left.
-- Orders should not archive before data marks customer exit.
-- Active bracelet numbers are protected to avoid duplicate current orders.
-- Manager/Admin have broader permissions for editing, archive control, and settings.
-
-## Legacy Files
-
-These files remain for migration/reference:
-
-- `index.html`
-- `cashier.html`
-- `delivery.html`
-- `invoice.html`
-- `dashboard.html`
-- `orders.html`
-- `config.js`
-- `code.gs`
-- `appsscript.json`
-
-The active app is under:
-
-```text
-app/
-lib/
-prisma/
-scripts/
-tests/
-public/
-```
+The remote branches `ops-migration-local` and `archive/full-system-before-separation` retain the sanitized full source. Recover legacy source into a separate review worktree; do not merge it wholesale into the enabled workplace application. All Prisma schemas and migrations are retained unchanged here.
 
 ## Notes For Next Level
 

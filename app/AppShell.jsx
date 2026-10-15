@@ -4,7 +4,6 @@ import { settingsHistoryGuard } from "@/lib/client/settings-history-guard";
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { useRouter, usePathname, useSearchParams } from "next/navigation";
-import BusinessDayControl from "./BusinessDayControl";
 import PreferenceIconButtons from "./PreferenceIconButtons";
 import { useI18n } from "./i18n";
 import { OperationsUiProvider, useOperationsUi } from "./operations/OperationsUiContext";
@@ -16,7 +15,6 @@ import OperationsNavigation from "./operations/OperationsNavigation";
 import shellStyles from "./operations/OperationsShell.module.css";
 import { AccountProvider, useAccount } from './account/AccountContext';
 
-const HIDE_SECONDARY_WORKSPACES = true;
 
 export default function AppShell({ title, user, children, initialSettings }) {
   useEffect(() => { settingsHistoryGuard(); }, []);
@@ -32,12 +30,10 @@ function AppShellContent({ title, user, children }) {
   const searchParams = useSearchParams();
   const operationsWorkspace = pathname === '/account' || pathname === "/opmanager" || pathname.startsWith("/opmanager/") || pathname === "/settings" || pathname.startsWith("/operations");
   const { config, error } = useOperationsUi();
-  const { t, labelRole, isArabic, setPreferredLanguage } = useI18n();
+  const { t, isArabic, setPreferredLanguage } = useI18n();
   useEffect(()=>{if(user.profile?.preferredLanguage)setPreferredLanguage(user.profile.preferredLanguage);},[user.id,user.profile?.preferredLanguage]);
   const moduleId=pageId(pathname);
   const shellTitle = moduleId ? PAGES[moduleId][isArabic?2:1] : title?.startsWith("title.") ? t(title) : title;
-  const managerialWorkspace = title === "title.manager" || title === "الإعدادات" || title === "Settings";
-  const requiresDayPassword = !managerialWorkspace || ["CASHIER", "KITCHEN", "DATA"].includes(user.role);
   const [navigationOpen, setNavigationOpen] = useState(false);
   const navigationButton = useRef(null);
   const [mobile,setMobile]=useState(false);
@@ -74,16 +70,7 @@ function AppShellContent({ title, user, children }) {
         <nav className="nav" aria-label={isArabic ? "التنقل الرئيسي" : "Main navigation"}>
           {user.permissions?.['settings.view'] && <Link className="nav-manager" href="/opmanager/settings" aria-current={pathname.startsWith("/opmanager/settings") ? "page" : undefined} onClick={() => setNavigationOpen(false)}>{isArabic ? "الإعدادات" : "Settings"}</Link>}
           {!operationsWorkspace && ["ADMIN","MANAGER"].includes(user.role) && <Link href="/operations">{t("nav.operations")}</Link>}
-          {!HIDE_SECONDARY_WORKSPACES && (user.role === "ADMIN" || user.role === "MANAGER" || user.role === "CASHIER" || user.role === "DATA") && <Link className="nav-front" href="/front">{t("nav.front")}</Link>}
-          {!HIDE_SECONDARY_WORKSPACES && (user.role === "ADMIN" || user.role === "CASHIER" || user.role === "DATA") && <Link className="nav-data" href="/data">{t("nav.data")}</Link>}
-          {!HIDE_SECONDARY_WORKSPACES && (user.role === "ADMIN" || user.role === "MANAGER" || user.role === "KITCHEN") && <Link className="nav-kitchen" href="/kitchen">{t("nav.kitchen")}</Link>}
-          {!HIDE_SECONDARY_WORKSPACES && (user.role === "ADMIN" || user.role === "MANAGER") && (
-            <a className="nav-database" href="http://127.0.0.1:5556" target="_blank" rel="noreferrer">
-              {t("nav.database")}
-            </a>
-          )}
           <ShellProfile user={user} expanded onLogout={logout} navbar />
-          {!operationsWorkspace && <BusinessDayControl requiresPassword={requiresDayPassword} />}
           <PreferenceIconButtons />
         </nav>
       </header>);

@@ -38,16 +38,18 @@ const { scopedClient, resolveScope } = require("../lib/accounts/enforcement");
 const { imageBytes, setAvatar } = require("../lib/accounts/avatar");
 const sharp = require("sharp");
 test("unified account migration, security, permissions, scopes, photos and verified restoration", async (t) => {
-  const root = fs.mkdtempSync(path.resolve("tmp/account-unit-")),
+  const outputRoot = path.resolve(process.env.OPS_E2E_OUTPUT_ROOT || "tmp");
+  fs.mkdirSync(outputRoot, { recursive: true });
+  const root = fs.mkdtempSync(path.join(outputRoot, "account-unit-")),
     database = path.join(root, "test.db"),
     storage = path.join(root, "files");
-  fs.cpSync(path.resolve("storage/employee-files"), storage, {
+  fs.cpSync(path.resolve(process.env.OPS_E2E_SOURCE_STORAGE || "storage/employee-files"), storage, {
     recursive: true,
   });
   const originalFileCount = require("../scripts/pilot-backup").filesUnder(
     storage,
   ).length;
-  const source = new DatabaseSync(path.resolve("prisma/dev.db"), {
+  const source = new DatabaseSync(path.resolve(process.env.OPS_E2E_SOURCE_DATABASE || "prisma/dev.db"), {
     readOnly: true,
   });
   source.prepare("VACUUM INTO ?").run(database);

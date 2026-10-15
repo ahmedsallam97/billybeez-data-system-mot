@@ -1,0 +1,17 @@
+[Unit]
+Description=Operations pilot performance recalculation worker
+After=network-online.target
+
+[Service]
+Type=simple
+User=operations
+WorkingDirectory=/opt/operations/current
+EnvironmentFile=/etc/operations/performance-worker.env
+ExecStart=/usr/bin/node scripts/performance-worker.js
+Restart=on-failure
+RestartSec=30
+NoNewPrivileges=true
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target

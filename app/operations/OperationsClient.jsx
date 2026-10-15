@@ -1,49 +1,42 @@
 "use client";
+import { OperationalError } from "../ui/OperationalFeedback";
+import { useUiText } from '@/app/i18n';
+import {PageHeader,FilterBar} from '../ui/DesktopLayout';
+import ActionButton from "@/app/ActionButton";
+import {usePermission} from '@/app/account/AccountContext';
+import layoutFixes from "./ComponentLayout.module.css";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useI18n } from "../i18n";
-import ScheduleWorkspace from "./ScheduleWorkspace";
-import DailyWorkspace from "./DailyWorkspace";
-import LeaveTimeWorkspace from "./LeaveTimeWorkspace";
-import PerformanceWorkspace from "./PerformanceWorkspace";
 import Employee360View from "./Employee360View";
-import DailyApprovalPreview from "./daily-preview/DailyApprovalPreview";
-import DailySetupWorkspace from "./DailySetupWorkspace";
+import EmployeeRemovalDialog from "./EmployeeRemovalDialog";
 import { readApiResponse } from "@/lib/client/read-api-response";
+import { useSearchParams } from "next/navigation";
+import { useOperationsUi } from "./OperationsUiContext";
 
 function dateOnly(value) {
   return value ? String(value).slice(0, 10) : "—";
 }
 
-export default function OperationsClient() {
+export default function OperationsClient({ preview = false, module = "employees" }) {
+  const localize = useUiText();
   const { isArabic } = useI18n();
+  const viewDetails=usePermission('employees.details');
+  const canRemove=usePermission('employees.archive'), canRestore=usePermission('employees.restore');
+  const searchParams = useSearchParams();
+  const { userId } = useOperationsUi();
   const [employees, setEmployees] = useState([]);
   const [selected, setSelected] = useState(null);
   const [query, setQuery] = useState("");
   const [status, setStatus] = useState("ALL");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const [tab, setTab] = useState("roster");
-  const [navigationOpen, setNavigationOpen] = useState(false);
+  const [removalTarget, setRemovalTarget] = useState(null), [notice, setNotice] = useState('');
   const employeeRequest = useRef(0);
   const requestedEmployeeId = useRef("");
-  const tabKeys = ["roster", "daily", "evaluation", "schedule", "trips", "birthdays", "offers", "stock", "time", "employees", "performance"];
-
-  useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const requestedTab = params.get("tab");
-    requestedEmployeeId.current = params.get("employeeId") || "";
-    if (tabKeys.includes(requestedTab)) setTab(requestedTab);
-  }, []);
-  function navigate(nextTab) {
-    if (!tabKeys.includes(nextTab)) return;
-    setTab(nextTab);
-    if (window.innerWidth <= 620) setNavigationOpen(false);
-    const url = new URL(window.location.href);
-    url.searchParams.set("tab", nextTab);
-    window.history.replaceState({}, "", url);
-  }
-
+  const selectedEmployeeRef = useRef(null);
+  const updateSelected = employee => { selectedEmployeeRef.current = employee; setSelected(employee); };
+  useEffect(()=>{requestedEmployeeId.current=searchParams.get('employeeId')||'';if(requestedEmployeeId.current)loadEmployees();},[searchParams]);
   const text = useMemo(() => isArabic ? {
     employees: "ملفات الموظفين 360°", search: "بحث بالاسم أو الرقم", all: "كل الحالات",
     active: "نشط", inactive: "غير نشط", exited: "ترك العمل", loading: "جارٍ التحميل...",
@@ -73,13 +66,14 @@ export default function OperationsClient() {
       const payload = await readApiResponse(response, "Employee list could not be loaded");
       setEmployees(payload.employees);
       const requestedEmployee = requestedEmployeeId.current && payload.employees.find((item) => item.id === requestedEmployeeId.current);
-      const selectedIsVisible = selected && payload.employees.some((item) => item.id === selected.id);
+      const currentEmployee = selectedEmployeeRef.current;
+      const selectedIsVisible = currentEmployee && payload.employees.some((item) => item.id === currentEmployee.id);
       const targetEmployee = requestedEmployee || (selectedIsVisible ? null : payload.employees[0]);
-      if (selected && !selectedIsVisible && !targetEmployee) setSelected(null);
-      if (targetEmployee && selected?.id !== targetEmployee.id) {
+      if (currentEmployee && !selectedIsVisible && !targetEmployee) updateSelected(null);
+      if (viewDetails && targetEmployee && currentEmployee?.id !== targetEmployee.id) {
         const detailResponse = await fetch(`/api/operations/employees/${targetEmployee.id}/360`);
         const detail = await readApiResponse(detailResponse, "Employee profile could not be loaded");
-        setSelected(detail.employee);
+        updateSelected(detail.employee);
         if (requestedEmployee) requestedEmployeeId.current = "";
       }
     } catch (requestError) {
@@ -87,7 +81,7 @@ export default function OperationsClient() {
     } finally {
       setLoading(false);
     }
-  }, [query, status, selected]);
+  }, [query, status, selected, viewDetails]);
 
   useEffect(() => {
     const timer = setTimeout(loadEmployees, 180);
@@ -95,15 +89,16 @@ export default function OperationsClient() {
   }, [query, status]);
 
   async function openEmployee(id) {
+    if(!viewDetails)return;
     const requestNumber = ++employeeRequest.current;
     setError("");
     try {
       const response = await fetch(`/api/operations/employees/${id}/360`);
       const payload = await readApiResponse(response, "Employee profile could not be loaded");
       if (requestNumber !== employeeRequest.current) return;
-      setSelected(payload.employee);
+      updateSelected(payload.employee);
       const url = new URL(window.location.href);
-      url.searchParams.set("tab", "employees");
+      url.searchParams.delete("tab");
       url.searchParams.set("employeeId", id);
       window.history.replaceState({}, "", url);
     } catch (requestError) {
@@ -111,48 +106,39 @@ export default function OperationsClient() {
     }
   }
 
-  const tabs = isArabic
-    ? [["roster", "01", "الروستر اليومي", "الطباعة والروتيشن"], ["daily", "02", "الحضور", "حضور اليوم"], ["evaluation", "03", "التقييم اليومي", "الأداء والمظهر"], ["schedule", "04", "الجدول الشهري", "جدول الفريق"], ["trips", "05", "الرحلات", "المدارس والأكاديميات"], ["birthdays", "06", "أعياد الميلاد", "الحجوزات والوجبات"], ["offers", "07", "العروض", "المواعيد والتفاصيل"], ["stock", "08", "الستوك", "البريسلت والشرابات والرولات"], ["time", "09", "الإجازات والوقت", "الطلبات والأرصدة"], ["employees", "10", "الموظفون", "ملفات 360°"], ["performance", "11", "الأداء والتقدير", "التقييم والجوائز"]]
-    : [["roster", "01", "Daily Roster", "Print and rotations"], ["daily", "02", "Attendance", "Today's attendance"], ["evaluation", "03", "Daily Evaluation", "Performance and grooming"], ["schedule", "04", "Monthly Schedule", "Team schedule"], ["trips", "05", "Trips", "Schools and academies"], ["birthdays", "06", "Birthdays", "Bookings and meals"], ["offers", "07", "Offers", "Timing and details"], ["stock", "08", "Stock", "Bracelets, socks and rolls"], ["time", "09", "Leave & Time", "Requests and balances"], ["employees", "10", "Employees", "Employee 360"], ["performance", "11", "Performance & Recognition", "Reviews and awards"]];
-
   return (
-    <section className={`operations-shell ${navigationOpen ? "operations-nav-open" : "operations-nav-collapsed"}`}>
-      <nav className="operations-main-nav" aria-label={isArabic ? "أقسام العمليات" : "Operations areas"}>
-        <button className="operations-nav-toggle" type="button" aria-label={isArabic ? "فتح أقسام العمليات" : "Open operations areas"} aria-expanded={navigationOpen} onClick={() => setNavigationOpen((value) => !value)}><span aria-hidden="true">☰</span><i>{isArabic ? "أقسام العمليات" : "Operations areas"}</i></button>
-        {navigationOpen && tabs.map(([key, number, label, description]) => <button key={key} className={tab === key ? "active" : ""} onClick={() => navigate(key)}><small>{number}</small><b>{label}</b><span>{description}</span></button>)}
-      </nav>
+    <section className={`operations-shell ${layoutFixes.scope}`}>
       <div className="operations-content">
-      {tab === "roster" && <DailyApprovalPreview />}
-      {tab === "trips" && <DailySetupWorkspace section="trips" />}
-      {tab === "birthdays" && <DailySetupWorkspace section="birthdays" />}
-      {tab === "offers" && <DailySetupWorkspace section="offers" />}
-      {tab === "stock" && <DailySetupWorkspace section="stock" />}
-      {tab === "schedule" && <ScheduleWorkspace />}
-      {tab === "daily" && <DailyWorkspace initialView="attendance" />}
-      {tab === "evaluation" && <DailyWorkspace initialView="evaluation" />}
-      {tab === "time" && <LeaveTimeWorkspace />}
-      {tab === "performance" && <PerformanceWorkspace />}
-      {tab === "employees" && <>
-      <section className="panel operations-toolbar employee-directory-toolbar">
-        <div><span className="employee-directory-eyebrow">TEAM DIRECTORY</span><h2>{text.employees}</h2><p className="muted">{employees.length} {isArabic ? "ملف موظف" : "employee profiles"}</p></div>
+
+      <PageHeader title={text.employees} description={`${employees.length} ${isArabic?"ملف موظف":"employee profiles"}`} />
+      <FilterBar>
+        <label><span>{isArabic?"البحث":localize("Search employees")}</span>
         <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder={text.search} />
-        <select aria-label={text.all} value={status} onChange={(event) => setStatus(event.target.value)}>
+        </label><label><span>{isArabic?"الحالة":localize("Status")}</span><select aria-label={text.all} value={status} onChange={(event) => setStatus(event.target.value)}>
           <option value="ALL">{text.all}</option><option value="ACTIVE">{text.active}</option>
           <option value="INACTIVE">{text.inactive}</option><option value="EXITED">{text.exited}</option>
+          <option value="ARCHIVED">{isArabic ? 'المؤرشفون' : localize("Archived")}</option>
         </select>
-        <select className="employee-directory-picker" aria-label={isArabic ? "اختيار الموظف" : "Select employee"} value={selected?.id || ""} onChange={(event) => event.target.value && openEmployee(event.target.value)} disabled={loading || !employees.length}>
+        </label><label className="ui-filter-wide"><span>{isArabic?"الموظف":localize("Employee")}</span><select className="employee-directory-picker" aria-label={isArabic ? "اختيار الموظف" : localize("Select employee")} value={selected?.id || ""} onChange={(event) => event.target.value && openEmployee(event.target.value)} disabled={loading || !employees.length || !viewDetails}>
           <option value="">{loading ? text.loading : text.select}</option>
           {employees.map((employee) => <option value={employee.id} key={employee.id}>{employee.name} · {employee.hrisNumber || employee.localEmployeeCode || employee.jobTitle || "—"}</option>)}
         </select>
-        <button onClick={loadEmployees}>{text.refresh}</button>
-      </section>
-      {error && <div className="alert danger">{error}</div>}
+        </label><ActionButton onClick={loadEmployees}>{text.refresh}</ActionButton>
+        {selected && !preview && (status === 'ARCHIVED' ? canRestore : canRemove) && <ActionButton className={status === 'ARCHIVED' ? 'secondary' : 'danger'} onClick={() => setRemovalTarget({ ...selected, restore: status === 'ARCHIVED' })}>{status === 'ARCHIVED' ? (isArabic ? 'استعادة الموظف' : 'Restore employee') : (isArabic ? 'حذف الموظف' : 'Delete employee')}</ActionButton>}
+      </FilterBar>
+      <OperationalError error={error}/>
+      {notice && <p role="status" className="alert success">{notice}</p>}
+      {removalTarget && <EmployeeRemovalDialog employee={removalTarget} restore={removalTarget.restore} onClose={() => setRemovalTarget(null)} onSaved={result => {
+        ++employeeRequest.current; requestedEmployeeId.current=''; updateSelected(null); setRemovalTarget(null);
+        setNotice(result.outcome === 'deleted' ? (isArabic ? 'تم حذف الموظف بدون سجلات مرتبطة.' : 'Employee deleted; no related records existed.') : result.outcome === 'archived' ? (isArabic ? 'تمت أرشفة الموظف وإخفاؤه من القائمة. سجلاته وملفاته محفوظة.' : 'Employee archived and hidden; records and files preserved.') : (isArabic ? 'تمت استعادة الموظف بحالته السابقة.' : 'Employee restored with their previous status.'));
+        loadEmployees();
+      }} />}
       <section className="operations-profile employee-directory-profile">
         {selected && <Employee360View key={selected.id} employee={selected} onReload={() => openEmployee(selected.id)} />}
         {!selected && <div className="panel muted">{loading ? text.loading : employees.length ? text.select : text.noData}</div>}
       </section>
-      </>}
       </div>
     </section>
   );
 }
+

@@ -1,3 +1,4 @@
+import { withAccountAccess } from '@/lib/accounts/routes';
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { authorizeApi } from "@/lib/api-auth";
@@ -30,7 +31,7 @@ function serializeWinner(competition, branchCode) {
   };
 }
 
-export async function GET(request) {
+async function GETHandler(request) {
   const { error } = await authorizeApi("OPS_EOTM_READ");
   if (error) return error;
   const requestedYear = new URL(request.url).searchParams.get("year");
@@ -53,3 +54,5 @@ export async function GET(request) {
   const allYears = await prisma.opsEotmCompetition.findMany({ where: { status: "LOCKED", winnerEmployeeId: { not: null } }, distinct: ["year"], select: { year: true }, orderBy: { year: "desc" } });
   return NextResponse.json({ success: true, currentWinner: winners[0] || null, winners, years: allYears.map((item) => item.year), artworkConfig, branch: branchConfig });
 }
+
+export const GET=withAccountAccess(GETHandler);

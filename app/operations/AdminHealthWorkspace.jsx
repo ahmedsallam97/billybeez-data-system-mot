@@ -1,4 +1,5 @@
 "use client";
+import ActionButton from "@/app/ActionButton";
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
@@ -20,8 +21,9 @@ export default function AdminHealthWorkspace() {
     <section className="grid three metrics"><article className="card metric"><div className="label">{isArabic ? "سلامة قاعدة البيانات" : "Database integrity"}</div><div className="value">{data?.database.integrity || "..."}</div></article><article className="card metric"><div className="label">{isArabic ? "حجم القاعدة" : "Database size"}</div><div className="value">{data?.database?.sizeBytes == null ? (data ? "Managed" : "...") : `${(data.database.sizeBytes / 1024 / 1024).toFixed(1)} MB`}</div></article><article className="card metric"><div className="label">{isArabic ? "نسخ احتياطية" : "Backups"}</div><div className="value">{data?.localOnly ? (data?.backups.length ?? "...") : (isArabic ? "خارجي" : "External")}</div></article></section>
     <section className="grid two admin-health-layout">
       <article className="panel"><h2>{isArabic ? "النسخ الاحتياطية المحلية" : "Local backups"}</h2>{data?.backups.map((backup) => <div className="row" key={backup.name}><b>{backup.name}</b><span>{(backup.sizeBytes / 1024 / 1024).toFixed(1)} MB</span></div>)}</article>
-      <article className="panel"><h2>{isArabic ? "الإدارة" : "Administration"}</h2><p className="muted">{isArabic ? "إدارة المستخدمين والصلاحيات والإعدادات والتدقيق تظل ضمن واجهة المدير الحالية." : "Users, permissions, settings, audit, backup and restore stay in the existing Manager interface."}</p><div className="actions"><Link className="button-link" href="/manager">{isArabic ? "فتح واجهة المدير" : "Open Manager"}</Link><button onClick={load}>{isArabic ? "إعادة فحص السلامة" : "Run health check"}</button></div></article>
+      <article className="panel"><h2>{isArabic ? "الإدارة" : "Administration"}</h2><p className="muted">{isArabic ? "لوحة العمليات والإعدادات وسجل التغييرات." : "Operations dashboard, settings and change history."}</p><div className="actions"><Link className="button-link" href="/opmanager">{isArabic ? "لوحة العمليات" : "Operations dashboard"}</Link><Link className="button-link" href="/settings?tab=safety">{isArabic ? "السجل والسلامة" : "Audit and safety"}</Link><ActionButton onClick={load}>{isArabic ? "إعادة فحص السلامة" : "Run health check"}</ActionButton></div></article>
     </section>
     <section className="panel operations-audit-feed"><div className="operations-profile-head"><div><h2>{isArabic ? "آخر تغييرات التشغيل" : "Latest operations changes"}</h2><span>{isArabic ? "من سجل التدقيق الفعلي" : "From the real audit trail"}</span></div></div>{data?.recentOperations?.length ? data.recentOperations.map((item) => <div className="row" key={item.id}><span><b>{item.summary}</b><small>{item.action} · {item.user}</small></span><time>{new Intl.DateTimeFormat(isArabic ? "ar-EG" : "en", { dateStyle: "medium", timeStyle: "short" }).format(new Date(item.createdAt))}</time></div>) : <p className="muted">{isArabic ? "لا توجد تغييرات تشغيلية مسجلة" : "No operational changes recorded"}</p>}</section>
   </section>;
 }
+

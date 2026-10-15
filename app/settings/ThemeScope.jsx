@@ -1,0 +1,7 @@
+"use client";
+import { useI18n } from '../i18n';
+const COLORS={classic:'#59317a',blue:'#126a9c',orange:'#b84f0a',red:'#a62948'};
+export default function ThemeScope({ template=false }) {
+ const {theme,labelTheme,isArabic:ar,toggleTheme}=useI18n();
+ return <section className="ui-theme-scope"><div><b>{ar?'سمة واجهتك الشخصية':'Your personal interface theme'} · {labelTheme(theme)}</b><p>{ar?'تفضيل للواجهة في هذا المتصفح، يُطبق فور تغييره.':'An interface preference in this browser, applied immediately.'}</p><button type="button" className="secondary" onClick={toggleTheme}>{ar?'تغيير سمة الواجهة':'Change interface theme'}</button></div><div><b>{template?(ar?'ألوان قالب الطباعة':'Print template colors'):(ar?'ألوان هوية لوحة العمليات':'Operations dashboard brand colors')}</b><p>{template?(ar?'ألوان مشتركة لهذا القالب والملفات المطبوعة بعد حفظ القسم. ألوان مخزون البريسلت تظل من الصنف المختار.':'Shared colors for this template and printed files after saving its section. Bracelet stock colors remain the selected variant’s actual colors.'):(ar?'إعداد مشترك للعناوين والبطاقات في لوحة العمليات؛ يحتاج حفظ إعدادات الواجهة.':'Shared dashboard heading and card accents; apply them by saving UI settings.')}</p></div><div className="ui-theme-mini-preview" style={{'--sample-color':COLORS[theme]}} aria-label={ar?'معاينة سمة الواجهة الحالية':'Current interface theme preview'}><strong>{ar?'واجهة شخصية':'Personal interface'}</strong><span>{ar?'عنوان · بيانات · إجراء':'Heading · record · action'}</span><i aria-hidden="true"/>{labelTheme(theme)}</div></section>;
+}

@@ -1,16 +1,19 @@
+import { withAccountAccess } from '@/lib/accounts/routes';
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { authorizeApi } from "@/lib/api-auth";
 import { serializeOperationsEmployee } from "@/lib/operations/employees";
+import { archiveWhere } from "@/lib/operations/employee-removal";
 
-export async function GET(request) {
+async function GETHandler(request) {
   const { error } = await authorizeApi("OPS_EMPLOYEE_READ");
   if (error) return error;
 
   const { searchParams } = new URL(request.url);
   const query = String(searchParams.get("q") || "").trim();
   const status = searchParams.get("status");
-  const where = {};
+  const archived = status === 'ARCHIVED';
+  const where = { employmentEvents: archived ? { some: archiveWhere } : { none: archiveWhere } };
   if (status === "ACTIVE") where.active = true;
   if (status === "INACTIVE") where.active = false;
   if (status === "EXITED") where.employmentStatus = "EXITED";
@@ -43,7 +46,10 @@ export async function GET(request) {
     success: true,
     employees: employees.map((employee) => ({
       ...serializeOperationsEmployee(employee),
+      archived,
       counts: employee._count,
     })),
   });
 }
+
+export const GET=withAccountAccess(GETHandler);

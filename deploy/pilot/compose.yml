@@ -1,0 +1,116 @@
+name: operations-pilot
+services:
+  app:
+    image: operations-pilot:${RELEASE_REVISION:?Set the reviewed release revision}
+    build:
+      context: ../..
+      dockerfile: deploy/pilot/Dockerfile
+      args:
+        RELEASE_REVISION: ${RELEASE_REVISION:?Set the reviewed release revision}
+    restart: unless-stopped
+    init: true
+    env_file: ${PILOT_SECRETS_DIR:?Set an absolute secrets directory}/app.env
+    environment:
+      DEPLOYMENT_STAGE: pilot
+      DATABASE_PROVIDER: sqlite
+      DATABASE_URL: file:/data/database/operations.db
+      EMPLOYEE_FILE_STORAGE_PROVIDER: local
+      EMPLOYEE_FILE_STORAGE_ROOT: /data/employee-files
+      COOKIE_SECURE: "true"
+      AUTH_COOKIE_NAME: __Host-billybeez_pilot
+    volumes:
+      - type: bind
+        source: ${PILOT_DATA_DIR:?Set a verified restored data generation}
+        target: /data
+        bind:
+          create_host_path: false
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=128m
+      - /app/.next/cache:rw,nosuid,size=128m,uid=1000,gid=1000
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    stop_grace_period: 30s
+    healthcheck:
+      test: [CMD, node, -e, "fetch('http://127.0.0.1:3000/login').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 10s
+      start_period: 45s
+      retries: 3
+    logging:
+      driver: json-file
+      options: { max-size: 10m, max-file: "3" }
+  performance-worker:
+    image: operations-pilot:${RELEASE_REVISION:?Set the reviewed release revision}
+    profiles: [performance-worker]
+    restart: unless-stopped
+    init: true
+    env_file: ${PILOT_SECRETS_DIR:?Set an absolute secrets directory}/app.env
+    environment:
+      DEPLOYMENT_STAGE: pilot
+      DATABASE_PROVIDER: sqlite
+      DATABASE_URL: file:/data/database/operations.db
+      EMPLOYEE_FILE_STORAGE_PROVIDER: local
+      EMPLOYEE_FILE_STORAGE_ROOT: /data/employee-files
+      COOKIE_SECURE: "true"
+      OPS_PERFORMANCE_WORKER_ENABLED: "1"
+    command: [node, deploy/pilot/performance-worker.cjs]
+    volumes:
+      - type: bind
+        source: ${PILOT_DATA_DIR:?Set a verified restored data generation}
+        target: /data
+        bind: { create_host_path: false }
+    read_only: true
+    tmpfs: ["/tmp:rw,noexec,nosuid,size=128m,uid=1000,gid=1000"]
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    stop_grace_period: 45s
+    depends_on:
+      app: { condition: service_healthy }
+    logging:
+      driver: json-file
+      options: { max-size: 10m, max-file: "3" }
+  gateway:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    env_file: ${PILOT_SECRETS_DIR:?Set an absolute secrets directory}/gateway.env
+    environment:
+      PILOT_HOST: ${PILOT_HOST:?Set the approved public hostname}
+      ACME_EMAIL: ${ACME_EMAIL:?Set the owner's certificate contact email}
+    ports: ["80:80", "443:443"]
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      app: { condition: service_healthy }
+    logging:
+      driver: json-file
+      options: { max-size: 10m, max-file: "3" }
+  backup:
+    image: operations-pilot:${RELEASE_REVISION:?Set the reviewed release revision}
+    profiles: [maintenance]
+    env_file: ${PILOT_SECRETS_DIR:?Set an absolute secrets directory}/backup.env
+    environment:
+      RELEASE_REVISION: ${RELEASE_REVISION}
+    command: [node, deploy/pilot/backup-job.cjs]
+    volumes:
+      - type: bind
+        source: ${PILOT_DATA_DIR:?Set a verified restored data generation}
+        target: /data
+        # SQLite read-only connections may need to initialize WAL shared-memory
+        # sidecars after a fresh start. The job opens the DB read-only; backup.sh
+        # stops the app first. Do not mount this directory read-only.
+        bind: { create_host_path: false }
+      - type: bind
+        source: ${PILOT_BACKUP_DIR:?Set a persistent backup directory}
+        target: /backups
+        bind: { create_host_path: false }
+      - ${PILOT_SECRETS_DIR}/backup.key:/run/secrets/backup.key:ro
+    read_only: true
+    tmpfs: ["/tmp:rw,noexec,nosuid,size=768m,uid=1000,gid=1000"]
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+volumes:
+  caddy_data:
+  caddy_config:

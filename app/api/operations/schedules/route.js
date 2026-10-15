@@ -1,147 +1,143 @@
+import { withAccountAccess } from '@/lib/accounts/routes';
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
-import { authorizeApi } from "@/lib/api-auth";
-import { writeAudit } from "@/lib/audit";
-import { datesInPeriod, getOperationalSchedulePeriod, normalizeScheduleCode } from "@/lib/operations/schedule";
-import readXlsxFile from "read-excel-file/node";
+import { authorizeApi, loadRoleMatrix } from "@/lib/api-auth";
+import { ScheduleInputError, validatePeriod, validateWorkDate } from "@/lib/operations/schedule-input";
+import { getOperationalSchedulePeriod } from "@/lib/operations/schedule";
+import { scheduleBranch, readScheduleState, assertScheduleBranch, writeScheduleState, scheduleEmployees, employeeScope, completeOrder } from "@/lib/operations/schedule-state";
+import { configuredCodes, assignmentFor } from "@/lib/operations/schedule-import";
+import { dryRun, applyImport, restoreSnapshot } from "@/lib/operations/schedule-import-service";
 
 function periodFromParams(searchParams) {
   const now = new Date();
   const year = Number(searchParams.get("year") || now.getFullYear());
   const month = Number(searchParams.get("month") || now.getMonth() + 1);
-  if (!Number.isInteger(year) || year < 2020 || year > 2100 || !Number.isInteger(month) || month < 1 || month > 12) throw new Error("Invalid schedule period");
-  return { year, month };
+  return validatePeriod(year, month);
 }
 
-function lookupKey(value) { return String(value ?? "").trim().replace(/\s+/g, " ").toLowerCase(); }
-function importedHeaderDate(value, schedule, periodDates) {
-  if (value instanceof Date && !Number.isNaN(value.getTime())) {
-    const iso = value.toISOString().slice(0, 10); return periodDates.includes(iso) ? iso : null;
-  }
-  const text = String(value ?? "").trim();
-  if (/^\d{4}-\d{2}-\d{2}$/.test(text)) return periodDates.includes(text) ? text : null;
-  const dateMatch = text.match(/^(\d{1,2})[\/-](\d{1,2})[\/-](\d{2,4})$/);
-  if (dateMatch) {
-    const year = Number(dateMatch[3]) < 100 ? 2000 + Number(dateMatch[3]) : Number(dateMatch[3]);
-    const candidates = [`${year}-${String(dateMatch[2]).padStart(2, "0")}-${String(dateMatch[1]).padStart(2, "0")}`, `${year}-${String(dateMatch[1]).padStart(2, "0")}-${String(dateMatch[2]).padStart(2, "0")}`];
-    return candidates.find((item) => periodDates.includes(item)) || null;
-  }
-  const dayMatch = text.match(/(?:^|\D)([1-9]|[12]\d|3[01])(?:\D|$)/); const day = Number(dayMatch?.[1] || (typeof value === "number" ? value : 0));
-  if (day >= 1 && day <= 31) return periodDates.find((item) => Number(item.slice(-2)) === day) || null;
-  return null;
+function failure(error) {
+  const conflict = ["P2002", "P2025", "P2034", "P1008", "P2028"].includes(error.code);
+  const status = error.status || (conflict ? 409 : 500);
+  if (status === 500) console.error("Schedule request failed", error.code || error.name);
+  return NextResponse.json({ success: false, error: status === 500 ? "Schedule request failed. Please retry." : conflict ? "Schedule changed while saving. Reload and retry." : error.message }, { status });
 }
-
-export async function GET(request) {
-  const { error } = await authorizeApi("OPS_SCHEDULE_READ");
+async function jsonBody(request) { try { const body = await request.json(); if (!body || typeof body !== "object" || Array.isArray(body)) throw new Error(); return body; } catch { throw new ScheduleInputError("Invalid JSON request"); } }
+async function audit(tx, user, action, summary, metadata) { await tx.auditLog.create({ data: { action, userId: user.id, summary, metadata: JSON.stringify(metadata) } }); }
+async function requireSchedule(tx, id, draftOnly = false) {
+  const schedule = await tx.opsSchedule.findUnique({ where: { id: String(id || "") }, include: { assignments: true } });
+  if (!schedule) throw new ScheduleInputError("Schedule not found", 404);
+  if (draftOnly && schedule.status !== "DRAFT") throw new ScheduleInputError("Only draft schedules can be changed", 409);
+  return schedule;
+}
+async function GETHandler(request) {
+  const { user, error } = await authorizeApi("OPS_SCHEDULE_READ");
   if (error) return error;
   try {
     const { year, month } = periodFromParams(new URL(request.url).searchParams);
-    const schedules = await prisma.opsSchedule.findMany({
+    const branch=await scheduleBranch(prisma,user,new URL(request.url).searchParams.get("branch"));
+    let schedules = await prisma.opsSchedule.findMany({
       where: { operationalYear: year, operationalMonth: month },
-      include: { assignments: { where: { employee: { department: { in: ["OPERATION", "CASHIER"] } } }, include: { employee: { select: { id: true, name: true, nameEn: true, hrisNumber: true, localEmployeeCode: true, department: true } } }, orderBy: [{ employee: { name: "asc" } }, { workDate: "asc" }] } },
+      include: { assignments: { where: { employee: await employeeScope(prisma,branch) }, include: { employee: { select: { id: true, name: true, nameEn: true, hrisNumber: true, localEmployeeCode: true, department: true, jobTitle:true, branch:true } } }, orderBy: [{ employee: { name: "asc" } }, { workDate: "asc" }] } },
       orderBy: { version: "desc" },
     });
     const requestedId = new URL(request.url).searchParams.get("scheduleId");
+    if (requestedId && !schedules.some(item => item.id === requestedId)) throw new ScheduleInputError("Schedule not found in this period", 404);
+    const employees=await scheduleEmployees(prisma,branch);
+    const states=await Promise.all(schedules.map(schedule=>readScheduleState(prisma,schedule.id)));
+    schedules=schedules.filter((schedule,index)=>states[index].state.branch===branch).map(schedule=>{const state=states.find(item=>item.row?.key===`OPS_SCHEDULE_STATE:${schedule.id}`)?.state || {branch,revision:0,displayOrder:[]};return {...schedule,state,displayOrder:completeOrder([...employees,...schedule.assignments.map(item=>item.employee)],state.displayOrder)};});
+    if(requestedId&&!schedules.some(item=>item.id===requestedId))throw new ScheduleInputError("Schedule not found in branch",404);
     const schedule = (requestedId ? schedules.find((item) => item.id === requestedId) : null) || schedules.find((item) => item.status === "DRAFT") || schedules.find((item) => item.status === "PUBLISHED") || schedules[0] || null;
-    return NextResponse.json({ success: true, period: getOperationalSchedulePeriod(year, month), versions: schedules.map(({ assignments, ...item }) => ({ ...item, assignmentCount: assignments.length })), schedule });
+    const branches=!user.profile?.allBranches?user.profile?.branches||[branch]:[...new Set([branch,...(await prisma.employee.findMany({where:{active:true,branch:{not:null}},select:{branch:true},distinct:["branch"]})).map(item=>item.branch)])];
+    const snapshots=schedule?(await prisma.systemSetting.findMany({where:{key:{startsWith:"OPS_SCHEDULE_SNAPSHOT:"}}})).map(row=>JSON.parse(row.value)).filter(item=>item.scheduleId===schedule.id&&item.branch===branch).map(({id,createdAt,importId})=>({id,createdAt,importId})).sort((a,b)=>b.createdAt.localeCompare(a.createdAt)):[];
+    return NextResponse.json({ success: true, branch, branches, snapshots, codes:await configuredCodes(prisma), canManage:Boolean(user.permissions?.['schedules.edit'] || user.permissions?.['schedules.create']), canPublish:Boolean(user.permissions?.['schedules.publish']), employees, period: getOperationalSchedulePeriod(year, month), versions: schedules.map(({ assignments, ...item }) => ({ ...item, assignmentCount: assignments.length })), schedule });
   } catch (requestError) {
-    return NextResponse.json({ success: false, error: requestError.message }, { status: 400 });
+    return failure(requestError);
   }
 }
 
-export async function PATCH(request) {
+async function PATCHHandler(request) {
   const { user, error } = await authorizeApi("OPS_SCHEDULE_MANAGE");
   if (error) return error;
-  const body = await request.json();
-  const schedule = await prisma.opsSchedule.findUnique({ where: { id: String(body.scheduleId || "") } });
-  if (!schedule) return NextResponse.json({ success: false, error: "Schedule not found" }, { status: 404 });
-  if (schedule.status !== "DRAFT") return NextResponse.json({ success: false, error: "Only draft schedules can be edited" }, { status: 409 });
-  const normalized = normalizeScheduleCode(body.value);
-  if (normalized.error || !normalized.code) return NextResponse.json({ success: false, error: normalized.error || "Schedule code is required" }, { status: 400 });
-  const employee = await prisma.employee.findFirst({ where: { id: String(body.employeeId || ""), department: { in: ["OPERATION", "CASHIER"] }, active: true }, select: { id: true } });
-  const workDate = String(body.workDate || "");
-  if (!employee || workDate < schedule.periodStart || workDate > schedule.periodEnd) return NextResponse.json({ success: false, error: "Invalid employee or work date" }, { status: 400 });
-  const assignment = await prisma.opsScheduleAssignment.upsert({
-    where: { scheduleId_employeeId_workDate: { scheduleId: schedule.id, employeeId: employee.id, workDate } },
-    update: { code: normalized.code, shiftCode: normalized.countsAsWorking ? normalized.code : null, source: "MANUAL", importRawValue: normalized.rawValue, importMetadata: normalized.metadata ? JSON.stringify(normalized.metadata) : null },
-    create: { scheduleId: schedule.id, employeeId: employee.id, workDate, code: normalized.code, shiftCode: normalized.countsAsWorking ? normalized.code : null, source: "MANUAL", importRawValue: normalized.rawValue, importMetadata: normalized.metadata ? JSON.stringify(normalized.metadata) : null },
-  });
-  await writeAudit({ action: "OPS_SCHEDULE_CELL_UPDATED", user, summary: `Updated schedule cell for ${workDate}`, metadata: { scheduleId: schedule.id, employeeId: employee.id, code: normalized.code } });
-  return NextResponse.json({ success: true, assignment });
+  try {
+    const body = await jsonBody(request);
+    const branch=await scheduleBranch(prisma,user,body.branch);
+    let data;try{data=assignmentFor(body.value,await configuredCodes(prisma));}catch(error){throw new ScheduleInputError(error.message);}
+    const saved = await prisma.$transaction(async tx => {
+      const schedule = await requireSchedule(tx, body.scheduleId, true);
+      const previousState=await assertScheduleBranch(tx,schedule,branch);
+      const workDate = validateWorkDate(body.workDate, schedule);
+      const employee=(await scheduleEmployees(tx,branch)).find(item=>item.id===String(body.employeeId||""));
+      if (!employee) throw new ScheduleInputError("Invalid operational employee");
+      const previous=await tx.opsScheduleAssignment.findUnique({where:{scheduleId_employeeId_workDate:{scheduleId:schedule.id,employeeId:employee.id,workDate}}});
+      if(Object.hasOwn(body,"expectedUpdatedAt") && (previous?.updatedAt?.toISOString()||null)!==body.expectedUpdatedAt)throw new ScheduleInputError("This cell changed. Reload before editing it.",409);
+      const result = await tx.opsScheduleAssignment.upsert({ where: { scheduleId_employeeId_workDate: { scheduleId: schedule.id, employeeId: employee.id, workDate } }, update: { ...data, source: "MANUAL", manualLock:true }, create: { scheduleId: schedule.id, employeeId: employee.id, workDate, ...data, source: "MANUAL", manualLock:true } });
+      await audit(tx, user, "OPS_SCHEDULE_CELL_UPDATED", "Updated schedule cell", { scheduleId: schedule.id, employeeId: employee.id, workDate, code: data.code });
+      const state=await writeScheduleState(tx,schedule.id,previousState,previousState.state,user.id);
+      return {assignment:result,state};
+    });
+    return NextResponse.json({ success: true, ...saved });
+  } catch (error) { return failure(error); }
 }
 
-export async function POST(request) {
-  if (String(request.headers.get("content-type") || "").includes("multipart/form-data")) {
-    const { user, error } = await authorizeApi("OPS_SCHEDULE_MANAGE"); if (error) return error;
-    try {
-      const form = await request.formData(); const scheduleId = String(form.get("scheduleId") || ""); const file = form.get("file");
-      if (!file || typeof file.arrayBuffer !== "function") throw new Error("Choose an XLSX roster file");
-      const schedule = await prisma.opsSchedule.findUnique({ where: { id: scheduleId } });
-      if (!schedule || schedule.status !== "DRAFT") throw new Error("Import is allowed into a draft only");
-      const rows = await readXlsxFile(Buffer.from(await file.arrayBuffer())); if (rows.length < 2) throw new Error("The workbook has no roster rows");
-      const periodDates = datesInPeriod({ startDate: schedule.periodStart, endDate: schedule.periodEnd });
-      const headerCandidates = rows.slice(0, 20).map((row, rowIndex) => ({ rowIndex, columns: row.map((value, columnIndex) => ({ columnIndex, workDate: importedHeaderDate(value, schedule, periodDates) })).filter((item) => item.workDate) })).sort((a, b) => b.columns.length - a.columns.length);
-      const detectedHeader = headerCandidates[0];
-      if (!detectedHeader || detectedHeader.columns.length < 2) throw new Error("Could not detect roster dates. Use date cells or day numbers within the selected operational month");
-      const employees = await prisma.employee.findMany({ where: { department: { in: ["OPERATION", "CASHIER"] }, active: true }, select: { id: true, name: true, nameEn: true, hrisNumber: true, localEmployeeCode: true } });
-      const lookup = new Map(employees.flatMap((employee) => [employee.name, employee.nameEn, employee.hrisNumber, employee.localEmployeeCode].filter(Boolean).map((value) => [lookupKey(value), employee])));
-      const imported = []; const unmatchedRows = []; const invalidCells = [];
-      const dateColumnSet = new Set(detectedHeader.columns.map((item) => item.columnIndex));
-      for (const [offset, row] of rows.slice(detectedHeader.rowIndex + 1).entries()) {
-        const identityValues = row.map((value, index) => dateColumnSet.has(index) ? null : value).filter((value) => value !== null && value !== undefined && String(value).trim());
-        const employee = identityValues.map((value) => lookup.get(lookupKey(value))).find(Boolean);
-        if (!employee) { if (identityValues.length) unmatchedRows.push({ row: detectedHeader.rowIndex + offset + 2, identity: String(identityValues[0]).slice(0, 80) }); continue; }
-        for (const { columnIndex, workDate } of detectedHeader.columns) {
-          const normalized = normalizeScheduleCode(row[columnIndex]);
-          if (normalized.error) { invalidCells.push({ row: detectedHeader.rowIndex + offset + 2, workDate, value: normalized.rawValue }); continue; }
-          if (!normalized.code) continue;
-          imported.push({ scheduleId: schedule.id, employeeId: employee.id, workDate, code: normalized.code, shiftCode: normalized.countsAsWorking ? normalized.code : null, source: "IMPORT", importRawValue: normalized.rawValue, importMetadata: normalized.metadata ? JSON.stringify(normalized.metadata) : null });
-        }
+async function POSTHandler(request) {
+  try {
+    if (String(request.headers.get("content-type")||"").includes("multipart/form-data")) {
+      const {user,error}=await authorizeApi("OPS_SCHEDULE_MANAGE"); if(error)return error;
+      const form=await request.formData(),file=form.get("file");
+      if(!file||typeof file.arrayBuffer!=="function"||!/\.xlsx$/i.test(file.name)||file.size<1||file.size>8*1024*1024)throw new ScheduleInputError("Choose an XLSX workbook up to 8 MB");
+      const branch=await scheduleBranch(prisma,user,form.get("branch"));
+      return NextResponse.json({success:true,...await dryRun(prisma,user,{scheduleId:String(form.get("scheduleId")||""),branch,buffer:Buffer.from(await file.arrayBuffer()),fileName:file.name,mode:String(form.get("mode")||"merge"),overwriteLocked:form.get("overwriteLocked")==="true"})});
+    }
+    const body = await jsonBody(request);
+    const {user,error}=await authorizeApi(body.action === "publish" ? "OPS_SCHEDULE_PUBLISH" : "OPS_SCHEDULE_MANAGE"); if(error)return error;
+    const branch=await scheduleBranch(prisma,user,body.branch);
+    if(body.action==="applyImport")return NextResponse.json({success:true,...await applyImport(prisma,user,{...body,branch})});
+    if(body.action==="restoreImport")return NextResponse.json({success:true,...await restoreSnapshot(prisma,user,{...body,branch})});
+    if(body.action==="reorder"){
+      const state=await prisma.$transaction(async tx=>{
+        const schedule=await requireSchedule(tx,body.scheduleId,true),previous=await assertScheduleBranch(tx,schedule,branch);
+        if(body.expectedRevision!==previous.state.revision)throw new ScheduleInputError("Employee order changed. Reload before reordering.",409);
+        const employees=await scheduleEmployees(tx,branch,schedule.assignments.map(item=>item.employeeId)),ids=completeOrder(employees,previous.state.displayOrder);
+        if(!Array.isArray(body.displayOrder)||body.displayOrder.length!==ids.length||new Set(body.displayOrder).size!==ids.length||body.displayOrder.some(id=>!ids.includes(id)))throw new ScheduleInputError("Order must include every eligible employee exactly once");
+        const result=await writeScheduleState(tx,schedule.id,previous,{...previous.state,displayOrder:body.displayOrder},user.id);
+        await audit(tx,user,"OPS_SCHEDULE_ORDER_UPDATED","Updated schedule employee order",{scheduleId:schedule.id,branch,before:ids,after:body.displayOrder});return result;
+      });return NextResponse.json({success:true,state});
+    }
+    if (!["createBlankDraft","createRevision","publish","deleteDraft"].includes(body.action)) throw new ScheduleInputError("Unknown schedule action");
+    const schedule = await prisma.$transaction(async tx => {
+      if (body.action === "createBlankDraft") {
+        const {year,month} = validatePeriod(Number(body.year),Number(body.month));
+        const period = getOperationalSchedulePeriod(year,month);
+        const latest = await tx.opsSchedule.findFirst({where:{operationalYear:year,operationalMonth:month},orderBy:{version:"desc"}});
+        const created = await tx.opsSchedule.create({data:{year,month,operationalYear:year,operationalMonth:month,periodStart:period.startDate,periodEnd:period.endDate,version:(latest?.version||0)+1,status:"DRAFT",basedOnScheduleId:latest?.id||null}});
+        const prior=await readScheduleState(tx,created.id),employees=await scheduleEmployees(tx,branch);
+        await writeScheduleState(tx,created.id,prior,{...prior.state,branch,displayOrder:employees.map(item=>item.id)},user.id);
+        await audit(tx,user,"OPS_SCHEDULE_DRAFT_CREATED","Created blank schedule draft",{scheduleId:created.id}); return created;
       }
-      if (!imported.length) throw new Error("No matching operational employees or valid schedule codes were found");
-      await prisma.$transaction(imported.map((item) => prisma.opsScheduleAssignment.upsert({ where: { scheduleId_employeeId_workDate: { scheduleId: item.scheduleId, employeeId: item.employeeId, workDate: item.workDate } }, update: item, create: item })));
-      await writeAudit({ action: "OPS_SCHEDULE_IMPORTED", user, summary: `Imported ${imported.length} roster cells`, metadata: { scheduleId: schedule.id, cellCount: imported.length, fileName: file.name } });
-      return NextResponse.json({ success: true, imported: imported.length, matchedEmployees: new Set(imported.map((item) => item.employeeId)).size, unmatchedRows, invalidCells, detectedHeaderRow: detectedHeader.rowIndex + 1 });
-    } catch (importError) { return NextResponse.json({ success: false, error: importError.message }, { status: 400 }); }
-  }
-  const body = await request.json();
-  const permission = body.action === "publish" ? "OPS_SCHEDULE_PUBLISH" : "OPS_SCHEDULE_MANAGE";
-  const { user, error } = await authorizeApi(permission);
-  if (error) return error;
-  if (body.action === "createBlankDraft") {
-    const year = Number(body.year); const month = Number(body.month);
-    const period = getOperationalSchedulePeriod(year, month);
-    const latest = await prisma.opsSchedule.findFirst({ where: { operationalYear: year, operationalMonth: month }, orderBy: { version: "desc" } });
-    const created = await prisma.opsSchedule.create({ data: { year, month, operationalYear: year, operationalMonth: month, periodStart: period.startDate, periodEnd: period.endDate, version: (latest?.version || 0) + 1, status: "DRAFT", basedOnScheduleId: latest?.id || null } });
-    await writeAudit({ action: "OPS_SCHEDULE_DRAFT_CREATED", user, summary: `Created blank schedule draft ${year}-${month} v${created.version}`, metadata: { scheduleId: created.id } });
-    return NextResponse.json({ success: true, schedule: created }, { status: 201 });
-  }
-  const sourceSchedule = await prisma.opsSchedule.findUnique({ where: { id: String(body.scheduleId || "") }, include: { assignments: true } });
-  if (!sourceSchedule) return NextResponse.json({ success: false, error: "Schedule not found" }, { status: 404 });
-  if (body.action === "createRevision") {
-    const latest = await prisma.opsSchedule.findFirst({ where: { operationalYear: sourceSchedule.operationalYear, operationalMonth: sourceSchedule.operationalMonth }, orderBy: { version: "desc" } });
-    const created = await prisma.$transaction(async (tx) => {
-      const revision = await tx.opsSchedule.create({ data: { year: sourceSchedule.year, month: sourceSchedule.month, operationalYear: sourceSchedule.operationalYear, operationalMonth: sourceSchedule.operationalMonth, periodStart: sourceSchedule.periodStart, periodEnd: sourceSchedule.periodEnd, version: (latest?.version || 0) + 1, status: "DRAFT", basedOnScheduleId: sourceSchedule.id } });
-      if (sourceSchedule.assignments.length) await tx.opsScheduleAssignment.createMany({ data: sourceSchedule.assignments.map((item) => ({ scheduleId: revision.id, employeeId: item.employeeId, workDate: item.workDate, code: item.code, shiftCode: item.shiftCode, source: "REVISION", importRawValue: item.importRawValue, importMetadata: item.importMetadata, manualLock: item.manualLock })) });
-      return revision;
+      const source = await requireSchedule(tx,body.scheduleId,body.action!=="createRevision");
+      const sourceState=await assertScheduleBranch(tx,source,branch);
+      if (body.action === "createRevision") {
+        const latest = await tx.opsSchedule.findFirst({where:{operationalYear:source.operationalYear,operationalMonth:source.operationalMonth},orderBy:{version:"desc"}});
+        const created = await tx.opsSchedule.create({data:{year:source.year,month:source.month,operationalYear:source.operationalYear,operationalMonth:source.operationalMonth,periodStart:source.periodStart,periodEnd:source.periodEnd,version:(latest?.version||0)+1,status:"DRAFT",basedOnScheduleId:source.id}});
+        if(source.assignments.length) await tx.opsScheduleAssignment.createMany({data:source.assignments.map(item=>({scheduleId:created.id,employeeId:item.employeeId,workDate:item.workDate,code:item.code,shiftCode:item.shiftCode,source:"REVISION",importRawValue:item.importRawValue,importMetadata:item.importMetadata,manualLock:item.manualLock}))});
+        await writeScheduleState(tx,created.id,await readScheduleState(tx,created.id),{...sourceState.state,branch},user.id);
+        await audit(tx,user,"OPS_SCHEDULE_REVISION_CREATED","Created schedule revision",{scheduleId:created.id,basedOn:source.id}); return created;
+      }
+      if (body.action === "publish") {
+        if(!source.assignments.length) throw new ScheduleInputError("An empty schedule cannot be published");
+        const publishedSchedules=await tx.opsSchedule.findMany({where:{operationalYear:source.operationalYear,operationalMonth:source.operationalMonth,status:"PUBLISHED"}});
+        const ids=[];for(const item of publishedSchedules)if((await readScheduleState(tx,item.id)).state.branch===branch)ids.push(item.id);
+        await tx.opsSchedule.updateMany({where:{id:{in:ids}},data:{status:"SUPERSEDED"}});
+        const published = await tx.opsSchedule.update({where:{id:source.id},data:{status:"PUBLISHED",publishedAt:new Date()}});
+        await audit(tx,user,"OPS_SCHEDULE_PUBLISHED","Published schedule revision",{scheduleId:source.id}); return published;
+      }
+      await tx.opsSchedule.delete({where:{id:source.id}});
+      await audit(tx,user,"OPS_SCHEDULE_DRAFT_DELETED","Deleted schedule draft",{scheduleId:source.id}); return null;
     });
-    await writeAudit({ action: "OPS_SCHEDULE_REVISION_CREATED", user, summary: `Created schedule revision ${created.version}`, metadata: { scheduleId: created.id, basedOn: sourceSchedule.id } });
-    return NextResponse.json({ success: true, schedule: created });
-  }
-  if (body.action === "publish") {
-    if (sourceSchedule.status !== "DRAFT") return NextResponse.json({ success: false, error: "Only a draft can be published" }, { status: 409 });
-    const published = await prisma.$transaction(async (tx) => {
-      await tx.opsSchedule.updateMany({ where: { operationalYear: sourceSchedule.operationalYear, operationalMonth: sourceSchedule.operationalMonth, status: "PUBLISHED" }, data: { status: "SUPERSEDED" } });
-      return tx.opsSchedule.update({ where: { id: sourceSchedule.id }, data: { status: "PUBLISHED", publishedAt: new Date() } });
-    });
-    await writeAudit({ action: "OPS_SCHEDULE_PUBLISHED", user, summary: `Published schedule ${published.operationalYear}-${published.operationalMonth} v${published.version}`, metadata: { scheduleId: published.id } });
-    return NextResponse.json({ success: true, schedule: published });
-  }
-  if (body.action === "deleteDraft") {
-    if (sourceSchedule.status !== "DRAFT") return NextResponse.json({ success: false, error: "Only a draft can be deleted" }, { status: 409 });
-    await prisma.opsSchedule.delete({ where: { id: sourceSchedule.id } });
-    await writeAudit({ action: "OPS_SCHEDULE_DRAFT_DELETED", user, summary: `Deleted schedule draft ${sourceSchedule.version}`, metadata: { scheduleId: sourceSchedule.id } });
-    return NextResponse.json({ success: true });
-  }
-  return NextResponse.json({ success: false, error: "Unknown schedule action" }, { status: 400 });
+    return NextResponse.json({success:true,...(schedule?{schedule}:{})},{status:body.action==="createBlankDraft"?201:200});
+  } catch(error) { return failure(error); }
 }
+
+export const GET=withAccountAccess(GETHandler);
+export const PATCH=withAccountAccess(PATCHHandler);
+export const POST=withAccountAccess(POSTHandler);

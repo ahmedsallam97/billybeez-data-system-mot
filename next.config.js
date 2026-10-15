@@ -1,6 +1,7 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
+  distDir: process.env.OPS_NEXT_DIST_DIR || ".next",
   devIndicators: false,
   async headers() {
     return [

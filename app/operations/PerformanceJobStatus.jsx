@@ -1,0 +1,10 @@
+'use client';
+import {PermissionButton} from '@/app/account/PermissionControls';
+import {useState,useEffect} from 'react';
+export default function PerformanceJobStatus({ar}){
+  const [data,setData]=useState(null),[busy,setBusy]=useState(false),[error,setError]=useState('');
+  async function load(){const response=await fetch('/api/operations/performance-jobs');const result=await response.json();if(!response.ok)throw new Error(result.error);setData(result);}
+  useEffect(()=>{load().catch(e=>setError(e.message));},[]);
+  async function run(){setBusy(true);setError('');try{const response=await fetch('/api/operations/performance-jobs',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({branch:data?.branch})});const result=await response.json();if(!response.ok)throw new Error(result.error);if(result.busy)throw new Error(ar?'هناك مهمة تعمل بالفعل':'A recalculation job is already running');await load();}catch(e){setError(e.message);}finally{setBusy(false);}}
+  return <section style={{display:'grid',gap:8,marginBlock:16}}><div style={{display:'flex',gap:12,alignItems:'center',flexWrap:'wrap'}}><b>{ar?'إعادة الحساب الآلية':'Automatic recalculation'}</b><span>{data?.backgroundEnabled?(ar?'العامل الخلفي مفعل':'Background worker enabled'):(ar?'تشغيل الخلفية لم يُفعل بعد':'Background worker not enabled yet')}</span><PermissionButton permission={"appraisals.approve"} type="button" className="secondary" disabled={busy} onClick={run}>{ar?'تشغيل القواعد المجدولة الآن':'Run configured recalculation now'}</PermissionButton></div>{error&&<p role="alert">{error}</p>}{data?.lastRun&&<details><summary>{ar?'آخر تشغيل':'Last run'} · {new Date(data.lastRun.completedAt).toLocaleString(ar?'ar-EG':'en-GB')} · {data.lastRun.errors.length} {ar?'ملاحظات':'issues'}</summary><p>{data.lastRun.suitability.length} {ar?'نتائج ملاءمة':'suitability snapshots'} · {data.lastRun.appraisals.length} {ar?'مسودات تقييم':'appraisal drafts'}</p>{data.lastRun.errors.map((item,i)=><p key={i}>{item.employeeId} · {item.profile||item.period} · {item.error}</p>)}</details>}</section>;
+}

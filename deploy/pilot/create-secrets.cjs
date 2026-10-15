@@ -1,0 +1,15 @@
+const fs = require('node:fs');
+const path = require('node:path');
+const { randomBytes } = require('node:crypto');
+const bcrypt = require('bcryptjs');
+const dir = path.resolve(process.argv[2] || '');
+if (!process.argv[2] || fs.existsSync(dir)) throw new Error('Provide a NEW private secrets directory; existing secrets are never overwritten');
+fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
+const write = (name, value) => fs.writeFileSync(path.join(dir, name), value, { flag: 'wx', mode: 0o600 });
+const password = randomBytes(24).toString('base64url');
+write('app.env', 'SESSION_SECRET=' + randomBytes(48).toString('hex') + '\n');
+write('gateway.env', "PILOT_GATE_USER=pilot\nPILOT_GATE_HASH='" + bcrypt.hashSync(password, 12) + "'\n");
+write('pilot-access.txt', 'HTTPS pilot gate username: pilot\nPassword: ' + password + '\nKeep in the company password manager; do not paste into chat or Git.\n');
+write('backup.key', randomBytes(32).toString('hex') + '\n');
+write('backup.env', fs.readFileSync(path.join(__dirname, 'backup.env.example')));
+console.log('Private secrets created in the requested directory. No secret values were printed. Keep a separate offline copy of backup.key before deployment.');

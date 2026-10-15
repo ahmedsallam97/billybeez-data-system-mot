@@ -1,0 +1,11 @@
+[Unit]
+Description=Verified encrypted Operations pilot backup and restore rehearsal
+Requires=docker.service
+After=docker.service
+RequiresMountsFor=/srv/operations-data
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/bash /opt/operations-pilot/current/deploy/pilot/backup.sh
+TimeoutStartSec=300
+UMask=0077

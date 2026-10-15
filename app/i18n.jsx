@@ -1,7 +1,9 @@
 "use client";
 
-import { createContext, useContext, useEffect, useMemo, useState } from "react";
+import { createContext, useContext, useEffect, useLayoutEffect, useMemo, useState } from "react";
+import { readPreferences, applyPreferences, savePreferences } from "@/lib/ui-preferences";
 import { formatCairoDateTime } from "./dateTime";
+import uiCopy from '@/lib/ui-copy';
 
 const dictionaries = {
   en: {
@@ -28,6 +30,7 @@ const dictionaries = {
     "title.kitchen": "Restaurant Interface",
     "title.manager": "Manager Interface",
     "title.operations": "Operations Management",
+    "title.settings": "Operations settings",
     "role.ADMIN": "Admin",
     "role.MANAGER": "Manager",
     "role.CASHIER": "Data",
@@ -833,6 +836,7 @@ const dictionaries = {
     "title.kitchen": "واجهة المطعم",
     "title.manager": "واجهة المدير",
     "title.operations": "إدارة العمليات",
+    "title.settings": "إعدادات العمليات",
     "role.ADMIN": "أدمن",
     "role.MANAGER": "مدير",
     "role.CASHIER": "الداتا",
@@ -1824,11 +1828,6 @@ function auditTranslation(text, t, labelMethod) {
 
 const UiContext = createContext(null);
 
-function readInitialValue(key, fallback) {
-  if (typeof window === "undefined") return fallback;
-  return window.localStorage.getItem(key) || fallback;
-}
-
 function interpolate(text, values) {
   return Object.entries(values || {}).reduce(
     (current, [key, value]) => current.replaceAll(`{${key}}`, String(value)),
@@ -1855,21 +1854,22 @@ export function UiPreferencesProvider({ children }) {
   const [theme, setTheme] = useState("classic");
   const [hydrated, setHydrated] = useState(false);
 
-  useEffect(() => {
-    setLanguage(readInitialValue("bbLanguage", "ar"));
-    setTheme(readInitialValue("bbTheme", "classic"));
-    setHydrated(true);
+  useLayoutEffect(() => {
+    let storage; try { storage = window.localStorage; } catch { /* Optional preference storage. */ }
+    const preferences = readPreferences(storage);
+    setLanguage(preferences.language); setTheme(preferences.theme); setHydrated(true);
+    const sync = event => {
+      if (!["bbLanguage", "bbTheme", null].includes(event.key)) return;
+      const next = readPreferences(storage); setLanguage(next.language); setTheme(next.theme);
+    };
+    window.addEventListener("storage", sync);
+    return () => window.removeEventListener("storage", sync);
   }, []);
-
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (!hydrated) return;
+    const preferences = { language, theme };
+    applyPreferences(document.documentElement, preferences);
 
-    const dir = language === "ar" ? "rtl" : "ltr";
-    document.documentElement.lang = language;
-    document.documentElement.dir = dir;
-    document.documentElement.dataset.theme = theme;
-    window.localStorage.setItem("bbLanguage", language);
-    window.localStorage.setItem("bbTheme", theme);
   }, [language, theme, hydrated]);
 
   const value = useMemo(() => {
@@ -1913,8 +1913,9 @@ export function UiPreferencesProvider({ children }) {
       labelBusinessMessage,
       labelAudit,
       formatDateTime,
-      toggleLanguage: () => setLanguage((current) => (current === "ar" ? "en" : "ar")),
-      toggleTheme: () => setTheme((current) => nextThemeName(current)),
+      setPreferredLanguage: next => { if (!['ar','en'].includes(next)) return; try { savePreferences(window.localStorage,{language:next,theme}); } catch {} setLanguage(next); },
+      toggleLanguage: () => { const next = language === "ar" ? "en" : "ar"; try { savePreferences(window.localStorage, { language: next, theme }); } catch {} setLanguage(next); window.dispatchEvent(new CustomEvent('account-language-changed',{detail:next})); },
+      toggleTheme: () => { const next = nextThemeName(theme); try { savePreferences(window.localStorage, { language, theme: next }); } catch {} setTheme(next); },
     };
   }, [language, theme]);
 
@@ -1925,4 +1926,10 @@ export function useI18n() {
   const context = useContext(UiContext);
   if (!context) throw new Error("useI18n must be used inside UiPreferencesProvider");
   return context;
+}
+
+const interfaceArabic = Object.fromEntries(Object.entries(dictionaries.en).filter(([key,text]) => dictionaries.ar[key] && /[A-Za-z]/.test(text) && !/[\u0600-\u06ff]/.test(text)).map(([key, text]) => [text, dictionaries.ar[key]]));
+export function useUiText() {
+  const { language } = useI18n();
+  return (text) => uiCopy.translateUiCopy(text, language, interfaceArabic);
 }

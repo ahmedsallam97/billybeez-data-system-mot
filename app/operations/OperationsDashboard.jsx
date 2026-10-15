@@ -1,4 +1,5 @@
 "use client";
+import ActionButton from "@/app/ActionButton";
 
 import { useEffect, useState } from "react";
 import { useI18n } from "../i18n";
@@ -34,7 +35,8 @@ export default function OperationsDashboard({ onNavigate }) {
       <article className="panel performance-summary-card support"><header><span>{isArabic ? "أولوية دعم" : "SUPPORT PRIORITY"}</span><h2>{isArabic ? "٣ موظفين يحتاجون متابعة" : "3 employees needing support"}</h2><small>{data.performance?.source ? `${data.performance.source.month}/${data.performance.source.year}` : "—"}</small></header>{rankRows(data.performance?.needsSupport, "support")}</article>
     </section>
     <section className="panel operations-insights"><header><div><span>{isArabic ? "إنسايتس تشغيلية" : "OPERATIONAL INSIGHTS"}</span><h2>{isArabic ? "إجراءات لها تأثير الآن" : "Actions with impact now"}</h2></div></header>
-      {data.attention.length ? data.attention.map((item) => <article className={`operations-insight ${item.severity}`} key={item.code}><span>{insightText(item)}</span>{item.target && <button onClick={() => onNavigate(item.target)}>{actionText(item.target)}</button>}</article>) : <p className="muted">{isArabic ? "لا توجد مشكلة تشغيلية أو قرار معلّق يحتاج تدخلك الآن." : "No operational issue or pending decision needs attention now."}</p>}
+      {data.attention.length ? data.attention.map((item) => <article className={`operations-insight ${item.severity}`} key={item.code}><span>{insightText(item)}</span>{item.target && <ActionButton onClick={() => onNavigate(item.target)}>{actionText(item.target)}</ActionButton>}</article>) : <p className="muted">{isArabic ? "لا توجد مشكلة تشغيلية أو قرار معلّق يحتاج تدخلك الآن." : "No operational issue or pending decision needs attention now."}</p>}
     </section>
   </div>;
 }
+

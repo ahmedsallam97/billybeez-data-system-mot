@@ -1,6 +1,11 @@
 "use client";
+import { useUiText } from '@/app/i18n';
+import {PageHeader} from '../../ui/DesktopLayout';
+import {PermissionButton} from '@/app/account/PermissionControls';
+import ActionButton, { ActionLink } from '@/app/ActionButton';
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { flushSync } from 'react-dom';
 import Link from "next/link";
 import {
   formatTime12,
@@ -9,12 +14,20 @@ import {
   WORKING_SHIFTS,
 } from "@/lib/operations/roster";
 import { previewCardLines } from "@/lib/operations/daily-preview";
+import DayResponsibilities from "../DayResponsibilities";
+import RosterBraceletSelections from "../RosterBraceletSelections";
+import { rosterBracelets } from "@/lib/operations/bracelet-roster";
+import {RotationCellSelect,RotationCellDialog} from '../RotationCellControls';
+import RotationGenerationDialog from '../RotationGenerationDialog';
+import posterStyles from "./OperationsPoster.module.css";
+import toolbarStyles from "./RosterToolbar.module.css";
 import { colorNameFor, formatOfferWeekdays, stockAvailable } from "@/lib/operations/planning";
 import { useI18n } from "@/app/i18n";
 import { employeeGenderClass } from "@/app/employeeDisplay";
 import dailyTemplateConfig from "@/lib/operations/daily-template-config";
 import stockCatalogConfig from "@/lib/operations/stock-catalog";
 import { toBlob as htmlNodeToBlob } from "html-to-image";
+import { validateDailyTemplate } from "@/lib/operations/template-validation";
 import { readApiResponse } from "@/lib/client/read-api-response";
 
 const { DEFAULT_DAILY_OPERATIONS_TEMPLATE_CONFIG, normalizeDailyOperationsTemplateConfig } = dailyTemplateConfig;
@@ -33,9 +46,9 @@ const sectionLabels = {
   footer: "Footer",
 };
 const fallbackScheduleColors = {
-  Annual: "#b9dcc0", Rep: "#eedb85", OFF: "#e9b9c7", Unpaid: "#efbd87",
-  Mission: "#a8d8e7", M: "#a8d8e7", Holiday: "#c99aae", H: "#c99aae",
-  ANP: "#edabb2", AWP: "#b76a77", SL: "#edc3cb",
+  Annual: "#b9dcc0", Rep: "#eedb85", OFF: "#efaaaa", Unpaid: "#efbd87",
+  Mission: "#91c9ed", M: "#91c9ed", Holiday: "#cfe8ff", H: "#cfe8ff",
+  ANP: "#edabb2", AWP: "#b76a77", SL: "#d6b5e8",
 };
 function scheduleColor(code, configured = {}) {
   const alias = { M: "Mission", H: "Holiday" }[String(code)] || code;
@@ -52,26 +65,12 @@ function positionDisplayName(position) {
   const value = String(position?.label || position?.code || "").trim().toLowerCase().replace(/_/g, " ");
   return value.replace(/(^|[\s/-])([a-z])/g, (_, prefix, letter) => `${prefix}${letter.toUpperCase()}`);
 }
-function rosterBracelets(items = [], config = {}) {
-  const bracelets = items.filter((item) => !item.stockCategory || item.stockCategory === "BRACELET");
-  return normalizeBraceletTypes(config.braceletTypes).filter((type) => type.showInRoster).map((type) => {
-    const matches = bracelets.filter((item) => (item.usageType || item.wristbandType) === type.code);
-    const remaining = matches.reduce((total, item) => total + stockAvailable(item), 0);
-    return {
-      ...type,
-      wristbandType: type.code,
-      usageType: type.code,
-      availableStock: remaining,
-      cashierQuantity: 0,
-      warehouseQuantity: remaining,
-      allocated: 0,
-      issued: 0,
-      missingRequired: type.required && remaining <= 0,
-    };
-  });
-}
 const fallback = DEFAULT_DAILY_OPERATIONS_TEMPLATE_CONFIG;
-function mergeConfig(value) { return normalizeDailyOperationsTemplateConfig(value); }
+function mergeConfig(value) {
+  const config=normalizeDailyOperationsTemplateConfig(value);
+  config.labels=Object.fromEntries(Object.entries(config.labels).map(([key,label])=>[key,/[\u0600-\u06ff]/.test(label)?fallback.labels[key]||label:label]));
+  return config;
+}
 function localIsoDate(date = new Date()) {
   const offset = date.getTimezoneOffset() * 60000;
   return new Date(date.getTime() - offset).toISOString().slice(0, 10);
@@ -89,7 +88,7 @@ function rosterName(employee = {}) {
 function rosterRole(person, labels = fallback.labels) {
   const frontCashier = frontAssignment(person?.metadata) === "FRONT_CASHIER";
   const cashier = person?.employee?.department === "CASHIER";
-  const leader = Boolean(person?.employee?.operationsTeamLeader);
+  const leader = Boolean(person?.isShiftLeader ?? person?.employee?.operationsTeamLeader);
   if (frontCashier && leader) return { label: labels.cashierLeader, tone: "cashier-leader" };
   if (frontCashier) return { label: labels.frontCashier, tone: "cashier" };
   if (cashier && leader) return { label: `${labels.cashier} | ${labels.teamLeader}`, tone: "cashier-leader" };
@@ -107,7 +106,7 @@ function employeeTone(person, labels) {
 }
 
 function OfferCardContent({ offers = [], config }) {
-  if (!offers.length) return <p>{config.labels.noOffers}</p>;
+  if (!offers.length) return <p>{config.cardContent?.offers || config.labels.noOffers}</p>;
   return <div className="ops-offer-grid">{offers.map((offer) => {
     return <article className="ops-offer-item" key={offer.id}>
       <b>{offer.title} {offer.discountPercent != null && <em className="ops-discount-badge">-{offer.discountPercent}%</em>}</b>
@@ -124,22 +123,23 @@ function OfferCardContent({ offers = [], config }) {
   })}</div>;
 }
 
-function BraceletCardContent({ items = [], config }) {
-  const rows = rosterBracelets(items, config);
-  if (!rows.length) return <p>{config.labels.noBracelets}</p>;
+function BraceletCardContent({ items = [], config, roster, trips=[], events=[] }) {
+  const rows = roster?.rows || rosterBracelets(items, config.braceletTypes,{}, {hasTrips:trips.some(item=>item.status!=='CANCELLED'),hasBirthdays:events.some(item=>item.eventType==='BIRTHDAY'&&item.status!=='CANCELLED')});
+  const status = state => ({SELECT_STOCK:"Choose stock variant",NO_STOCK:"No available stock",UNAVAILABLE:"Selected stock unavailable",OUT_OF_STOCK:"Out of stock"}[state]||"");
+  if (!rows.length) return <p>{config.cardContent?.bracelets || config.labels.noBracelets}</p>;
   return <div className="ops-bracelet-list">{rows.map((item) => {
     const braceletTone = item.color || "#e8e0ed";
-    return <p className={item.missingRequired ? "required-missing" : ""} key={item.code}>
+    return <p key={item.code} data-bracelet-type={item.code} data-stock-id={item.stockId||''}>
       <strong>{item.label}</strong>
       <i className="ops-bracelet-swatch" style={{ backgroundColor: braceletTone }} aria-hidden="true" />
-      <b style={{ backgroundColor: braceletTone, color: contrastColor(braceletTone) }}>{[item.material, item.colorName || colorNameFor(item.color)].filter(Boolean).join(" ")}</b>
-      <span>{stockAvailable(item)} {config.labels.remaining}</span>
+      <b style={{ backgroundColor: braceletTone, color: contrastColor(braceletTone) }}>{[item.material, item.colorName, status(item.state)].filter(Boolean).join(" · ")}</b>
     </p>;
   })}</div>;
 }
 async function capturePosterPngBlob(node) {
   if (!node) throw new Error("Roster preview is not ready");
   if (document.fonts?.ready) await document.fonts.ready;
+  await Promise.all([...node.querySelectorAll("img")].map(image => image.decode?.().catch(() => {}) || Promise.resolve()));
   const width = Math.max(node.scrollWidth, node.offsetWidth);
   const height = Math.max(node.scrollHeight, node.offsetHeight);
   const blob = await htmlNodeToBlob(node, {
@@ -148,224 +148,13 @@ async function capturePosterPngBlob(node) {
     pixelRatio: 2,
     width,
     height,
+    filter: element => !element.classList?.contains('ops-rotation-select'),
     style: { width: `${width}px`, maxWidth: "none", height: `${height}px`, overflow: "visible", boxShadow: "none" },
   });
   if (!blob) throw new Error("Roster image generation failed");
   return blob;
 }
-async function dataUrlForImage(source) {
-  if (!source) return "";
-  const response = await fetch(source, { cache: "force-cache" });
-  if (!response.ok) throw new Error("Logo could not be loaded");
-  const blob = await response.blob();
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(String(reader.result || ""));
-    reader.onerror = () => reject(reader.error || new Error("Logo could not be embedded"));
-    reader.readAsDataURL(blob);
-  });
-}
-async function posterPngBlob({ data, config, weekday, grouped, scheduleColors }) {
-  const slotCount = Math.max(1, Number(config.rotationSlotCount) || 8);
-  const width = 1500;
-  const margin = 28;
-  const contentWidth = width - margin * 2;
-  const assignments = data.rotation?.assignments || [];
-  const nonWorking = Object.entries(grouped)
-    .filter(([key]) => !WORKING_SHIFTS.includes(key))
-    .flatMap(([group, people]) => people.map((person) => ({ ...person, group })));
-  const visibleCards = config.cardOrder.filter((card) => !["offers", "bracelets"].includes(card) && config.visibleCards[card] && (card !== "trips" || data.trips?.length) && (card !== "birthdays" || data.events?.length));
-  const cardLinesByCard = Object.fromEntries(visibleCards.map((card) => [card, previewCardLines(card, data)]));
-  const compactCards = visibleCards.filter((card) => ["trips", "birthdays"].includes(card));
-  const cardRows = [...(compactCards.length ? [compactCards] : []), ...visibleCards.filter((card) => !["trips", "birthdays"].includes(card)).map((card) => [card])];
-  const cardRowHeights = cardRows.map((row) => Math.max(132, 58 + Math.max(1, ...row.map((card) => cardLinesByCard[card]?.length || 0)) * 21));
-  const rosterRows = WORKING_SHIFTS.reduce((total, shift) => total + (grouped[shift]?.length ? grouped[shift].length + 2 : 0), 0);
-  const cardHeight = cardRows.length ? cardRowHeights.reduce((sum, value) => sum + value, 0) + (cardRows.length - 1) * 12 + 20 : 0;
-  const braceletRows = rosterBracelets(data.wristbands || [], config);
-  const showBraceletSummary = config.cardOrder.includes("bracelets") && config.visibleCards.bracelets;
-  const dailySummaryRows = Math.max(config.visibleSections.leaves ? Math.max(1, nonWorking.length) : 0, showBraceletSummary ? Math.max(1, braceletRows.length) : 0);
-  const dailySummaryHeight = dailySummaryRows ? 52 + dailySummaryRows * 34 : 0;
-  const offerCount = config.visibleCards.offers !== false ? (data.offers?.length || 0) : 0;
-  const offerColumns = Math.min(3, Math.max(1, offerCount));
-  const offerRows = offerCount ? Math.ceil(offerCount / offerColumns) : 0;
-  const offersHeight = offerRows ? 46 + offerRows * 116 + Math.max(0, offerRows - 1) * 12 : 0;
-  const notesHeight = config.visibleSections.notes ? 52 + Math.max(1, data.notices?.length || 0) * 88 : 0;
-  const height = 150 + cardHeight + 76 + rosterRows * 42 + dailySummaryHeight + offersHeight + notesHeight + 100;
-  const xml = (value) => String(value ?? "").replace(/[&<>"']/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&apos;" })[char]);
-  const short = (value, limit = 34) => { const text = String(value || ""); return text.length > limit ? `${text.slice(0, limit - 1)}…` : text; };
-  const nodes = [];
-  const rect = (x, y, w, h, fill, stroke = "none", radius = 0) => nodes.push(`<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="${radius}" fill="${fill}" stroke="${stroke}"/>`);
-  const text = (value, x, y, size = 20, weight = 700, fill = config.text, anchor = "start") => nodes.push(`<text x="${x}" y="${y}" font-family="Arial, sans-serif" font-size="${size}" font-weight="${weight}" fill="${fill}" text-anchor="${anchor}">${xml(value)}</text>`);
-  let y = 0;
-  let embeddedLogo = "";
-  try { embeddedLogo = await dataUrlForImage(config.logoUrl); } catch { embeddedLogo = ""; }
-  rect(0, 0, width, height, "#ffffff");
-  rect(0, 0, width, 126, config.primary);
-  if (embeddedLogo) nodes.push(`<image href="${xml(embeddedLogo)}" x="${width - 230}" y="15" width="190" height="94" preserveAspectRatio="xMidYMid meet"/>`);
-  text(config.title, width / 2, 53, 38, 900, "#ffffff", "middle");
-  text(data.motivationalPhrase || config.subtitle, width / 2, 88, 17, 800, config.accent, "middle");
-  text(config.branchName, margin, 48, 24, 900, "#ffffff");
-  text(weekday, margin, 82, 16, 700, "#ffffff");
-  y = 146;
-
-  if (visibleCards.length) {
-    const gap = 12;
-    cardRows.forEach((row, rowIndex) => {
-      const rowHeight = cardRowHeights[rowIndex];
-      const cardWidth = (contentWidth - gap * (row.length - 1)) / row.length;
-      row.forEach((card, index) => {
-        const x = margin + index * (cardWidth + gap);
-        const tone = config.cardColors?.[card] || (card === "offers" ? "#d98a31" : card === "trips" ? "#3182bd" : card === "birthdays" ? "#4f8c5c" : "#2e7da5");
-        rect(x, y, cardWidth, rowHeight, "#fffdf8", tone, 12);
-        rect(x, y, cardWidth, 38, tone, "none", 10);
-        text(config.labels[card] || cardLabels[card], x + cardWidth / 2, y + 26, 17, 900, "#ffffff", "middle");
-        const lines = cardLinesByCard[card] || [];
-        (lines.length ? lines : [config.cardContent?.[card] || "—"]).forEach((line, lineIndex) => text(short(line, row.length === 1 ? 120 : 55), x + 14, y + 65 + lineIndex * 21, 14, 700));
-      });
-      y += rowHeight + gap;
-    });
-    y += 8;
-  }
-
-  const numberWidth = 46, nameWidth = 230, attendanceWidth = 118, breakWidth = 118;
-  const rotationX = margin + numberWidth + nameWidth + attendanceWidth + breakWidth;
-  const rotationWidth = contentWidth - numberWidth - nameWidth - attendanceWidth - breakWidth;
-  rect(margin, y, contentWidth, 54, config.primary);
-  text("#", margin + numberWidth / 2, y + 34, 15, 900, "#ffffff", "middle");
-  text(config.labels.employee, margin + numberWidth + nameWidth / 2, y + 34, 15, 900, "#ffffff", "middle");
-  text(`${config.labels.attendance}  ${config.labels.in} / ${config.labels.out}`, margin + numberWidth + nameWidth + attendanceWidth / 2, y + 34, 13, 900, "#ffffff", "middle");
-  text(`${config.labels.break}  ${config.labels.from} / ${config.labels.to}`, margin + numberWidth + nameWidth + attendanceWidth + breakWidth / 2, y + 34, 13, 900, "#ffffff", "middle");
-  text(config.labels.rotation, rotationX + rotationWidth / 2, y + 34, 15, 900, "#ffffff", "middle");
-  y += 54;
-
-  WORKING_SHIFTS.forEach((shift) => {
-    const people = grouped[shift] || [];
-    if (!people.length) return;
-    const shiftColor = shift === "AM" ? config.amColor : shift === "BW" ? config.bwColor : config.pmColor;
-    const startHour = Number(data?.shifts?.[shift]?.startTime?.slice(0, 2) || (shift === "PM" ? 15 : 10));
-    const hours = Array.from({ length: slotCount }, (_, index) => String((startHour + index - 1) % 12 + 1));
-    rect(margin, y, contentWidth, 38, shiftColor, "#8b8794");
-    text(shift === "AM" ? config.labels.morningShift : shift === "BW" ? config.labels.betweenShift : config.labels.nightShift, margin + 12, y + 25, 16, 900);
-    text(`${formatTime12(data?.shifts?.[shift]?.startTime)} — ${formatTime12(data?.shifts?.[shift]?.endTime)}`, margin + contentWidth - 12, y + 25, 15, 800, config.text, "end");
-    y += 38;
-    rect(margin, y, contentWidth, 30, "#f3edf8", "#8b8794");
-    text(config.labels.rotationTime, margin + numberWidth + nameWidth + (attendanceWidth + breakWidth) / 2, y + 20, 12, 900, config.text, "middle");
-    hours.forEach((hour, index) => text(hour, rotationX + rotationWidth / slotCount * (index + 0.5), y + 20, 13, 900, config.text, "middle"));
-    y += 30;
-    people.forEach((person, personIndex) => {
-      const role = rosterRole(person, config.labels);
-      const tone = employeeTone(person, config.labels);
-      const roleColors = config.roleColors || {}; const nameTone = tone === "cashier" ? (roleColors.cashier || "#b9e2c3") : tone === "leader" ? (roleColors.leader || "#c3e9f6") : tone === "cashier-leader" ? (roleColors.cashierLeader || "#d5b9ec") : tone === "female" ? (roleColors.female || "#fff0a8") : (roleColors.male || "#e7d6f6");
-      rect(margin, y, contentWidth, 42, "#ffffff", "#bcb5c3");
-      rect(margin + numberWidth, y, nameWidth, 42, nameTone, "#bcb5c3");
-      text(personIndex + 1, margin + numberWidth / 2, y + 27, 14, 900, config.text, "middle");
-      text(short(rosterName(person.employee), 32), margin + numberWidth + 10, y + 27, 14, 900);
-      if (role) {
-        rect(rotationX, y, rotationWidth, 42, nameTone, "#bcb5c3");
-        text(role.label, rotationX + rotationWidth / 2, y + 27, 15, 900, config.text, "middle");
-      } else {
-        hours.forEach((hour, index) => {
-          const slotHour = (startHour + index) % 24;
-          const assignment = assignments.find((item) => item.employeeId === person.employee.id && Number(item.startTime?.slice(0, 2)) === slotHour);
-          const cellX = rotationX + rotationWidth / slotCount * index;
-          const cellWidth = rotationWidth / slotCount;
-          const strong = (config.rotationHighlightedCodes || ["DROP", "TOWER", "DATA"]).includes(assignment?.position?.code);
-          const positionColor = assignment?.position?.color || (strong ? "#f41743" : "#ffffff");
-          if (assignment) rect(cellX, y, cellWidth, 42, positionColor, "#bcb5c3");
-          if (index) nodes.push(`<line x1="${cellX}" y1="${y}" x2="${cellX}" y2="${y + 42}" stroke="#bcb5c3"/>`);
-          text(short(positionDisplayName(assignment?.position), 14), cellX + cellWidth / 2, y + 27, 12, strong ? 900 : 700, assignment ? contrastColor(positionColor) : config.text, "middle");
-        });
-      }
-      y += 42;
-    });
-  });
-
-  if (dailySummaryRows) {
-    y += 14;
-    const panels = [
-      ...(showBraceletSummary ? [{ type: "bracelets", title: config.labels.bracelets, tone: config.cardColors?.bracelets || "#2e7da5" }] : []),
-      ...(config.visibleSections.leaves ? [{ type: "leaves", title: config.labels.leaves, tone: config.primary }] : []),
-    ];
-    const gap = panels.length > 1 ? 12 : 0;
-    const panelWidth = (contentWidth - gap) / panels.length;
-    panels.forEach((panel, panelIndex) => {
-      const panelX = margin + panelIndex * (panelWidth + gap);
-      rect(panelX, y, panelWidth, 38 + dailySummaryRows * 34, "#ffffff", panel.tone, 8);
-      rect(panelX, y, panelWidth, 38, panel.tone, "none", 8);
-      text(panel.title, panelX + panelWidth - 14, y + 25, 16, 900, "#ffffff", "end");
-      if (panel.type === "bracelets") {
-        const rows = braceletRows.length ? braceletRows : [{ material: config.labels.noBracelets, label: "", color: "#f2edf5" }];
-        rows.forEach((item, index) => {
-          const rowY = y + 38 + index * 34;
-          if (index) nodes.push(`<line x1="${panelX}" y1="${rowY}" x2="${panelX + panelWidth}" y2="${rowY}" stroke="#d4ced8"/>`);
-          const typeWidth = 88;
-          text(short(item.label, 12), panelX + 12, rowY + 22, 13, 900);
-          rect(panelX + 12 + typeWidth, rowY + 9, 16, 16, item.color || "#cccccc", "rgba(48,24,72,.2)", 8);
-          const braceletLabel = [item.material, item.colorName || colorNameFor(item.color)].filter(Boolean).join(" ") || "Bracelet";
-          const braceletTone = item.color || "#f2edf5";
-          const labelX = panelX + 12 + typeWidth + 26;
-          const remainingWidth = 160;
-          const labelWidth = Math.max(110, panelWidth - (labelX - panelX) - remainingWidth);
-          rect(labelX, rowY + 5, labelWidth, 24, braceletTone, "none", 4);
-          text(short(braceletLabel, 48), labelX + labelWidth / 2, rowY + 22, 13, 800, contrastColor(braceletTone), "middle");
-          if (item.wristbandType) text(`${stockAvailable(item)} ${config.labels.remaining}`, panelX + panelWidth - 12, rowY + 22, 12, 800, item.missingRequired ? "#c21d3a" : config.text, "end");
-        });
-      } else {
-        const rows = nonWorking.length ? nonWorking : [{ group: "—", employee: { name: config.labels.noLeaves } }];
-        rows.forEach((item, index) => {
-          const rowY = y + 38 + index * 34;
-          if (index) nodes.push(`<line x1="${panelX}" y1="${rowY}" x2="${panelX + panelWidth}" y2="${rowY}" stroke="#d4ced8"/>`);
-          const badgeColor = scheduleColor(item.group, scheduleColors);
-          if (item.group !== "—") { rect(panelX + 10, rowY + 5, 86, 24, badgeColor, "none", 5); text(item.group, panelX + 53, rowY + 22, 12, 900, contrastColor(badgeColor), "middle"); }
-          text(rosterName(item.employee), panelX + (item.group !== "—" ? 110 : 12), rowY + 23, 14, 700);
-        });
-      }
-    });
-    y += 38 + dailySummaryRows * 34;
-  }
-  if (config.visibleCards.offers !== false && data.offers?.length) {
-    y += 14; rect(margin, y, contentWidth, 38, config.cardColors?.offers || "#d98a31", "none", 8); text(config.labels.offers, margin + contentWidth - 14, y + 25, 16, 900, "#ffffff", "end"); y += 46;
-    const gap = 12; const columns = Math.min(3, data.offers.length); const offerWidth = (contentWidth - gap * (columns - 1)) / columns;
-    data.offers.forEach((offer, index) => {
-      const column = index % columns; const row = Math.floor(index / columns); const offerY = y + row * (116 + gap); const x = margin + column * (offerWidth + gap);
-      rect(x, offerY, offerWidth, 116, "#fffaf2", config.cardColors?.offers || "#d98a31", 10);
-      text(short(offer.title, 42), x + 12, offerY + 25, 15, 900);
-      if (offer.discountPercent != null) text(`-${offer.discountPercent}%`, x + offerWidth - 12, offerY + 25, 13, 900, "#c61f3c", "end");
-      const prices = `${offer.priceBefore != null ? `Was ${offer.priceBefore}` : ""}${offer.priceAfter != null ? `  Now ${offer.priceAfter} ${config.currency}` : ""}`.trim();
-      if (prices) text(short(prices, 48), x + 12, offerY + 51, 13, 800);
-      text(`${config.labels.offerAdmits} ${offer.childrenCount || 1} ${(offer.childrenCount || 1) === 1 ? config.labels.childSingular : config.labels.childPlural}`, x + 12, offerY + 76, 13, 800, "#176837");
-      if (offer.details) text(short(offer.details, 58), x + 12, offerY + 100, 11, 600);
-    });
-    y += Math.ceil(data.offers.length / columns) * 116 + Math.max(0, Math.ceil(data.offers.length / columns) - 1) * gap;
-  }
-  if (config.visibleSections.notes) {
-    y += 14; rect(margin, y, contentWidth, 38, config.primary, "none", 8); text(config.labels.notes, margin + contentWidth - 14, y + 25, 16, 900, "#ffffff", "end"); y += 38;
-    const notices = data.notices?.length ? data.notices : [{ title: config.labels.noNotices, message: "", priority: "INFO" }];
-    notices.forEach((notice) => {
-      const critical = String(notice.priority || "").toUpperCase() === "CRITICAL";
-      rect(margin, y, contentWidth, 88, critical ? "#fee7eb" : "#ffffff", critical ? "#d7193f" : "#d4ced8", 4);
-      text(short(notice.title, 64), margin + 14, y + 20, 14, 900, critical ? "#a50f2d" : config.text);
-      if (notice.titleAr) text(short(notice.titleAr, 64), margin + contentWidth - 14, y + 39, 14, 900, critical ? "#a50f2d" : config.text, "end");
-      if (notice.message) text(short(notice.message, 145), margin + 14, y + 59, 12, 650, critical ? "#8f1730" : config.text);
-      if (notice.messageAr) text(short(notice.messageAr, 145), margin + contentWidth - 14, y + 78, 12, 650, critical ? "#8f1730" : config.text, "end");
-      if (critical) text("CRITICAL", margin + contentWidth - 14, y + 22, 12, 900, "#d7193f", "end");
-      y += 88;
-    });
-  }
-  y += 22; rect(margin, y, contentWidth, 5, config.accent); text(data.motivationalPhrase || config.footerMotto, width / 2, y + 35, 15, 900, config.text, "middle");
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">${nodes.join("")}</svg>`;
-  const image = new Image();
-  const url = URL.createObjectURL(new Blob([svg], { type: "image/svg+xml;charset=utf-8" }));
-  try {
-    await new Promise((resolve, reject) => { image.onload = resolve; image.onerror = reject; image.src = url; });
-    const canvas = document.createElement("canvas");
-    canvas.width = width; canvas.height = height;
-    const context = canvas.getContext("2d");
-    context.fillStyle = "#ffffff"; context.fillRect(0, 0, width, height); context.drawImage(image, 0, 0);
-    return await new Promise((resolve, reject) => canvas.toBlob((blob) => blob ? resolve(blob) : reject(new Error("Image generation failed")), "image/png"));
-  } finally { URL.revokeObjectURL(url); }
-}
-function OperationsPoster({ config, weekday, data, grouped, scheduleColors }) {
+function OperationsPoster({ config, weekday, data, grouped, scheduleColors, rotationEditor, allowDisabled, onCellChange, editBusy, isArabic }) {
   const slotCount = Math.max(1, Number(config.rotationSlotCount) || 8);
   const style = {
     "--ops-primary": config.primary,
@@ -377,13 +166,13 @@ function OperationsPoster({ config, weekday, data, grouped, scheduleColors }) {
     "--ops-female": config.roleColors?.female, "--ops-male": config.roleColors?.male, "--ops-cashier": config.roleColors?.cashier, "--ops-leader": config.roleColors?.leader, "--ops-cashier-leader": config.roleColors?.cashierLeader,
   };
   const columnParts = [
-    "36px",
-    "230px",
-    ...(config.visibleSections.attendance ? ["63px", "63px"] : []),
-    ...(config.visibleSections.breaks ? ["63px", "63px"] : []),
+    "var(--ops-index-width, 36px)",
+    "var(--ops-name-width, 230px)",
+    ...(config.visibleSections.attendance ? ["var(--ops-time-width, 63px)", "var(--ops-time-width, 63px)"] : []),
+    ...(config.visibleSections.breaks ? ["var(--ops-time-width, 63px)", "var(--ops-time-width, 63px)"] : []),
     ...(config.visibleSections.rotation
       ? Array(slotCount).fill(
-          "minmax(21px, 1fr)",
+          rotationEditor ? "minmax(124px, 1fr)" : "minmax(21px, 1fr)",
         )
       : []),
   ];
@@ -395,7 +184,7 @@ function OperationsPoster({ config, weekday, data, grouped, scheduleColors }) {
     );
   const show = config.visibleSections;
   const assignments = data.rotation?.assignments || [];
-  const topCards = config.cardOrder.filter((card) => !["offers", "bracelets"].includes(card) && config.visibleCards[card] && (card !== "trips" || data.trips?.length) && (card !== "birthdays" || data.events?.length));
+  const topCards = config.cardOrder.filter(card => ["trips", "birthdays"].includes(card) && config.visibleCards[card]);
   const shiftBlock = (shift) => {
     const people = grouped[shift] || [];
     if (!people.length) return null;
@@ -406,6 +195,7 @@ function OperationsPoster({ config, weekday, data, grouped, scheduleColors }) {
     return (
       <section
         className={`ops-shift ops-shift-${shift.toLowerCase()}`}
+        style={{'--ops-shift-people': total}}
         key={shift}
       >
         <header>
@@ -429,6 +219,7 @@ function OperationsPoster({ config, weekday, data, grouped, scheduleColors }) {
           const person = people[index];
           const role = rosterRole(person, config.labels);
           const tone = employeeTone(person, config.labels);
+          const plannedBreak=(data.rotation?.breaks||[]).find(b=>b.employeeId===person.employee.id&&b.status!=='CANCELLED');
           return (
             <div className="ops-row" style={rowStyle} key={person?.id || index}>
               <b>{index + 1}</b>
@@ -441,8 +232,8 @@ function OperationsPoster({ config, weekday, data, grouped, scheduleColors }) {
               )}
               {show.breaks && (
                 <>
-                  <i></i>
-                  <i></i>
+                  <i>{plannedBreak?formatTime12(plannedBreak.startTime):''}</i>
+                  <i>{plannedBreak?formatTime12(plannedBreak.endTime):''}</i>
                 </>
               )}
               {show.rotation && role && (
@@ -451,23 +242,26 @@ function OperationsPoster({ config, weekday, data, grouped, scheduleColors }) {
               {show.rotation && !role &&
                 rotationHours.map((hour, cell) => {
                   const slotHour = (startHour + cell) % 24;
+                  const shiftStart=data?.shifts?.[shift]?.startTime || '10:00';
+                  const slotStart=`${String(slotHour).padStart(2,'0')}:${shiftStart.slice(3,5)}`;
                   const assignment =
                     assignments.find(
                       (item) =>
                         item.employeeId === person.employee.id &&
-                        Number(item.startTime?.slice(0, 2)) === slotHour,
+                        item.startTime <= slotStart && item.endTime > slotStart,
                     );
-                  const strong = (config.rotationHighlightedCodes || ["DROP", "TOWER", "DATA"]).includes(
+                  const onBreak=(data.rotation?.breaks||[]).some(b=>b.employeeId===person.employee.id&&b.status!=='CANCELLED'&&b.startTime<=slotStart&&b.endTime>slotStart);
+                  const strong = ["DROP", "TOWER", "DATA"].includes(
                     assignment?.position?.code,
                   );
-                  const positionColor = assignment?.position?.color || (strong ? "#f41743" : "#ffffff");
+                  const positionColor = strong ? assignment?.position?.color || "#f41743" : "#ffffff";
                   return (
                     <i
                       className={strong ? "rotation-strong" : ""}
                       style={assignment ? { backgroundColor: positionColor, color: contrastColor(positionColor) } : undefined}
                       key={`${hour}-${cell}`}
                     >
-                      {positionDisplayName(assignment?.position)}
+                      {rotationEditor ? <RotationCellSelect cell={rotationEditor.cells.find(c=>c.employeeId===person.employee.id&&c.startTime===slotStart)} assignment={assignment} isArabic={false} allowDisabled={allowDisabled} disabled={editBusy} onChange={onCellChange}/> : onBreak ? 'Break' : positionDisplayName(assignment?.position)}
                     </i>
                   );
                 })}
@@ -480,46 +274,25 @@ function OperationsPoster({ config, weekday, data, grouped, scheduleColors }) {
   const showBracelets = config.cardOrder.includes("bracelets") && config.visibleCards.bracelets;
   const sections = {
     roster: (
-      <section className="ops-table" key="roster">
-        <div className="ops-table-head" style={rowStyle}>
-          <b>#</b>
-          <b>{config.labels.employee}</b>
-          {show.attendance && (
-            <b className="ops-grouphead" style={{ gridColumn: "span 2" }}>
-              {config.labels.attendance}
-            </b>
-          )}
-          {show.breaks && (
-            <b className="ops-grouphead" style={{ gridColumn: "span 2" }}>
-              {config.labels.break}
-            </b>
-          )}
-          {show.rotation && (
-            <b
-              className="ops-rotation-head"
-              style={{
-                gridColumn: `span ${slotCount}`,
-              }}
-            >
-              {config.labels.rotation}
-            </b>
-          )}
-        </div>
-        <div className="ops-table-subhead" style={rowStyle}>
-          <b></b><b></b>
-          {show.attendance && <><b>{config.labels.in}</b><b>{config.labels.out}</b></>}
-          {show.breaks && <><b>{config.labels.from}</b><b>{config.labels.to}</b></>}
-          {show.rotation && Array.from({ length: slotCount }, (_, index) => <b key={index}></b>)}
+      <div className="ops-roster-scroll" key="roster" tabIndex={0} role="region" aria-label="Daily roster and hourly allocations">
+      <section className="ops-table">
+        <div className="ops-table-head ops-merged-head" style={rowStyle}>
+          <b style={{gridColumn:1,gridRow:"1 / 3"}}>#</b>
+          <b style={{gridColumn:2,gridRow:"1 / 3"}}>{config.labels.employee}</b>
+          {show.attendance && <><b style={{gridColumn:"3 / span 2",gridRow:1}}>{config.labels.attendance}</b><b className="ops-subhead-label" style={{gridColumn:3,gridRow:2}}>{config.labels.in}</b><b className="ops-subhead-label" style={{gridColumn:4,gridRow:2}}>{config.labels.out}</b></>}
+          {show.breaks && <><b style={{gridColumn:(show.attendance?5:3)+" / span 2",gridRow:1}}>{config.labels.break}</b><b className="ops-subhead-label" style={{gridColumn:show.attendance?5:3,gridRow:2}}>{config.labels.from}</b><b className="ops-subhead-label" style={{gridColumn:show.attendance?6:4,gridRow:2}}>{config.labels.to}</b></>}
+          {show.rotation && <b className="ops-rotation-head" style={{gridColumn:(3+(show.attendance?2:0)+(show.breaks?2:0))+" / span "+slotCount,gridRow:"1 / 3"}}>{config.labels.rotation}</b>}
         </div>
         {WORKING_SHIFTS.map(shiftBlock)}
       </section>
+      </div>
     ),
     dailyStatus: (showBracelets || show.leaves) ? (
       <section className={`ops-daily-summary ${showBracelets && show.leaves ? "ops-daily-summary-pair" : ""}`} key="dailyStatus">
         {showBracelets && (
           <article className="ops-bottom-card ops-bracelet-section" style={{ borderColor: config.cardColors?.bracelets }}>
             <h3 style={{ background: config.cardColors?.bracelets }}>{config.labels.bracelets || cardLabels.bracelets}</h3>
-            <BraceletCardContent items={data.wristbands || []} config={config} />
+            <BraceletCardContent items={data.wristbands || []} config={config} roster={data.braceletRoster} trips={data.trips} events={data.events} />
           </article>
         )}
         {show.leaves && (
@@ -541,19 +314,20 @@ function OperationsPoster({ config, weekday, data, grouped, scheduleColors }) {
         )}
       </section>
     ) : null,
-    offers: data.offers?.length ? (
+    offers: config.visibleCards.offers && config.cardOrder.includes("offers") ? (
       <section className="ops-bottom-card ops-offers-section" key="offers">
         <h3>{config.labels.offers}</h3>
-        <OfferCardContent offers={data.offers} config={config} />
+        <OfferCardContent offers={data.offers || []} config={config} />
       </section>
     ) : null,
     notes: (
       <section className="ops-bottom-card ops-notes" key="notes">
         <h3>{config.labels.notes}</h3>
+        {config.operationalNotes && <ul className="ops-default-notes">{config.operationalNotes.split("\n").filter(line=>line.trim()).map((line,index)=><li key={index}><span aria-hidden="true">{index+1}</span>{line.replace(/^\s*[•·-]\s*/, "")}</li>)}</ul>}
         {data.notices?.length ? data.notices.map((notice) => (
           <article className={`ops-notice-item priority-${String(notice.priority || "INFO").toLowerCase()}`} key={notice.id}>
-            <div><b>{notice.title}</b>{notice.titleAr && <small lang="ar" dir="rtl">{notice.titleAr}</small>}</div>
-            <div><span>{notice.message}</span>{notice.messageAr && <small lang="ar" dir="rtl">{notice.messageAr}</small>}</div>
+            <div><b>{notice.title}</b></div>
+            <div><span>{notice.message}</span></div>
           </article>
         )) : <p>{config.labels.noNotices}</p>}
       </section>
@@ -561,24 +335,17 @@ function OperationsPoster({ config, weekday, data, grouped, scheduleColors }) {
     footer: (
       <footer className="ops-footer" key="footer">
         <i></i>
-        <b>{data.motivationalPhrase || config.footerMotto}</b>
-        <span>{config.branchName} · {config.labels.page} 1 of 1</span>
+        <b>{config.footerMotto !== fallback.footerMotto ? config.footerMotto : data.motivationalPhrase || config.footerMotto}</b>
+        <span>{config.branchName}</span>
       </footer>
     ),
   };
-  const posterSectionOrder = (config.sectionOrder || []).filter((part) => !["offers", "leaves"].includes(part));
-  if (config.visibleCards.offers !== false && data.offers?.length) {
-    const notesIndex = posterSectionOrder.indexOf("notes");
-    posterSectionOrder.splice(notesIndex < 0 ? posterSectionOrder.length : notesIndex, 0, "offers");
-  }
-  if (showBracelets || show.leaves) {
-    const offersIndex = posterSectionOrder.indexOf("offers");
-    const notesIndex = posterSectionOrder.indexOf("notes");
-    const insertIndex = offersIndex >= 0 ? offersIndex : notesIndex >= 0 ? notesIndex : posterSectionOrder.length;
-    posterSectionOrder.splice(insertIndex, 0, "dailyStatus");
-  }
+  const posterSectionOrder = (config.sectionOrder || []).filter(part=>part!=="offers").map(part=>part==="leaves"?"dailyStatus":part);
+  if(!posterSectionOrder.includes("dailyStatus") && showBracelets) posterSectionOrder.splice(Math.max(0,posterSectionOrder.indexOf("roster")+1),0,"dailyStatus");
+  const notesIndex=posterSectionOrder.indexOf("notes");
+  posterSectionOrder.splice(notesIndex>=0?notesIndex:Math.max(0,posterSectionOrder.indexOf("footer")),0,"offers");
   return (
-    <article className="daily-operations-poster" style={style}>
+    <article className={"daily-operations-poster "+posterStyles.poster+(rotationEditor?' '+posterStyles.posterEditing:'')} style={style}>
       <header className="ops-brand">
         <img
           src={config.logoUrl}
@@ -589,7 +356,7 @@ function OperationsPoster({ config, weekday, data, grouped, scheduleColors }) {
         />
         <div>
           <h2>{config.title}</h2>
-          <span>{data.motivationalPhrase || config.subtitle}</span>
+          <span>{config.subtitle !== fallback.subtitle ? config.subtitle : data.motivationalPhrase || config.subtitle}</span>
         </div>
         <b>
           {config.branchName}
@@ -601,7 +368,7 @@ function OperationsPoster({ config, weekday, data, grouped, scheduleColors }) {
           .map((card) => (
             <article key={card} className={`ops-info-card ${card}`} style={{ borderColor: config.cardColors?.[card] }}>
               <h3 style={{ background: config.cardColors?.[card] }}>{config.labels[card] || cardLabels[card]}</h3>
-              {card === "bracelets" ? <BraceletCardContent items={data.wristbands || []} config={config} /> : previewCardLines(card, data).map((line, index) => <p key={index}>{line}</p>)}
+              {card === "bracelets" ? <BraceletCardContent items={data.wristbands || []} config={config} roster={data.braceletRoster} trips={data.trips} events={data.events} /> : card === "offers" ? <OfferCardContent offers={data.offers || []} config={config}/> : (previewCardLines(card,data).length ? previewCardLines(card,data) : [config.cardContent?.[card] || "No records for this date"]).map((line,index)=><p key={index}>{line}</p>)}
             </article>
           ))}
       </section>}
@@ -612,7 +379,8 @@ function OperationsPoster({ config, weekday, data, grouped, scheduleColors }) {
   );
 }
 
-export default function DailyApprovalPreview() {
+export default function DailyApprovalPreview({ templateOverride, phrasesOverride, previewDate, embedded = false } = {}) {
+  const localize = useUiText();
   const { isArabic } = useI18n();
   const today = localIsoDate();
   const tomorrow = addDays(today, 1);
@@ -621,35 +389,58 @@ export default function DailyApprovalPreview() {
       ? tomorrow
       : new URLSearchParams(window.location.search).get("date") || tomorrow,
   );
-  const [data, setData] = useState(null);
-  const [config, setConfig] = useState(fallback);
-  const [phrases, setPhrases] = useState([]);
+  const [dateReady,setDateReady]=useState(false);
+  useEffect(()=>{setDateReady(true);},[]);
+  const [savedData, setData] = useState(null);
+  const data=savedData&&phrasesOverride?{...savedData,motivationalPhrase:phrasesOverride[Math.abs(new Date(date+"T00:00:00Z").getTime()/86400000)%Math.max(phrasesOverride.length,1)]||""}:savedData;
+  const [savedConfig, setConfig] = useState(fallback);
+  const {config,draftError} = useMemo(() => {
+    try {if(templateOverride)validateDailyTemplate(templateOverride);return {config:templateOverride ? { ...savedConfig, ...mergeConfig(templateOverride), rotationSlotCount: savedConfig.rotationSlotCount, rotationHighlightedCodes: savedConfig.rotationHighlightedCodes, branchCode: savedConfig.branchCode, branchName: savedConfig.branchName, braceletTypes: savedConfig.braceletTypes } : savedConfig,draftError:""};}
+    catch(error){return {config:savedConfig,draftError:error.message};}
+  },[savedConfig,templateOverride]);
+  useEffect(() => { if (previewDate) setDate(previewDate); }, [previewDate]);
+  const [savedPhrases, setPhrases] = useState([]);
+  const phrases=phrasesOverride || savedPhrases;
   const [scheduleColors, setScheduleColors] = useState({});
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [sharing, setSharing] = useState(false);
   const [actionMessage, setActionMessage] = useState("");
+  const [rotationEditor,setRotationEditor]=useState(null);
+  const [rotationGeneration,setRotationGeneration]=useState(false);
+  const [editBusy,setEditBusy]=useState(false);
+  const [allowDisabled,setAllowDisabled]=useState(false);
+  const [pendingCell,setPendingCell]=useState(null);
+  const [cellError,setCellError]=useState('');
+  useEffect(()=>{setRotationEditor(null);setPendingCell(null);setAllowDisabled(false);setRotationGeneration(false);},[date]);
+  const loadRotationEditor=async()=>{
+    const result=await readApiResponse(await fetch(`/api/operations/daily?view=rotationEditor&date=${date}&branch=${encodeURIComponent(data?.branch||'MOT')}`),'Could not load editable rotations');
+    setRotationEditor(result.editor);return result.editor;
+  };
+  const toggleRotationEditor=async()=>{
+    if(rotationEditor){setRotationEditor(null);setAllowDisabled(false);return;}
+    setEditBusy(true);setError('');
+    try{await loadRotationEditor();}catch(error){setError(error.message);}finally{setEditBusy(false);}
+  };
+  const saveRotationCell=async reason=>{
+    setEditBusy(true);setCellError('');
+    try{
+      const result=await readApiResponse(await fetch('/api/operations/daily',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'changeRotationCell',date,branch:data.branch,employeeId:pendingCell.cell.employeeId,startTime:pendingCell.cell.startTime,endTime:pendingCell.cell.endTime,operationalPositionId:pendingCell.positionId,sourceFingerprint:rotationEditor.sourceFingerprint,allowDisabled,reason})}),'Could not save rotation change');
+      setPendingCell(null);
+      setData(await readApiResponse(await fetch(`/api/operations/roster?date=${date}&branch=${encodeURIComponent(data.branch)}`)));
+      await loadRotationEditor();
+      setActionMessage(isArabic?`تم حفظ التعديل اليدوي · نسخة الروستر ${result.plan.version}`:`Manual change saved · roster version ${result.plan.version}`);
+    }catch(error){setCellError(error.message);}finally{setEditBusy(false);}
+  };
   const whatsappWindowRef = useRef(null);
   useEffect(() => {
     let active = true;
     setLoading(true);
-    setError("");
+    setError(localize(""));
     Promise.all([
-      fetch(`/api/operations/roster?date=${date}`).then(async (response) => {
-        let roster = await readApiResponse(response, "Roster data could not be loaded. Refresh and try again.");
-        if (roster.schedule && !roster.rotation) {
-          try {
-            const post = (action) => fetch("/api/operations/daily", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ action, date }) }).then((result) => readApiResponse(result, "Automatic rotation could not be prepared."));
-            await post("open");
-            await post("generateRotation");
-            roster = await fetch(`/api/operations/roster?date=${date}`).then((result) => readApiResponse(result, "Roster data could not be reloaded."));
-          } catch (automationError) {
-            console.warn("Automatic daily rotation was not prepared", automationError);
-          }
-        }
-        return roster;
-      }),
-      fetch("/api/settings?keys=DAILY_OPERATIONS_TEMPLATE_CONFIG,OPS_MOTIVATION_PHRASES,OPS_SCHEDULE_CODE_CONFIG,OPS_ROTATION_RULES,OPS_BRANCH_CONFIG,OPS_PLANNING_CATALOGS").then(
+      fetch(`/api/operations/roster?date=${date}`).then(response => readApiResponse(response, "Roster data could not be loaded.")),
+      fetch("/api/operations/settings?keys=DAILY_OPERATIONS_TEMPLATE_CONFIG,OPS_MOTIVATION_PHRASES,OPS_SCHEDULE_CODE_CONFIG,OPS_ROTATION_RULES,OPS_BRANCH_CONFIG,OPS_PLANNING_CATALOGS").then(
         async (response) => {
           const body = await readApiResponse(response, "Template settings could not be loaded. Refresh and try again.");
           const row = body.settings?.find(
@@ -689,7 +480,7 @@ export default function DailyApprovalPreview() {
       }, {}),
     [data],
   );
-  const weekday = new Intl.DateTimeFormat(config.weekdayLocale || "en-US", {
+  const weekday = new Intl.DateTimeFormat("en-US", {
     weekday: "long",
     year: "numeric",
     month: "long",
@@ -697,33 +488,23 @@ export default function DailyApprovalPreview() {
     timeZone: "UTC",
   }).format(new Date(`${date}T00:00:00Z`));
   const print = () => {
+    const previousEditor=rotationEditor;
+    if(previousEditor)flushSync(()=>setRotationEditor(null));
     document.body.dataset.dailyPreviewPrint = "true";
     const done = () => {
       delete document.body.dataset.dailyPreviewPrint;
+      if(previousEditor)setRotationEditor(previousEditor);
       window.removeEventListener("afterprint", done);
     };
     window.addEventListener("afterprint", done);
     window.print();
-    window.setTimeout(done, 1000);
-  };
-  const generateRotationNow = async () => {
-    setSaving(true); setError(""); setActionMessage("");
-    try {
-      const post = (action) => fetch("/api/operations/daily", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ action, date }) }).then((response) => readApiResponse(response, "Rotation generation failed"));
-      await post("open");
-      await post("generateRotation");
-      const roster = await fetch(`/api/operations/roster?date=${date}`).then((response) => readApiResponse(response, "Roster reload failed"));
-      setData(roster);
-      setActionMessage(isArabic ? "تم توليد روتيشن جديد بالقواعد" : "A new rules-based rotation was generated");
-    } catch (requestError) { setError(requestError.message); } finally { setSaving(false); }
+    
   };
   const createRosterImage = async () => {
-    try {
-      return await capturePosterPngBlob(document.querySelector(".daily-operations-poster"));
-    } catch (captureError) {
-      console.warn("Exact roster capture failed; using the safe renderer", captureError);
-      return posterPngBlob({ data, config, weekday, grouped, scheduleColors });
-    }
+    const previousEditor=rotationEditor;
+    if(previousEditor)flushSync(()=>setRotationEditor(null));
+    try{return await capturePosterPngBlob(document.querySelector('.daily-operations-poster'));}
+    finally{if(previousEditor)setRotationEditor(previousEditor);}
   };
   const downloadRosterImage = (blob, branchCode) => {
     const downloadUrl = URL.createObjectURL(blob);
@@ -733,11 +514,21 @@ export default function DailyApprovalPreview() {
     download.click();
     window.setTimeout(() => URL.revokeObjectURL(downloadUrl), 1500);
   };
-  const copyRosterAndOpenWhatsApp = async () => {
-    setError(""); setActionMessage("");
+  const openWhatsApp = () => {
+    let target = whatsappWindowRef.current;
+    if (!target || target.closed) {
+      target = window.open("https://web.whatsapp.com/", "billybeez-whatsapp");
+      whatsappWindowRef.current = target;
+    }
+    if (target) target.focus();
+    else setError(localize("The browser blocked WhatsApp. Allow pop-ups or open WhatsApp yourself."));
+  };
+  const copyRosterImage = async (forWhatsApp = false) => {
+    if (sharing || loading) return;
+    setSharing(true);
+    setError(localize("")); setActionMessage(localize(""));
     try {
       if (!data?.schedule) throw new Error("Roster preview is not ready");
-      const branchCode = config.branchCode || "MOT";
       const blobPromise = createRosterImage();
       let clipboardPromise = null;
       if (navigator.clipboard?.write && typeof ClipboardItem !== "undefined") {
@@ -747,79 +538,88 @@ export default function DailyApprovalPreview() {
           console.warn("Clipboard image copy could not be started; downloading instead", clipboardError);
         }
       }
-      const message = isArabic ? `روستر Billy Beez ${branchCode} - ${date}` : `Billy Beez ${branchCode} roster - ${date}`;
-      const whatsappUrl = `https://api.whatsapp.com/send/?text=${encodeURIComponent(message)}&type=custom_url&app_absent=0`;
-      let whatsappWindow = whatsappWindowRef.current;
-      if (!whatsappWindow || whatsappWindow.closed) {
-        whatsappWindow = window.open(whatsappUrl, "billybeez-whatsapp");
-        whatsappWindowRef.current = whatsappWindow;
-      } else {
-        try { whatsappWindow.location.href = whatsappUrl; } catch { whatsappWindow = window.open(whatsappUrl, "billybeez-whatsapp"); whatsappWindowRef.current = whatsappWindow; }
-      }
-      whatsappWindow?.focus();
-      if (!whatsappWindow) setError(isArabic ? "المتصفح منع فتح واتساب. اسمح بالنوافذ المنبثقة لهذه الصفحة وحاول مرة أخرى." : "The browser blocked WhatsApp. Allow pop-ups for this page and try again.");
+      // Keep focus here until PNG copy completes. Text URLs do not attach images.
       if (clipboardPromise) {
         try {
           await clipboardPromise;
-          setActionMessage(isArabic ? "تم نسخ صورة الروستر وفتح واتساب؛ الصق الصورة مباشرة" : "Roster image copied and WhatsApp opened; paste the image directly");
+          setActionMessage(localize(forWhatsApp ? "Roster image copied. Paste it in your open WhatsApp chat with Ctrl+V. If WhatsApp is closed, use Open WhatsApp below." : "Roster image copied to Clipboard."));
+          if (forWhatsApp && whatsappWindowRef.current && !whatsappWindowRef.current.closed) whatsappWindowRef.current.focus();
           return;
         } catch (clipboardError) {
           console.warn("Clipboard image copy was unavailable; downloading instead", clipboardError);
         }
       }
-      downloadRosterImage(await blobPromise, branchCode);
-      setActionMessage(isArabic ? "تم فتح واتساب وتنزيل صورة الروستر لأن المتصفح منع النسخ" : "WhatsApp opened and the roster image was downloaded because clipboard copy was blocked");
-    } catch (shareError) { setError(shareError.message); }
+      downloadRosterImage(await blobPromise, config.branchCode || "MOT");
+      setActionMessage(localize("Clipboard image access was blocked. The roster PNG was downloaded; attach it in WhatsApp."));
+    } catch (shareError) { setError(shareError.message); } finally { setSharing(false); }
   };
   return (
     <section className="daily-approval-preview">
-      <header className="panel daily-preview-header">
-        <div>
-          <span className="daily-preview-eyebrow">BILLY BEEZ · {config.branchCode || "MOT"}</span>
-          <h1>
-            {isArabic ? "تيمبلت العمليات اليومية" : "Daily Operations Template"}
-          </h1>
-          <p>
-            {isArabic
-              ? "مصدر الفريق هو الجدول الشهري المنشور، وإعدادات التصميم محفوظة في مركز الإعدادات."
-              : "The published monthly schedule supplies the team; design rules live in Settings."}
-          </p>
+      {draftError&&<p className="alert danger" role="alert">{draftError}. Preview shows the saved design until this value is corrected.</p>}
+      {!embedded && <PageHeader className="daily-preview-header" title={localize("Daily Roster")} description={localize("The published monthly schedule supplies the team; design rules live in Settings.")}>
+        <div className={`daily-preview-controls no-print ${toolbarStyles.toolbar}`} data-roster-toolbar>
+          <div className={`${toolbarStyles.group} ${toolbarStyles.dateGroup}`} role="group" aria-label={localize("Roster date and day navigation")} data-roster-toolbar-group="date">
+            <span className={`${toolbarStyles.groupHeading} ${toolbarStyles.dateContext}`}>{localize("Roster date ·")} <time dateTime={dateReady?date:undefined}>{dateReady?new Intl.DateTimeFormat(isArabic?'ar-EG':'en-US',{dateStyle:'full',timeZone:'UTC'}).format(new Date(`${date}T00:00:00Z`)):localize("Loading date…")}</time></span>
+            <div className={toolbarStyles.groupActions}>
+              <label>
+                <span className={toolbarStyles.dateLabel}>{isArabic ? "التاريخ" : localize("Date")}</span>
+                <input
+                  type="date"
+                  disabled={sharing}
+                  value={date}
+                  onChange={(event) => { if (event.target.value) setDate(event.target.value); }}
+                />
+              </label>
+              <ActionButton icon="back" className={toolbarStyles.action} title={localize("Yesterday")} aria-label={localize("Yesterday")} disabled={sharing} onClick={() => setDate(addDays(today, -1))}>Yesterday</ActionButton>
+              <ActionButton
+                icon="next"
+                className={`secondary ${toolbarStyles.action}`}
+                title="Tomorrow"
+                aria-label="Tomorrow"
+                disabled={sharing}
+                onClick={() => setDate(tomorrow)}
+              >
+                Tomorrow
+              </ActionButton>
+            </div>
+          </div>
+          <div className={toolbarStyles.group} role="group" aria-label={localize("Editing and settings")} data-roster-toolbar-group="edit">
+            <span className={toolbarStyles.groupHeading}>{localize("Editing & settings")}</span>
+            <div className={toolbarStyles.groupActions}>
+              <ActionLink icon="settings" className={`button-link ${toolbarStyles.action} ${toolbarStyles.settingsAction}`} title={localize("Settings")} aria-label={localize("Settings")} href="/settings?tab=template">Settings</ActionLink>
+              <PermissionButton permission="rotations.create" icon="generate" className={toolbarStyles.action} title={localize("Rotation Distribution Preview")} aria-label={localize("Rotation Distribution Preview")} disabled={editBusy || loading || sharing || !data?.schedule} onClick={()=>setRotationGeneration(true)}>Rotation Distribution Preview</PermissionButton>
+              <PermissionButton permission="rotations.assign" icon={rotationEditor ? "check" : "edit"} className={`secondary ${toolbarStyles.action} ${toolbarStyles.editAction}`} title={rotationEditor ? localize("Finish editing rotations") : localize("Edit rotations")} aria-label={rotationEditor ? localize("Finish editing rotations") : localize("Edit rotations")} disabled={editBusy || loading || !data?.schedule} onClick={toggleRotationEditor} aria-pressed={Boolean(rotationEditor)}>{rotationEditor ? (isArabic?'إنهاء تعديل الروتيشن':localize("Finish editing rotations")) : (isArabic?'تعديل الروتيشن':localize("Edit rotations"))}</PermissionButton>
+            </div>
+          </div>
+          <div className={toolbarStyles.group} role="group" aria-label={localize("Print and sharing")} data-roster-toolbar-group="export">
+            <span className={toolbarStyles.groupHeading}>{localize("Print & share")}</span>
+            <div className={toolbarStyles.groupActions}>
+              <PermissionButton permission={["roster.print","roster.pdf"]} icon="print" className={`secondary ${toolbarStyles.action} ${toolbarStyles.printAction}`} title={localize("Print roster")} aria-label={localize("Print")} onClick={print}>
+                Print
+              </PermissionButton>
+              <PermissionButton permission="roster.share" icon="whatsapp" className={`whatsapp-button ${toolbarStyles.action} ${toolbarStyles.whatsappAction}`} title={localize("Copy roster image for WhatsApp")} aria-label="WhatsApp" disabled={sharing || loading || !data?.schedule} onClick={()=>copyRosterImage(true)}>WhatsApp</PermissionButton>
+              <PermissionButton permission="roster.share" icon="copy" className={`secondary ${toolbarStyles.action} ${toolbarStyles.copyAction}`} title={localize("Copy roster image to Clipboard")} aria-label={localize("Copy to Clipboard")} disabled={sharing || loading || !data?.schedule} onClick={()=>copyRosterImage(false)}>Copy to Clipboard</PermissionButton>
+            </div>
+          </div>
+          <ActionLink icon="back" className={`button-link ${toolbarStyles.action} ${toolbarStyles.backAction}`} title={localize("Back to Operations")} aria-label="Back" href="/operations">Back</ActionLink>
         </div>
-        <div className="daily-preview-controls no-print">
-          <label>
-            {isArabic ? "التاريخ" : "Date"}
-            <input
-              type="date"
-              value={date}
-              onChange={(event) => setDate(event.target.value)}
-            />
-          </label>
-          <button onClick={() => setDate(addDays(today, -1))}>
-            {isArabic ? "أمس" : "Yesterday"}
-          </button>
-          <button
-            className="secondary"
-            onClick={() => setDate(tomorrow)}
-          >
-            {isArabic ? "غدًا" : "Tomorrow"}
-          </button>
-          <Link className="button-link" href="/settings?tab=template">{isArabic ? "إعدادات" : "Settings"}</Link>
-          <button className="secondary" onClick={print}>
-            {isArabic ? "طباعة" : "Print"}
-          </button>
-          <button onClick={generateRotationNow} disabled={saving}>
-            {isArabic ? "روتيشن" : "Rotation"}
-          </button>
-          <button className="whatsapp-button" onClick={copyRosterAndOpenWhatsApp}>
-            {isArabic ? "نسخ وفتح واتساب" : "Copy & open WhatsApp"}
-          </button>
-          <Link className="button-link" href="/operations">
-            {isArabic ? "رجوع" : "Back"}
-          </Link>
-        </div>
-      </header>
-      {error && <div className="alert danger">{error}</div>}
-      {actionMessage && <div className="alert success">{actionMessage}</div>}
+      </PageHeader>}
+      {error && <div className="alert danger">{localize(error)}</div>}
+      {!embedded&&rotationGeneration&&<RotationGenerationDialog key={`${date}:${data.branch}`} date={date} branch={data.branch} onCancel={()=>setRotationGeneration(false)} onApplied={async result=>{
+        setData(await readApiResponse(await fetch(`/api/operations/roster?date=${date}&branch=${encodeURIComponent(data.branch)}`)));
+        if(rotationEditor)await loadRotationEditor();
+        setRotationGeneration(false);
+        setActionMessage(isArabic?`تم توليد الروتيشن · نسخة الروستر ${result.plan.version}`:`Rotation generated · roster version ${result.plan.version}`);
+      }}/>}
+      {actionMessage && <div className="alert success no-print" role="status">{actionMessage} <PermissionButton permission="roster.share" icon="whatsapp" type="button" className="secondary" onClick={openWhatsApp}>Open WhatsApp</PermissionButton></div>}
+      {!embedded&&rotationEditor&&<section className={`panel no-print ${posterStyles.editNotice}`} data-rotation-editor>
+        <h2>{isArabic?'تعديل مواقع الروتيشن من القائمة':'Edit hourly rotation locations'}</h2>
+        <p>{isArabic?'اختار الموقع من قائمة الساعة في الروستر، ثم اكتب السبب واحفظ. الخلايا المقفولة وتكليفات الكاشير الثابتة محمية.':'Choose a location in an hourly roster cell, then enter a reason and save. Locked cells and fixed cashier assignments are protected.'}</p>
+        {!rotationEditor.canEdit&&<p className="alert warning">{isArabic?'هذا الروستر مغلق أو تاريخي؛ التعديل غير متاح.':'This roster is closed or historical; editing is unavailable.'}</p>}
+        {rotationEditor.allowDisabledManualAssignments&&<label className={posterStyles.overrideLabel}><input type="checkbox" checked={allowDisabled} onChange={event=>setAllowDisabled(event.target.checked)}/>{isArabic?'السماح بتجاوز استبعاد المواقع يدويًا لهذه التعديلات':'Allow explicit manual overrides for excluded locations in these edits'}</label>}
+        <ActionButton className="secondary" disabled={editBusy} onClick={async()=>{setEditBusy(true);try{await loadRotationEditor();setError('');}catch(error){setError(error.message);}finally{setEditBusy(false);}}}>{isArabic?'تحديث قوائم التعديل':'Reload edit options'}</ActionButton>
+      </section>}
+      {!embedded&&pendingCell&&<RotationCellDialog pending={pendingCell} isArabic={isArabic} saving={editBusy} error={cellError} onSave={saveRotationCell} onCancel={()=>{setPendingCell(null);setCellError('');}}/>}
       {loading ? (
         <section className="panel">
           {isArabic
@@ -841,8 +641,15 @@ export default function DailyApprovalPreview() {
           data={data}
           grouped={grouped}
           scheduleColors={scheduleColors}
+          rotationEditor={!embedded?rotationEditor:null}
+          allowDisabled={allowDisabled} editBusy={editBusy} isArabic={false}
+          onCellChange={change=>{setCellError('');setPendingCell(change);}}
         />
       )}
+      {!embedded && data?.schedule && <div className={`${posterStyles.rosterSetup} no-print`} dir={isArabic?'rtl':'ltr'}>
+        <DayResponsibilities compact date={date} branch={data.branch} scheduleId={data.schedule.id} onSaved={async()=>setData(await readApiResponse(await fetch(`/api/operations/roster?date=${date}&branch=${encodeURIComponent(data.branch || "MOT")}`)))} />
+        <RosterBraceletSelections compact key={`${date}:${data.branch}`} date={date} branch={data.branch} value={data.braceletRoster} isArabic={isArabic} onSaved={async()=>setData(await readApiResponse(await fetch(`/api/operations/roster?date=${date}&branch=${encodeURIComponent(data.branch || "MOT")}`)))}/>
+      </div>}
     </section>
   );
 }

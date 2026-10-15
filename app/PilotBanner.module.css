@@ -1,0 +1,2 @@
+.banner {position:fixed;bottom:8px;inset-inline-end:12px;z-index:1000;padding:7px 12px;border:1px solid #bb8716;border-radius:8px;background:#fff0b8;color:#352044;font:700 12px/1.4 Arial,sans-serif;box-shadow:0 2px 10px #0002;pointer-events:none;max-width:calc(100vw - 90px)}
+@media print {.banner{display:none!important}}

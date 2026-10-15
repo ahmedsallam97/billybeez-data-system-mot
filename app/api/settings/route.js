@@ -1,8 +1,14 @@
+import {withAccountAccess} from '@/lib/accounts/routes';
 import { NextResponse } from "next/server";
+import { publicSettings, settingAuditValue } from "@/lib/settings-public";
+import { parseOperationsSetting, isOperationsSetting } from "@/lib/operations/config-validation";
 import { prisma } from "@/lib/db";
 import { authorizeApi } from "@/lib/api-auth";
 import { writeAudit } from "@/lib/audit";
-import { clearSettingsCache, ensureDefaultSettings, getSettingsRows } from "@/lib/settings";
+import { clearSettingsCache, getSettingsRows } from "@/lib/settings";
+import {context} from '@/lib/accounts/context';
+import {isOperationsWorkspaceSetting} from '@/lib/operations/settings-scope';
+import { normalizePlanningCatalogs } from '@/lib/operations/stock-catalog';
 
 const editableKeys = new Set([
   "BUSINESS_DAY_PASSWORD",
@@ -75,6 +81,7 @@ const editableKeys = new Set([
   "OPS_EVALUATION_RULES",
   "OPS_LEAVE_RULES",
   "OPS_PLANNING_CATALOGS",
+  "OPS_STOCK_RULES",
   "RECOGNITION_ARTWORK_CONFIG",
 ]);
 
@@ -88,39 +95,44 @@ function serializeSetting(setting) {
   };
 }
 
-export async function GET(request) {
+async function GETHandler(request) {
   const { error } = await authorizeApi("SYSTEM_SETTING_READ");
   if (error) return error;
 
-  await ensureDefaultSettings();
+
   const requestedKeys = String(request.nextUrl.searchParams.get("keys") || "")
     .split(",")
     .map((key) => key.trim())
     .filter(Boolean);
   const requestedKeySet = new Set(requestedKeys);
-  const settings = (await getSettingsRows())
+  const settings = publicSettings(await getSettingsRows())
+    .filter(setting=>!context.getStore()||isOperationsWorkspaceSetting(setting.key))
     .filter((setting) => !requestedKeySet.size || requestedKeySet.has(setting.key));
 
   return NextResponse.json({ success: true, settings: settings.map(serializeSetting) });
 }
 
-export async function PATCH(request) {
+async function PATCHHandler(request) {
   const { user, error } = await authorizeApi("SYSTEM_SETTING_MANAGE");
   if (error) return error;
 
-  await ensureDefaultSettings();
   const body = await request.json().catch(() => ({}));
   const key = String(body.key || "").trim();
-  const value = String(body.value ?? "").trim();
+  let value = String(body.value ?? "").trim();
 
   if (!editableKeys.has(key)) {
     return NextResponse.json({ success: false, error: "Setting cannot be edited" }, { status: 400 });
   }
+  if (isOperationsSetting(key)) {
+    try { const parsed = parseOperationsSetting(key, value); if (key === 'OPS_PLANNING_CATALOGS') value = JSON.stringify(normalizePlanningCatalogs(parsed)); }
+    catch (validationError) { return NextResponse.json({ success: false, error: validationError.message }, { status: 400 }); }
+  }
 
   const before = await prisma.systemSetting.findUnique({ where: { key } });
-  const setting = await prisma.systemSetting.update({
+  const setting = await prisma.systemSetting.upsert({
     where: { key },
-    data: {
+    create: { key, value, updatedBy: user.id },
+    update: {
       value,
       updatedBy: user.id,
     },
@@ -130,12 +142,15 @@ export async function PATCH(request) {
     action: "SYSTEM_SETTING_UPDATED",
     user,
     summary: `Updated setting ${key}`,
-    before: before ? serializeSetting(before) : null,
-    after: serializeSetting(setting),
+    before: settingAuditValue(before ? serializeSetting(before) : null),
+    after: settingAuditValue(serializeSetting(setting)),
     reason: "Manager updated system setting",
   });
 
   clearSettingsCache();
 
-  return NextResponse.json({ success: true, setting: serializeSetting(setting) });
+  return NextResponse.json({ success: true, setting: settingAuditValue(serializeSetting(setting)) });
 }
+
+export const GET=withAccountAccess(GETHandler,{legacyShared:true});
+export const PATCH=withAccountAccess(PATCHHandler,{legacyShared:true});

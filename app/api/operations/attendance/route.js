@@ -1,3 +1,5 @@
+import { withAccountAccess } from '@/lib/accounts/routes';
+import {refreshAfterSourceChange} from '@/lib/operations/employee-of-month';
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { authorizeApi } from "@/lib/api-auth";
@@ -52,7 +54,7 @@ function attendanceTiming(record, body, rules) {
   return { status, actualIn, actualOut, lateMinutes, earlyLeaveMinutes };
 }
 
-export async function GET(request) {
+async function GETHandler(request) {
   const { error } = await authorizeApi("OPS_ATTENDANCE_READ");
   if (error) return error;
   const date = String(new URL(request.url).searchParams.get("date") || "");
@@ -64,7 +66,7 @@ export async function GET(request) {
   return NextResponse.json({ success: true, date, schedule: schedule ? { id: schedule.id, version: schedule.version } : null, expected: assignments.map((item) => ({ assignmentId: item.id, employee: item.employee, code: item.code, expectedStart: shiftTimes[item.shiftCode]?.startTime || null, expectedEnd: shiftTimes[item.shiftCode]?.endTime || null })), day });
 }
 
-export async function POST(request) {
+async function POSTHandler(request) {
   const { user, error } = await authorizeApi("OPS_ATTENDANCE_MANAGE");
   if (error) return error;
   const body = await request.json();
@@ -86,12 +88,12 @@ export async function POST(request) {
   return NextResponse.json({ success: true, day }, { status: 201 });
 }
 
-export async function PATCH(request) {
+async function PATCHHandler(request) {
   const body = await request.json();
-  let attendanceRules = {}; try { attendanceRules = JSON.parse(await getSetting("OPS_ATTENDANCE_RULES", "{}")); } catch {}
   const permission = body.action === "finalize" ? "OPS_ATTENDANCE_FINALIZE" : body.action === "correct" ? "OPS_ATTENDANCE_CORRECT" : "OPS_ATTENDANCE_MANAGE";
   const { user, error } = await authorizeApi(permission);
   if (error) return error;
+  let attendanceRules;try{attendanceRules=JSON.parse(await getSetting("OPS_ATTENDANCE_RULES","{}"));}catch(error){return NextResponse.json({success:false,error:error.message},{status:422});}
   if (body.action === "finalize") {
     const day = await prisma.opsAttendanceDay.findUnique({ where: { id: String(body.dayId || "") }, include: { records: true } });
     if (!day) return NextResponse.json({ success: false, error: "Attendance day not found" }, { status: 404 });
@@ -146,3 +148,18 @@ export async function PATCH(request) {
   await writeAudit({ action: body.action === "correct" ? "OPS_ATTENDANCE_CORRECTED" : "OPS_ATTENDANCE_UPDATED", user, summary: `Updated attendance for ${record.attendanceDay.workDate}`, metadata: { recordId: record.id, employeeId: record.employeeId, status: update.status }, reason: body.reason });
   return NextResponse.json({ success: true, record: result });
 }
+
+export const GET=withAccountAccess(GETHandler);
+export const POST=withAccountAccess(POSTHandler);
+export const PATCH=withAccountAccess(async request=>{
+  const body=await request.clone().json().catch(()=>null),response=await PATCHHandler(request);
+  if(response.ok&&body){
+    const {user}=await authorizeApi('OPS_ATTENDANCE_MANAGE');
+    const branch=await operationsBranch(prisma,user,body.branch);
+    const day=body.dayId?await prisma.opsAttendanceDay.findUnique({where:{id:body.dayId}}):null;
+    const record=body.recordId?await prisma.opsAttendanceRecord.findUnique({where:{id:body.recordId},include:{attendanceDay:true}}):null;
+    const date=day?.workDate||record?.attendanceDay?.workDate;
+    if(date)await refreshAfterSourceChange(prisma,{user,branch,date,employeeIds:record?[record.employeeId]:undefined});
+  }
+  return response;
+});

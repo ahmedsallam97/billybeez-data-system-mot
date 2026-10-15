@@ -1,0 +1,7 @@
+"use client";
+import styles from './SuccessionWorkspace.module.css';
+import {workspaceLabel} from '@/lib/operations/succession-workspace';
+export default function SuccessionEvidence({candidate,evidence,documents,onEvidence,onDocuments,t,ar}){
+ const toggle=(list,id,checked)=>checked?[...list,id]:list.filter(value=>value!==id);
+ return <div className={styles.fields}><section className={styles.evidence}><h4>{t('Approved report evidence','أدلة تقارير معتمدة')}</h4>{candidate.evidenceReports?.length?candidate.evidenceReports.map(report=><label className={styles.check} key={report.id}><input type="checkbox" checked={evidence.includes(report.id)} onChange={event=>onEvidence(toggle(evidence,report.id,event.target.checked))}/><span>{report.workDate} · {workspaceLabel(report.reportType,ar)} · v{report.revision}</span></label>):<p className="muted">{t('No approved reports containing this employee are available.','لا توجد تقارير معتمدة تضم هذا الموظف حاليًا.')}</p>}</section><section className={styles.evidence}><h4>{t('Employee documents','مستندات الموظف')}</h4>{candidate.evidenceDocuments?.length?candidate.evidenceDocuments.map(doc=><label className={styles.check} key={doc.id}><input type="checkbox" checked={documents.includes(doc.id)} onChange={event=>onDocuments(toggle(documents,doc.id,event.target.checked))}/><span>{doc.displayName}</span></label>):<p className="muted">{t('Add observation checklists or certificates to the employee file before selecting them here.','أضف نماذج الملاحظة أو الشهادات لملف الموظف أولًا، ثم اخترها هنا.')}</p>}</section></div>;
+}

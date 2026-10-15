@@ -1,0 +1,11 @@
+[Unit]
+Description=Hourly Operations pilot backups
+
+[Timer]
+OnCalendar=hourly
+Persistent=true
+RandomizedDelaySec=120
+Unit=operations-pilot-backup.service
+
+[Install]
+WantedBy=timers.target

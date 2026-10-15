@@ -1,3 +1,4 @@
+import {withAccountAccess} from '@/lib/accounts/routes';
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { authorizeApi } from "@/lib/api-auth";
@@ -20,7 +21,7 @@ async function employeePayload(body) {
   return { name, nameEn: name, nameAr, department, active };
 }
 
-export async function GET(request) {
+async function GETHandler(request) {
   const { user, error } = await authorizeApi("EMPLOYEE_READ");
   if (error) return error;
 
@@ -76,12 +77,13 @@ export async function GET(request) {
   return NextResponse.json(employees);
 }
 
-export async function POST(request) {
+async function POSTHandler(request) {
   const { user, error } = await authorizeApi("EMPLOYEE_MANAGE");
   if (error) return error;
 
   const body = await request.json();
   const data = await employeePayload(body);
+  if(require('@/lib/accounts/context').context.getStore())data.branch=await require('@/lib/operations/business-access').operationsBranch(prisma,user,body.branch);
 
   if (!data.name) {
     return NextResponse.json({ success: false, error: "Employee name is required" }, { status: 400 });
@@ -118,7 +120,7 @@ export async function POST(request) {
   });
 }
 
-export async function PATCH(request) {
+async function PATCHHandler(request) {
   const { user, error } = await authorizeApi("EMPLOYEE_MANAGE");
   if (error) return error;
 
@@ -176,3 +178,7 @@ export async function PATCH(request) {
     },
   });
 }
+
+export const GET=withAccountAccess(GETHandler,{legacyShared:true});
+export const POST=withAccountAccess(POSTHandler,{legacyShared:true});
+export const PATCH=withAccountAccess(PATCHHandler,{legacyShared:true});

@@ -1,21 +1,24 @@
+import {withAccountAccess} from '@/lib/accounts/routes';
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { authorizeApi } from "@/lib/api-auth";
 
-export async function GET(request) {
-  const { error } = await authorizeApi("DASHBOARD_READ");
+async function GETHandler(request) {
+  const { user, error } = await authorizeApi("DASHBOARD_READ");
   if (error) return error;
 
   const { searchParams } = new URL(request.url);
   const take = Math.min(200, Math.max(1, Number(searchParams.get("take")) || 50));
   const orderId = searchParams.get("orderId");
 
-  const logs = await prisma.auditLog.findMany({
-    where: orderId ? { orderReference: orderId } : {},
+  const scope=require('@/lib/accounts/context').context.getStore();
+  let logs = await prisma.auditLog.findMany({
+    where: scope ? {action:{startsWith:'OPS_'}} : orderId ? { orderReference: orderId } : {},
     include: { user: true },
     orderBy: { createdAt: "desc" },
     take,
   });
+  if(scope&&!scope.unrestricted)logs=logs.filter(log=>{let meta;try{meta=JSON.parse(log.metadata||'{}');}catch{return false;}if(meta.employeeId)return scope.employeeIds.includes(meta.employeeId);if(meta.branch)return scope.branches.includes(meta.branch);return log.userId===user.id;});
 
   return NextResponse.json({
     success: true,
@@ -30,3 +33,5 @@ export async function GET(request) {
     })),
   });
 }
+
+export const GET=withAccountAccess(GETHandler,{legacyShared:true});

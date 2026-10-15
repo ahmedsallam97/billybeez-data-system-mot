@@ -1,0 +1,197 @@
+.dashboard {
+  --dashboard-ink: var(--theme-accent-text,#2f2143);
+  --dashboard-muted: var(--theme-primary-strong,#766c82);
+  --dashboard-line: #e9e5ee;
+  gap:var(--ui-space-3,24px);
+  color: var(--dashboard-ink);
+  padding: 10px 0 32px;
+  font-size: 15px;
+}
+.overview { display: grid; gap: 26px; }
+.pageHeader { display: flex; justify-content: space-between; align-items: center; gap:var(--ui-space-3,24px); padding: 10px 2px 6px; }
+.eyebrow { color: var(--theme-accent-text,#756382); font-size: 12px; font-weight: 800; letter-spacing: .06em; }
+.pageHeader h1 { margin: 8px 0 8px; color: var(--dashboard-ink); font-size: clamp(28px, 2.6vw, 40px); line-height: 1.25; font-weight: 900; }
+.pageHeader p { margin: 0; font-size: 16px; color: var(--dashboard-muted); }
+.headerActions { display: grid; gap: 14px; justify-items: end; flex-shrink: 0; }
+.headerActions time { display: flex; align-items: center; gap: 8px; color: var(--theme-accent-text,#675c74); font-size: 14px; }
+.headerActions time svg { width: 18px; height: 18px; }
+.primaryButton { display: inline-flex; align-items: center; justify-content: center; gap: var(--ui-space-3,18px); border: 1px solid var(--theme-primary); border-radius: 12px; background: var(--theme-primary); color: #fff; padding: 13px 20px; font-size: 15px; font-weight: 850; box-shadow: 0 4px 10px #e3b9221a; text-decoration: none; }
+.primaryButton:hover { background: var(--theme-primary-strong); }
+.arrow { width: 19px; height: 19px; flex-shrink: 0; }
+:global(html[dir="rtl"]) .arrow { transform: rotate(180deg); }
+.metricGrid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 18px; }
+.metricCard { display: flex; flex-direction: column; gap: var(--ui-space-2,12px); padding:var(--ui-card-padding,24px); min-width: 0; min-height: 0; border: 1px solid var(--dashboard-line); border-radius: 18px; background: #fff; color: var(--dashboard-ink); box-shadow: 0 4px 20px #33234d04; text-decoration: none; transition: border-color .18s, box-shadow .18s; }
+.metricCard:hover { border-color: var(--theme-card-border,#baa5d0); box-shadow: 0 8px 24px #33234d0c; }
+.metricTop { display: flex; align-items: center; justify-content: space-between; gap: 12px; font-size: 15px; font-weight: 750; }
+.metricIcon { display: grid; place-items: center; width: var(--ui-kpi-icon,42px); height: var(--ui-kpi-icon,42px); border-radius: 13px; background: var(--theme-primary-soft,#f4eff9); color: var(--theme-accent-text,#70458f); flex-shrink: 0; }
+.metricValue { font-size: var(--ui-kpi-value,48px); line-height: 1; letter-spacing: -.025em; font-weight: 850; }
+.statusValue { font-size: var(--ui-kpi-status,clamp(26px, 2.2vw, 34px)); line-height: 1.3; font-weight: 850; }
+.metricCard p { margin: 0; color: var(--dashboard-muted); font-size: 13px; line-height: 1.6; }
+.cardAction { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding-top: var(--ui-space-2,14px); margin-top: auto; border-top: 1px solid var(--theme-card-border,#eeeaf2); color: var(--theme-accent-text,#674380); font-size: 13px; font-weight: 800; }
+.featuredCard { border-color: var(--theme-card-border,#462363); background: var(--theme-primary-strong,#43215f); color: #fff; }
+.featuredCard:hover { border-color: var(--theme-card-border,#8d68aa); }
+.featuredCard .metricIcon { color: #f9d35a; background: #ffffff16; }
+.featuredCard p { color: var(--theme-muted,#e3d6ec); }
+.featuredCard .cardAction { color: #f9d35a; border-color: #ffffff25; }
+.workGrid { display: grid; grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr); gap:var(--ui-space-3,24px); align-items: start; }
+.priorityPanel, .readinessPanel { border: 1px solid var(--dashboard-line); border-radius: 18px; background: #fff; overflow: hidden; }
+.sectionHeader { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: var(--ui-card-padding,24px) 26px 16px; }
+.sectionHeader h2, .analyticsHeader h2 { margin: 6px 0 0; font-size: 23px; line-height: 1.3; color: var(--dashboard-ink); }
+.countBadge { display: grid; place-items: center; min-width: 38px; height: 38px; padding: 0 8px; border-radius: 12px; background: #fff2cd; color: #916004; font-size: 20px; font-weight: 850; }
+.actionList { padding: 0 26px 20px; display: grid; gap: 12px; }
+.actionRow { display: grid; grid-template-columns: 40px minmax(0, 1fr); gap: 14px; border: 1px solid #f0e1b8; border-radius: 14px; background: #fffaf0; padding: 20px; }
+.actionIcon { display: grid; place-items: center; height: 40px; width: 40px; border-radius: 12px; color: #ad7606; background: #faedca; }
+.actionRow[data-severity="danger"] { border-color: #f1c5ce; background: #fff6f7; }
+.actionRow[data-severity="danger"] .actionIcon { color: #ba304c; background: #ffe5eb; }
+.actionRow[data-severity="info"] { border-color: #dbe4f3; background: #f7faff; }
+.actionRow[data-severity="info"] .actionIcon { color: #3e6493; background: #e8effa; }
+.actionBody h3, .allClear h3 { margin: 0 0 5px; font-size: 18px; line-height: 1.5; color: var(--dashboard-ink); }
+.actionBody p, .allClear p { margin: 0; font-size: 14px; color: #776b60; line-height: 1.65; }
+.actionLink { display: inline-flex; align-items: center; justify-content: space-between; gap: 16px; padding: 9px 14px; margin-top: 16px; min-height: 42px; border: 1px solid #e5cc86; border-radius: 9px; color: #664509; background: #fff; font-size: 14px; font-weight: 800; text-decoration: none; }
+.actionLink:hover { background: #fff0c6; }
+.quickLinks { display: flex; gap: 8px 18px; flex-wrap: wrap; border-top: 1px solid var(--dashboard-line); padding: 14px 26px; background: #fdfcfe; }
+.quickLinks a { display: inline-flex; align-items: center; gap: 8px; min-height: 32px; color: var(--theme-accent-text,#6a527d); text-decoration: none; font-weight: 750; font-size: 13px; }
+.quickLinks a:hover { text-decoration: underline; }
+.quickLinks svg { width: 17px; height: 17px; }
+.readinessPanel .sectionHeader > svg { width: 28px; height: 28px; color: var(--theme-muted,#947da6); }
+.statusList { padding: 0 26px 12px; }
+.statusRow { display: grid; grid-template-columns: 34px minmax(0, 1fr) auto; gap: 12px; align-items: center; padding: 18px 0; color: var(--dashboard-ink); text-decoration: none; border-bottom: 1px solid var(--theme-card-border,#eeebf2); }
+.statusRow:last-child { border-bottom: none; }
+.statusRow:hover strong { text-decoration: underline; }
+.statusIcon { color: var(--theme-accent-text,#918198); }
+.statusRow strong { font-size: 15px; display: block; font-weight: 750; }
+.statusRow small { display: block; font-size: 12px; color: var(--dashboard-muted); margin-top: 5px; }
+.statusBadge { border-radius: 7px; padding: 6px 9px; font-size: 12px; font-weight: 800; white-space: nowrap; }
+.good { color: #207453; background: #eaf5ef; }
+.warning { color: #936a18; background: #fff2d8; }
+.allClear { display: flex; gap: 16px; align-items: center; padding: 24px 0; }
+.allClear > svg { color: #278264; flex-shrink: 0; }
+.analyticsHeader { display: flex; align-items: end; justify-content: space-between; gap:var(--ui-space-3,20px); padding: 8px 2px 0; }
+.analyticsHeader p { margin: 0; color: var(--dashboard-muted); font-size: 13px; }
+.dashboard a:focus-visible, .dashboard button:focus-visible { outline: 3px solid var(--theme-focus,#aa7dce); outline-offset: 4px; }
+
+/* The existing insight components retain their data and links in this view. */
+.dashboard :global(.insight-chart-grid) { gap:var(--ui-space-3,24px); }
+.dashboard :global(.insight-chart), .dashboard :global(.recognition-progress) { padding: var(--ui-card-padding,26px); border: 1px solid var(--dashboard-line); border-radius: 18px; background: #fff; gap:var(--ui-space-3,20px); min-height: var(--ui-chart-min-height,340px); align-content: start; }
+.dashboard :global(.insight-chart header span), .dashboard :global(.recognition-progress header span) { font-size: 11px; color: var(--theme-accent-text,#887099); letter-spacing: .07em; }
+.dashboard :global(.insight-chart h3), .dashboard :global(.recognition-progress h3) { font-size: 22px; margin: 6px 0; }
+.dashboard :global(.insight-chart header p), .dashboard :global(.recognition-progress header p) { font-size: 13px; }
+.dashboard :global(.insight-chart header > strong), .dashboard :global(.recognition-progress header > strong) { font-size: 32px; font-weight: 850; }
+.dashboard :global(.insight-chart-legend) { gap: 10px 16px; }
+.dashboard :global(.insight-chart-legend span) { font-size: 12px; }
+.dashboard :global(.insight-bars) { height: 190px; gap: 10px; background: repeating-linear-gradient(to top, transparent, transparent 46px, var(--theme-primary-soft,#f1edf4) 47px, transparent 48px); }
+.dashboard :global(.insight-bar-track) { background: #f5f2f7; width: min(32px, 85%); }
+.dashboard :global(.insight-bar-column > small) { font-size: 11px; }
+.dashboard :global(.chart-empty) { min-height: var(--ui-empty-min-height,180px); margin: 0; border: 1px dashed var(--theme-card-border,#e1d9e8); border-radius: 12px; padding:var(--ui-card-padding,24px); background: #fcfbfd; font-size: 15px; text-align: center; }
+.dashboard :global(.recognition-month-grid) { gap: 10px; }
+.dashboard :global(.recognition-month-grid > *) { padding: 14px 8px; border-radius: 11px; gap: 6px; text-decoration: none; }
+.dashboard :global(.recognition-month-grid > * b) { font-size: 20px; }
+.dashboard :global(.recognition-month-grid > * small) { font-size: 11px; }
+.dashboard :global(.follow-up-map-grid) { gap: 10px; }
+.dashboard :global(.follow-up-map-grid > *) { padding: 15px; border-radius: 11px; text-decoration: none; }
+.dashboard :global(.follow-up-map-grid > * span) { font-size: 13px; }
+.dashboard :global(.follow-up-map-grid > * b) { font-size: 24px; }
+.dashboard :global(.follow-up-map-grid > * small) { font-size: 11px; }
+.dashboard :global(.billy-assistant) { background: var(--theme-primary-soft,#f3edf8); color: var(--dashboard-ink); border: 1px solid var(--theme-card-border,#e5daee); border-radius: 18px; box-shadow: none; padding: 26px; gap: 22px; }
+.dashboard :global(.billy-assistant-head) { border-color: var(--theme-card-border,#e2d6eb); }
+.dashboard :global(.billy-assistant-head span) { font-size: 11px; color: var(--theme-accent-text,#805a9b); }
+.dashboard :global(.billy-assistant-head h2) { font-size: 26px; color: var(--theme-accent-text,#43215f); }
+.dashboard :global(.billy-assistant-head p) { color: var(--theme-accent-text,#796685); font-size: 14px; max-width: 680px; font-weight: 500; }
+.dashboard :global(.billy-assistant-head time) { color: var(--theme-accent-text,#795b90); border-color: var(--theme-card-border,#ddcde8); font-size: 12px; }
+.dashboard :global(.billy-insight-grid) { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+.dashboard :global(.billy-insight) { border: 1px solid var(--theme-card-border,#e6ddec); border-radius: 14px; padding: 20px; }
+.dashboard :global(.billy-insight-label) { font-size: 11px; }
+.dashboard :global(.billy-insight h3) { font-size: 19px; }
+.dashboard :global(.billy-insight p) { font-size: 14px; font-weight: 500; }
+.dashboard :global(.billy-insight ul) { font-size: 13px; font-weight: 500; }
+.dashboard :global(.billy-insight a) { color: var(--theme-accent-text,#694184); font-size: 14px; }
+.dashboard :global(.billy-assistant-source) { color: var(--theme-accent-text,#796685); font-size: 12px; font-weight: 500; }
+.dashboard :global(.operations-performance-summary) { gap:var(--ui-space-3,24px); }
+.dashboard :global(.operations-performance-summary .performance-summary-card) { border: 1px solid var(--dashboard-line); border-radius: 18px; background: #fff; }
+.dashboard :global(.operations-performance-summary .performance-summary-card > header) { background: var(--theme-primary-soft,#f4f0f8); color: var(--dashboard-ink); padding: 22px 24px; }
+.dashboard :global(.performance-summary-card > header h2) { color: var(--theme-accent-text,#43215f); font-size: 22px; }
+.dashboard :global(.performance-summary-card > header span), .dashboard :global(.performance-summary-card > header small) { color: var(--theme-accent-text,#7d6a8b); font-size: 11px; }
+.dashboard :global(.performance-rank-row) { margin: 0 24px; padding: 18px 0; font-size: 15px; }
+.dashboard :global(.performance-rank-row small) { font-size: 12px; }
+.dashboard :global(.performance-rank-row strong) { color: var(--theme-accent-text,#5c3976); font-size: 23px; }
+.dashboard :global(.performance-summary-card > p) { padding: 20px; }
+@media (max-width: 1150px) {
+  .metricGrid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .metricCard { min-height: 215px; }
+  .workGrid { grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr); }
+  .sectionHeader, .actionList, .statusList { padding-inline: 20px; }
+  .statusRow { gap: 8px; grid-template-columns: 28px minmax(0, 1fr); }
+  .statusBadge { grid-column: 2; justify-self: start; }
+}
+@media (max-width: 760px) {
+  .dashboard { gap:var(--ui-space-3,20px); padding-top: 2px; }
+  .overview { gap:var(--ui-space-3,20px); }
+  .pageHeader { align-items: start; flex-direction: column; gap:var(--ui-space-3,20px); }
+  .pageHeader h1 { font-size: 32px; }
+  .pageHeader p { font-size: 15px; }
+  .headerActions { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 16px; width: 100%; }
+  .headerActions time { font-size: 13px; }
+  .primaryButton { padding: 11px 15px; }
+  .metricGrid { gap: 12px; }
+  .metricCard { padding: 18px; min-height: 215px; gap: 12px; border-radius: 15px; }
+  .metricTop { font-size: 14px; align-items: start; }
+  .metricIcon { width: 32px; height: 32px; border-radius: 10px; }
+  .metricIcon svg { width: 20px; height: 20px; }
+  .metricValue { font-size: 40px; }
+  .statusValue { font-size: 26px; }
+  .metricCard p { font-size: 12px; }
+  .cardAction { font-size: 12px; }
+  .workGrid { grid-template-columns: 1fr; gap:var(--ui-space-3,20px); }
+  .sectionHeader h2 { font-size: 22px; }
+  .statusRow { grid-template-columns: 32px minmax(0, 1fr) auto; }
+  .statusBadge { grid-column: auto; }
+  .analyticsHeader { display: grid; gap: 12px; }
+  .dashboard :global(.insight-chart-grid), .dashboard :global(.operations-performance-summary), .dashboard :global(.billy-insight-grid) { grid-template-columns: 1fr; gap:var(--ui-space-3,20px); }
+  .dashboard :global(.insight-chart), .dashboard :global(.recognition-progress), .dashboard :global(.billy-assistant) { padding: 20px; }
+  .dashboard :global(.insight-bars) { gap: 5px; }
+  .dashboard :global(.insight-bar-column > small) { font-size: 10px; }
+  .dashboard :global(.billy-assistant-head) { display: grid; }
+}
+@media (max-width: 420px) {
+  .metricCard { padding: 16px; }
+  .metricTop { flex-direction: column-reverse; gap: 10px; }
+  .statusValue { font-size: 23px; }
+  .actionRow { padding: 16px; grid-template-columns: 1fr; gap: 10px; }
+  .statusRow { grid-template-columns: 28px minmax(0, 1fr); }
+  .statusBadge { grid-column: 2; }
+  .dashboard :global(.billy-insight) { padding: 16px; grid-template-columns: 1fr; }
+  .dashboard :global(.performance-summary-card header) { grid-template-columns: 1fr; }
+  .dashboard :global(.performance-summary-card header small) { grid-row: auto; grid-column: auto; }
+}
+@media (prefers-reduced-motion: reduce) { .metricCard { transition: none; } }
+/* User preferences stay scoped to the Operations dashboard and its preview. */
+.dashboard { width:100%; max-width:none; margin-inline:0; }
+.dashboard[data-width="wide"] { max-width:none; }
+.dashboard .metricCard, .dashboard .priorityPanel, .dashboard :global(.panel) { border-radius:var(--ops-radius,18px); border-color:var(--dashboard-line); }
+.dashboard .featuredCard { background:var(--ops-primary,var(--theme-primary-strong,#43215f)); border-color:var(--ops-primary,var(--theme-card-border,#43215f)); }
+.dashboard .metricIcon { color:var(--ops-card-accent,var(--theme-accent-text,#70458f)); }
+.dashboard .featuredCard .metricIcon { color:var(--ops-secondary,#f8cd36); }
+.dashboard .primaryButton { background:var(--ops-primary,var(--theme-primary)); }
+.dashboard h1, .dashboard h2, .dashboard h3 { color:var(--ops-header-accent,var(--theme-accent-text,#43215f)); }
+.dashboard .metricGrid { grid-template-columns:repeat(var(--ops-columns,4),minmax(0,1fr)); }
+.dashboard .metricGrid[data-layout="overview"] .metricCard:nth-child(n+5) { min-height:var(--ui-kpi-min-height,170px); }
+.dashboard[data-density="compact"] { gap:16px; }
+.dashboard[data-density="compact"] .metricCard { min-height:var(--ui-kpi-min-height,160px); padding:18px; gap:8px; }
+.dashboard[data-density="compact"] .sectionHeader { padding:18px; }
+.dashboard[data-density="compact"] :global(.panel) { padding:18px; }
+.dashboard[data-descriptions="false"] .pageHeader p, .dashboard[data-descriptions="false"] .actionBody p,
+.dashboard[data-descriptions="false"] :global(.insight-chart header p), .dashboard[data-descriptions="false"] :global(.recognition-progress header p), .dashboard[data-descriptions="false"] :global(.billy-assistant-head p) { display:none; }
+.dashboard[data-detail-links="false"] .headerActions a, .dashboard[data-detail-links="false"] :global(.billy-insight a) { display:none; }
+.dashboard[data-detail-links="false"] :global(.recognition-month-grid), .dashboard[data-detail-links="false"] :global(.follow-up-map-grid) { pointer-events:none; }
+.dashboard [data-attention-display="compact"] .actionRow { padding:12px; }
+.dashboard [data-attention-display="compact"] .actionBody p { display:none; }
+.dashboard [data-attention-display="compact"] .actionLink { margin-top:6px; padding:5px 10px; min-height:32px; }
+@media(max-width:1150px) { .dashboard .metricGrid { grid-template-columns:repeat(2,minmax(0,1fr)); } }
+@media(max-width:380px) { .dashboard .metricGrid { grid-template-columns:1fr; } }
+/* Embedded preview responds to its workspace width, not the browser width. */
+@container dashboard-preview (max-width:1050px){.dashboard .metricGrid{grid-template-columns:repeat(2,minmax(0,1fr))}.dashboard .workGrid,.dashboard .analyticsHeader{grid-template-columns:minmax(0,1fr)}.dashboard :global(.insight-chart-grid),.dashboard :global(.operations-performance-summary),.dashboard :global(.billy-insight-grid){grid-template-columns:minmax(0,1fr)}.dashboard .pageHeader{flex-wrap:wrap}.dashboard .headerActions{min-width:0;flex-shrink:1;justify-items:start}.dashboard :global(.billy-assistant-head){display:flex;flex-wrap:wrap}}
+@container dashboard-preview (max-width:520px){.dashboard .metricGrid{grid-template-columns:minmax(0,1fr)}.dashboard .statusRow{grid-template-columns:28px minmax(0,1fr)}.dashboard .statusBadge{grid-column:2;justify-self:start}.dashboard .actionRow{grid-template-columns:minmax(0,1fr)}.dashboard :global(.billy-insight){grid-template-columns:minmax(0,1fr)}}
+
+@media screen { .dashboard .primaryButton{color:var(--theme-primary-fg);border-color:var(--theme-card-border)} .dashboard .featuredCard,.dashboard .featuredCard .metricIcon,.dashboard .featuredCard .cardAction{color:var(--theme-featured-fg)} .dashboard .featuredCard p{color:var(--theme-sidebar-muted)} }
+
+@media screen { .dashboard .metricCard:nth-child(even):not(.featuredCard){background:var(--theme-primary-soft)} }

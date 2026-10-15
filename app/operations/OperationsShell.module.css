@@ -1,0 +1,45 @@
+/* The rail is a sibling of the complete navbar/content shell. */
+.application{height:100dvh;min-height:0;display:grid;grid-template-columns:64px minmax(0,1fr);direction:inherit;overflow:hidden}
+.application[data-navigation-open="true"]{grid-template-columns:244px minmax(0,1fr)}
+.mainShell{min-width:0;min-height:0;display:grid;grid-template-rows:auto minmax(0,1fr);overflow:hidden}
+.mainShell>:global(.topbar){position:relative;z-index:30;flex-wrap:wrap;min-width:0}
+.sidebar{min-width:0;min-height:0;height:100dvh;display:flex;flex-direction:column;background:linear-gradient(180deg,var(--theme-sidebar-bg,#43215f),var(--theme-sidebar-end,#291539));border-inline-end:1px solid var(--theme-sidebar-border,#553267);z-index:40}
+.sidebar[hidden]{display:none}
+.application .content { min-width:0; min-height:0; max-width:none; width:100%; margin:0; padding:var(--ui-page-gutter,24px); overflow:auto; overscroll-behavior:contain; scrollbar-gutter:stable; }
+.application .content[data-workspace-width="wide"] { padding:16px; }
+.application .content :global(.operations-shell) { display:block; grid-template-columns:none; grid-template-areas:none; overflow:visible; direction:inherit; }
+.application .content :global(.operations-content) { grid-area:auto; min-width:0; width:100%; max-width:none; }
+.application .content :global(.schedule-workspace) { width:100%; max-width:none; min-width:0; }
+.application .content :global(.schedule-grid-scroll) { max-height:min(68dvh,900px); overflow:auto; }
+.application .content :global(.schedule-grid-table thead th) { position:sticky; top:0; z-index:3; }
+.application .content :global(.schedule-grid-table thead th:first-child) { z-index:4; }
+.application .content :global(.employee-directory-picker) { grid-column:auto; }
+.application .content :global(.employee360-tools) { grid-template-columns:minmax(0,1fr); align-content:center; }
+.application .content :global(.employee-file-controls) { display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); align-items:end; min-width:0; gap:10px; }
+.application .content :global(.employee-file-controls > *) { min-width:0; width:100%; }
+.application .content :global(.employee-file-controls button) { min-height:42px; }
+.application .content :global(.employee360-head), .application .content :global(.employee360-identity) { min-width:0; }
+.application .content :global(.employee360-identity h2) { overflow-wrap:anywhere; }
+
+.application .content :global(.employee360){grid-template-columns:minmax(0,1fr)}
+.application :global(.nav a[aria-current="page"]){border-color:#f8cd36;background:#ffffff24}
+.mobileToggle{display:none}.backdrop{display:none}
+
+@media(max-width:1100px){.application .content{padding:16px}.application .content :global(.employee-directory-toolbar){grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:700px){.application :global(.topbar>.nav:not(.app-drawer)){flex-wrap:wrap!important;overflow:visible}}
+@media(max-width:620px){
+ .application,.application[data-navigation-open="true"]{grid-template-columns:minmax(0,1fr)}
+ .sidebar{position:fixed;inset-block:0;inset-inline-start:0;width:min(260px,82vw);z-index:61;box-shadow:0 0 24px #24132c50}
+ .backdrop{display:block;position:fixed;inset:0;z-index:60;background:#28133655;border:0;border-radius:0}
+ .mobileToggle{display:inline-flex;padding:7px 9px;min-height:34px;background:#ffffff16;border:1px solid #ffffff50;color:white;font-size:12px}
+ .mainShell>:global(.topbar){gap:8px;padding:10px 12px}.application :global(.topbar>.nav){width:100%;gap:6px}
+ .application :global(.nav a){padding:7px 9px;font-size:12px}.application .content,.application .content[data-workspace-width="wide"]{padding:12px}
+ .application .content :global(.employee-directory-toolbar){grid-template-columns:minmax(0,1fr)}
+}
+@media print{
+ .application,.mainShell{display:block!important;height:auto!important;min-height:0!important;overflow:visible!important}
+ .mainShell>:global(.topbar),.sidebar,.backdrop{display:none!important}
+ .application .content{display:block!important;width:100%!important;max-width:none!important;height:auto!important;min-height:0!important;padding:0!important;margin:0!important;overflow:visible!important;scrollbar-gutter:auto}
+ .application .content :global(.schedule-grid-scroll){max-height:none!important;overflow:visible!important}.application .content :global(.schedule-grid-table thead th){position:static!important}
+}
+.application .content :global(.employee-directory-profile){padding:0;border:0;background:transparent;box-shadow:none}

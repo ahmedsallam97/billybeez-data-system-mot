@@ -1,0 +1,11 @@
+.panel { min-width:0; max-width:100%; }
+.actions { display:flex; flex-wrap:wrap; justify-content:flex-end; gap:10px; margin-bottom:12px; }
+.actions button,.dialogHead button { white-space:normal; min-height:44px; flex-shrink:0; }
+.dialog { width:calc(100vw - 32px); max-width:none; height:calc(100dvh - 32px); max-height:none; margin:auto; padding:0; border:1px solid var(--theme-card-border,#e5ddec); border-radius:14px; background:var(--theme-primary-soft,#f0ebf4); color:inherit; overflow:auto; }
+.dialog::backdrop { background:#21142dcc; }
+.dialogHead { display:flex; flex-wrap:wrap; justify-content:space-between; align-items:center; gap:12px; position:sticky; top:0; z-index:5; background:#fff; padding:16px; border-bottom:1px solid var(--theme-card-border,#e5ddec); }
+.dialogBody { position:static!important; min-width:0; margin:0!important; padding:20px; overflow:visible; border:0!important; }
+@media(max-width:600px){.dialog{width:100vw;height:100dvh;border-radius:0}.dialogBody{padding:12px}.dialogHead{padding:12px}}
+@media print{.actions,.dialogHead{display:none!important}.dialog,.dialogBody{height:auto!important;max-height:none!important;position:static!important;overflow:visible!important;border:0!important;padding:0!important}}
+
+.panel>details>summary{cursor:pointer;font-weight:750;font-size:14px;min-height:24px}.panel>details[open]>summary{margin-bottom:12px}

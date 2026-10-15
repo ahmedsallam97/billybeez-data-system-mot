@@ -18,3 +18,15 @@ playwright-report
 check-admin.js
 reset-admin.js
 scripts/migrate-bb-oms.js
+.next-*
+generated
+docs
+tests
+playwright
+deploy/pilot/*.env
+deploy/pilot/secrets
+*.opsbackup
+*.key
+*.pem
+**/*.db
+**/*.db-*

@@ -1,10 +1,20 @@
 "use client";
+import { useUiText } from '@/app/i18n';
+import {PageHeader,FormSection,ContentGrid,EmptyState} from '../ui/DesktopLayout';
+import ActionButton from "@/app/ActionButton";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {useSearchParams, useRouter} from 'next/navigation';
 import { useI18n } from "../i18n";
 import { readApiResponse } from "@/lib/client/read-api-response";
+import {PermissionButton,PermissionFieldset} from "@/app/account/PermissionControls";
+import Link from "next/link";
+import { usePermission } from "../account/AccountContext";
+import { OperationalStatus, OperationalError } from "../ui/OperationalFeedback";
+import StockWorkspace from "./StockWorkspace";
+import PlanningCustomerDirectory from "./PlanningCustomerDirectory";
 import stockCatalogConfig from "@/lib/operations/stock-catalog";
-import { formatOfferWeekdays } from "@/lib/operations/planning";
+import { formatOfferWeekdays, offerAppliesOnDate } from "@/lib/operations/planning";
 
 const { normalizeBraceletTypes } = stockCatalogConfig;
 
@@ -19,11 +29,11 @@ function localDate() {
 }
 
 
-function FormCard({ title, hint, children, onSubmit, button, secondary }) {
+function FormCard({ permission, title, hint, children, onSubmit, button, secondary }) {
   return <form className="ops-setup-card" onSubmit={onSubmit}>
     <header><h3>{title}</h3><p>{hint}</p></header>
-    <div className="ops-setup-fields">{children}</div>
-    <div className="ops-form-actions"><button type="submit">{button}</button>{secondary}</div>
+    <PermissionFieldset permission={permission} className="ops-setup-fields" style={{border:0,padding:0,margin:0}}>{children}</PermissionFieldset>
+    <div className="ops-form-actions"><PermissionButton permission={permission} type="submit">{button}</PermissionButton>{secondary}</div>
   </form>;
 }
 
@@ -41,9 +51,12 @@ function offerSchedule(offer, isArabic) {
   return `${days} · ${dates}`;
 }
 
-export default function DailySetupWorkspace({ section = "trips" }) {
+export default function DailySetupWorkspace({ section = "trips", bookings }) {
   const { isArabic } = useI18n();
+  const searchParams=useSearchParams(),router=useRouter();
+  const canRoster=usePermission("roster.view");
   const [date, setDate] = useState(localDate);
+  useEffect(()=>{const requested=searchParams.get('date');if(/^\d{4}-\d{2}-\d{2}$/.test(requested||''))setDate(requested);},[searchParams]);
   const [daily, setDaily] = useState(null);
   const [employees, setEmployees] = useState([]);
   const [catalogues, setCatalogues] = useState({ meals: [], partyRooms: [], stockItems: [] });
@@ -54,20 +67,21 @@ export default function DailySetupWorkspace({ section = "trips" }) {
   const [editingTrip, setEditingTrip] = useState(null);
   const [editingEvent, setEditingEvent] = useState(null);
   const [editingStock, setEditingStock] = useState(null);
+  const saving=useRef(false);
 
   const request = useCallback((url, options = {}) => fetch(url, { credentials: "same-origin", ...options }).then((response) => readApiResponse(response)), []);
 
   const load = useCallback(async () => {
     setMessage("");
     try {
-      const day = await request(`/api/operations/daily?date=${date}`);
+      const day = await request(`/api/operations/daily?date=${date}&view=${encodeURIComponent(section)}`);
       setDaily(day);
       if (section === "rosterSettings") {
         const staff = await request("/api/operations/employees?status=ACTIVE");
         setEmployees(staff.employees || []);
       }
       if (["birthdays", "stock"].includes(section)) {
-        const planningSettings = await request("/api/settings?keys=OPS_PLANNING_CATALOGS");
+        const planningSettings = await request("/api/operations/settings?keys=OPS_PLANNING_CATALOGS");
         const catalogueRow = planningSettings.settings?.[0];
         if (catalogueRow?.value) setCatalogues(JSON.parse(catalogueRow.value));
       }
@@ -78,6 +92,7 @@ export default function DailySetupWorkspace({ section = "trips" }) {
 
   async function submit(action, event, extra = {}, method = "POST") {
     event.preventDefault();
+    if(saving.current)return; saving.current=true;
     const formElement = event.currentTarget;
     setBusy(true); setMessage("");
     const form = new FormData(formElement);
@@ -94,8 +109,8 @@ export default function DailySetupWorkspace({ section = "trips" }) {
       setEditingEvent(null);
       setEditingStock(null);
       setMessageKind("success"); setMessage(isArabic ? "تم الحفظ" : "Saved");
-      await load();
-    } catch (error) { setMessageKind("danger"); setMessage(error.message); } finally { setBusy(false); }
+      await load(); router.refresh();
+    } catch (error) { setMessageKind("danger"); setMessage(error.message); } finally { saving.current=false; setBusy(false); }
   }
 
   async function deleteOffer(offer) {
@@ -176,37 +191,33 @@ export default function DailySetupWorkspace({ section = "trips" }) {
   };
   const heading = headings[section] || headings.trips;
   const offerCatalog = daily?.offerCatalog || [];
+  const directoryNotice = (kind, text) => { setMessageKind(kind); setMessage(text); };
 
   return <section className="daily-setup-workspace">
-    <header className="panel ops-setup-hero">
-      <div><span>BILLY BEEZ · {daily?.branchConfig?.branchCode || daily?.branch || "MOT"}</span><h1>{isArabic ? heading[0] : heading[1]}</h1><p>{isArabic ? heading[2] : heading[3]}</p></div>
-      {section !== "stock" && <label>{isArabic ? "تاريخ العرض" : "View date"}<input type="date" value={date} onChange={(event) => setDate(event.target.value)} /></label>}
-    </header>
-    {message && <div className={`alert ${messageKind}`}>{message}</div>}
+    <PageHeader title={isArabic?heading[0]:heading[1]} description={isArabic?heading[2]:heading[3]} context={daily?.branchConfig?.branchCode||daily?.branch||"MOT"} actions={<>{section!=="stock"&&<label>{isArabic?"تاريخ العرض":"View date"}<input type="date" value={date} onChange={event=>setDate(event.target.value)}/></label>}{["trips","birthdays","offers","stock"].includes(section)&&<PermissionButton permission={`${section}.create`} type="button" onClick={()=>{const form=document.getElementById(section==="stock"?"stock-variant-editor":`create-${section}`);if(form){form.open=true;form.scrollIntoView({block:"nearest"});form.querySelector("input:not([type=hidden]),select")?.focus({preventScroll:true});}}}>{isArabic?({trips:"إضافة رحلة",birthdays:"إضافة عيد ميلاد",offers:"إضافة عرض",stock:"إضافة مخزون"}[section]):({trips:"Create trip",birthdays:"Create birthday",offers:"Create offer",stock:"Add stock"}[section])}</PermissionButton>}</>}/>
+    {messageKind === "danger" ? <OperationalError error={message}/> : message && <div role="status" className="alert success">{message}</div>}
 
     {section === "rosterSettings" && <section className="panel ops-name-settings">
       <header><h2>{isArabic ? "الاسم الثنائي في الروستر" : "Two-name roster display"}</h2><p>{isArabic ? "اكتب الاسم الذي سيظهر في الروستر يدويًا؛ الاسم الكامل في ملف الموظف لا يتغير." : "Enter the exact two-name label shown on the roster. The full employee record stays unchanged."}</p></header>
       <div className="ops-name-list">{employees.map((employee) => <RosterNameRow key={employee.id} employee={employee} disabled={busy} save={saveName} isArabic={isArabic} />)}</div>
     </section>}
 
-    <div className="ops-setup-grid">
-      {section === "trips" && <TripForm key={editingTrip?.id || "new"} trip={editingTrip} daily={daily} catalogues={catalogues} submit={submit} cancel={() => setEditingTrip(null)} isArabic={isArabic} />}
-      {section === "birthdays" && <BirthdayForm key={editingEvent?.id || "new"} event={editingEvent} daily={daily} catalogues={catalogues} submit={submit} cancel={() => setEditingEvent(null)} isArabic={isArabic} />}
-      {section === "offers" && <OfferForm key={editingOffer?.id || "new"} offer={editingOffer} busy={busy} isArabic={isArabic} submit={submit} cancel={() => setEditingOffer(null)} />}
-      {section === "stock" && <>
-        <StockCard catalog={catalogues.stockCatalog} key={editingStock?.stockCategory === "SOCKS" ? editingStock.id : "socks-new"} title={isArabic ? "ستوك الشرابات" : "Socks stock"} category="SOCKS" unit="PAIR" color="#f2c94c" kind="socks" stock={editingStock?.stockCategory === "SOCKS" ? editingStock : null} cancel={() => setEditingStock(null)} submit={submit} isArabic={isArabic} />
-        <StockCard catalog={catalogues.stockCatalog} key={editingStock?.stockCategory === "BRACELET" ? editingStock.id : "bracelet-new"} title={isArabic ? "ستوك البريسلت" : "Bracelet stock"} category="BRACELET" unit="ITEM" color="#9b51e0" kind="bracelet" stock={editingStock?.stockCategory === "BRACELET" ? editingStock : null} cancel={() => setEditingStock(null)} submit={submit} isArabic={isArabic} />
-        <StockCard catalog={catalogues.stockCatalog} key={editingStock?.stockCategory === "CASH_ROLL" ? editingStock.id : "cash-new"} title={isArabic ? "رول الكاش" : "Cash rolls"} category="CASH_ROLL" unit="ROLL" kind="roll" stock={editingStock?.stockCategory === "CASH_ROLL" ? editingStock : null} cancel={() => setEditingStock(null)} submit={submit} isArabic={isArabic} />
-        <StockCard catalog={catalogues.stockCatalog} key={editingStock?.stockCategory === "VISA_ROLL" ? editingStock.id : "visa-new"} title={isArabic ? "رول الفيزا" : "Visa rolls"} category="VISA_ROLL" unit="ROLL" kind="roll" stock={editingStock?.stockCategory === "VISA_ROLL" ? editingStock : null} cancel={() => setEditingStock(null)} submit={submit} isArabic={isArabic} />
-      </>}
-    </div>
+    {bookings && <section className="panel ui-period-bookings"><header className="ui-section-head"><div><h2>{isArabic?"حجوزات الفترة المحددة":"Bookings for selected period"}</h2><p className="ui-filter-criteria">{bookings.from} → {bookings.until} · {bookings.rows.length} {isArabic?"حجز":"bookings"}</p></div><label>{isArabic?"شهر موعد الحجز":"Booking month"}<input type="month" value={bookings.month} onChange={event=>{const url=new URL(location.href);url.searchParams.set("bookingMonth",event.target.value);router.replace(url.pathname+url.search,{scroll:false});}}/></label></header><div className="record-table-scroll"><table className="record-line-table ui-comparison-table"><thead><tr>{(isArabic?["الحجز","موعد الحجز","الأطفال","التغطية المطلوبة","الحالة","مسؤولو الحجز"]:["Booking","Booking date / time","Children","Required coverage","Status","Booking leaders"]).map(label=><th key={label}>{label}</th>)}</tr></thead><tbody>{bookings.rows.map(row=><tr key={row.id}><td><b>{row.childName||row.name}</b><small>{row.branch}</small></td><td>{row.workDate}<small>{row.startTime||"—"} → {row.endTime||"—"}</small></td><td>{row.expectedChildren??row.expectedGuests??"—"}</td><td>{row.staffingRequired??(isArabic?"لم تحدد":"Not specified")}</td><td><OperationalStatus value={row.status}/></td><td>{canRoster?<Link className="ui-context-link" href={`/operations/daily?date=${row.workDate}`}>{isArabic?"التغطية والموظفون المسؤولون":"Coverage and responsible employees"}</Link>:<span>{isArabic?"يلزم صلاحية الروستر لعرض المسؤولين":"Roster access is required to view leaders"}</span>}</td></tr>)}</tbody></table></div>{!bookings.rows.length&&<EmptyState title={isArabic?"لا توجد حجوزات في الفترة المحددة":"No bookings in the selected period"}/>}</section>}
+    <ContentGrid>
+      {section === "trips" && <FormSection id={`create-${section}`} title={isArabic?"إضافة / تعديل رحلة":"Add / edit trip"} open={Boolean(editingTrip)}><TripForm key={editingTrip?.id || "new"} trip={editingTrip} daily={daily} catalogues={catalogues} submit={submit} cancel={() => setEditingTrip(null)} isArabic={isArabic} /></FormSection>}
+      {section === "birthdays" && <FormSection id="create-birthdays" title={isArabic?"إضافة / تعديل عيد ميلاد":"Add / edit birthday"} open={Boolean(editingEvent)}><BirthdayForm key={editingEvent?.id || "new"} event={editingEvent} daily={daily} catalogues={catalogues} submit={submit} cancel={() => setEditingEvent(null)} isArabic={isArabic} /></FormSection>}
+      {section === "offers" && <FormSection id="create-offers" title={isArabic?"إضافة / تعديل عرض":"Add / edit offer"} open={Boolean(editingOffer)}><OfferForm key={editingOffer?.id || "new"} offer={editingOffer} busy={busy} isArabic={isArabic} submit={submit} cancel={() => setEditingOffer(null)} /></FormSection>}
+    </ContentGrid>
 
-    {section === "offers" && <OfferList offers={offerCatalog} isArabic={isArabic} busy={busy} edit={setEditingOffer} remove={deleteOffer} />}
-    {section === "stock" && <StockList items={daily?.wristbands || []} catalog={catalogues.stockCatalog} isArabic={isArabic} busy={busy} edit={(item) => { setEditingStock(item); window.scrollTo({ top: 0, behavior: "smooth" }); }} issue={issueStock} remove={(item) => stockAction("deleteStock", item)} />}
-    {!["rosterSettings", "offers", "stock"].includes(section) && <section className="panel ops-setup-current"><h2>{isArabic ? "المسجل للتاريخ المحدد" : "Saved for selected date"}</h2><div className="ops-current-grid">
+
+    {section === "offers" && <OfferList date={date} offers={offerCatalog} isArabic={isArabic} busy={busy} edit={setEditingOffer} remove={deleteOffer} />}
+    {section === "stock" && <StockWorkspace items={daily?.wristbands || []} catalog={catalogues.stockCatalog} isArabic={isArabic} busy={busy} editing={editingStock} setEditing={setEditingStock} submit={submit} issue={(item,quantity)=>stockAction("issueStock",item,quantity)} remove={item=>stockAction("deleteStock",item)} />}
+    {!["rosterSettings", "offers", "stock"].includes(section) && <section className="panel ops-setup-current"><h2>{isArabic ? (date===localDate()?"حجوزات اليوم":"حجوزات التاريخ المحدد") : (date===localDate()?"Today’s bookings":"Bookings on selected date")}</h2><ContentGrid columns={1} className="ops-current-grid">
       {section === "trips" && <Current title={isArabic ? "الرحلات" : "Trips"} items={daily?.trips} render={(item) => `${item.name} · ${item.startTime || "—"} · ${item.expectedChildren ?? 0}${item.braceletColor ? ` · ${item.braceletMaterial || ""} ${item.braceletColor}` : ""}`} edit={setEditingTrip} remove={(item) => removePlanningItem("trip", item)} isArabic={isArabic} />}
       {section === "birthdays" && <Current title={isArabic ? "أعياد الميلاد" : "Birthdays"} items={daily?.events} render={(item) => `${item.childName || item.name} · ${item.customerName || "—"} · ${item.startTime || "—"}${item.braceletColor ? ` · ${item.braceletMaterial || ""} ${item.braceletColor}` : ""}`} edit={setEditingEvent} remove={(item) => removePlanningItem("event", item)} isArabic={isArabic} />}
-    </div></section>}
+    </ContentGrid></section>}
+    {section === "trips" && <PlanningCustomerDirectory kind="academy" items={daily?.tripPartners || []} branch={daily?.branch || "MOT"} isArabic={isArabic} disabled={busy} request={request} onChanged={load} onNotice={directoryNotice} />}
+    {section === "birthdays" && <PlanningCustomerDirectory kind="birthday" items={daily?.birthdayCustomers || []} branch={daily?.branch || "MOT"} isArabic={isArabic} disabled={busy} request={request} onChanged={load} onNotice={directoryNotice} />}
   </section>;
 }
 
@@ -225,10 +236,11 @@ function MealCountFields({ item, meals = [], isArabic }) {
 }
 
 function TripForm({ trip, daily, catalogues, submit, cancel, isArabic }) {
-  return <FormCard title={trip ? (isArabic ? "تعديل الرحلة" : "Edit trip") : (isArabic ? "رحلة جديدة" : "New trip")} hint={isArabic ? "سجل المدرسة والموعد والأعداد والوجبة؛ لون البريسلت يختار تلقائيًا من الستوك." : "School, timing, headcount and meals; bracelet stock is assigned automatically."} button={isArabic ? "حفظ الرحلة" : "Save trip"} onSubmit={(event) => submit(trip ? "updateTrip" : "createTrip", event, trip ? { tripId: trip.id, branch: trip.branch || "MOT" } : {}, trip ? "PATCH" : "POST")} secondary={trip && <button type="button" className="secondary" onClick={cancel}>{isArabic ? "إلغاء التعديل" : "Cancel edit"}</button>}>
+  const localize = useUiText();
+  return <FormCard permission={trip?"trips.edit":"trips.create"} title={trip ? (isArabic ? "تعديل الرحلة" : "Edit trip") : (isArabic ? "رحلة جديدة" : "New trip")} hint={isArabic ? "سجل المدرسة والموعد والأعداد والوجبة؛ لون البريسلت يختار تلقائيًا من الستوك." : "School, timing, headcount and meals; bracelet stock is assigned automatically."} button={isArabic ? "حفظ الرحلة" : "Save trip"} onSubmit={(event) => submit(trip ? "updateTrip" : "createTrip", event, trip ? { tripId: trip.id, branch: trip.branch || "MOT" } : {}, trip ? "PATCH" : "POST")} secondary={trip && <ActionButton type="button" className="secondary" onClick={cancel}>{isArabic ? "إلغاء التعديل" : "Cancel edit"}</ActionButton>}>
     <select name="tripPartnerId" aria-label={isArabic ? "أكاديمية مسجلة" : "Saved academy"} defaultValue="" onChange={(event) => { const item = daily?.tripPartners?.find((row) => row.id === event.target.value); const form = event.currentTarget.form; if (item && form) { form.elements.name.value = item.name; form.elements.supervisorName.value = item.supervisorName || ""; form.elements.supervisorPhone.value = item.supervisorPhone || ""; } }}><option value="">{isArabic ? "أكاديمية جديدة" : "New academy"}</option>{(daily?.tripPartners || []).map((item) => <option key={item.id} value={item.id}>{item.name}{item.supervisorName ? ` · ${item.supervisorName}` : ""}</option>)}</select>
-    <input name="name" defaultValue={trip?.name || ""} placeholder={isArabic ? "اسم المدرسة أو الأكاديمية الجديدة" : "New school / academy name"} /><label>{isArabic ? "من" : "From"}<input name="startTime" type="time" required defaultValue={trip?.startTime || ""} /></label><label>{isArabic ? "إلى" : "To"}<input name="endTime" type="time" defaultValue={trip?.endTime || ""} /></label>
-    <input name="expectedChildren" type="number" min="0" defaultValue={trip?.expectedChildren ?? ""} placeholder={isArabic ? "عدد الأطفال" : "Children"} /><input name="supervisorName" defaultValue={trip?.supervisorName || ""} placeholder={isArabic ? "اسم المشرف" : "Supervisor name"} /><input name="supervisorPhone" type="tel" defaultValue={trip?.supervisorPhone || ""} placeholder={isArabic ? "تليفون المشرف" : "Supervisor phone"} />
+    <input name="name" defaultValue={trip?.name || ""} placeholder={isArabic ? "اسم المدرسة أو الأكاديمية الجديدة" : "New school / academy name"} /><label>{isArabic ? "من" : localize("From")}<input name="startTime" type="time" required defaultValue={trip?.startTime || ""} /></label><label>{isArabic ? "إلى" : localize("To")}<input name="endTime" type="time" defaultValue={trip?.endTime || ""} /></label>
+    <input name="expectedChildren" type="number" min="0" defaultValue={trip?.expectedChildren ?? ""} placeholder={isArabic ? "عدد الأطفال" : localize("Children")} /><input name="supervisorName" defaultValue={trip?.supervisorName || ""} placeholder={isArabic ? "اسم المشرف" : "Supervisor name"} /><input name="supervisorPhone" type="tel" defaultValue={trip?.supervisorPhone || ""} placeholder={isArabic ? "تليفون المشرف" : "Supervisor phone"} />
     <label className="ops-check-line"><input name="mealIncluded" type="checkbox" defaultChecked={trip?.mealIncluded === true} /> {isArabic ? "الرحلة تشمل وجبة" : "Meal included"}</label>
     <MealCountFields item={trip} meals={catalogues.meals || []} isArabic={isArabic} />
     <input name="staffingRequired" type="number" min="0" defaultValue={trip?.staffingRequired ?? ""} placeholder={isArabic ? "الموظفون المطلوبون" : "Staff required"} /><textarea name="notes" defaultValue={trip?.notes || ""} aria-label={isArabic ? "ملاحظات الرحلة" : "Trip notes"} placeholder={isArabic ? "ملاحظات الرحلة" : "Trip notes"} />
@@ -236,20 +248,21 @@ function TripForm({ trip, daily, catalogues, submit, cancel, isArabic }) {
 }
 
 function BirthdayForm({ event, daily, catalogues, submit, cancel, isArabic }) {
-  return <FormCard title={event ? (isArabic ? "تعديل عيد الميلاد" : "Edit birthday") : (isArabic ? "عيد ميلاد جديد" : "New birthday")} hint={isArabic ? "بيانات العميل والطفل والموعد والوجبات وعدد الضيوف." : "Customer, child, timing, meals and guests."} button={isArabic ? "حفظ عيد الميلاد" : "Save birthday"} onSubmit={(formEvent) => submit(event ? "updateEvent" : "createEvent", formEvent, event ? { eventId: event.id, branch: event.branch || "MOT" } : {}, event ? "PATCH" : "POST")} secondary={event && <button type="button" className="secondary" onClick={cancel}>{isArabic ? "إلغاء التعديل" : "Cancel edit"}</button>}>
+  const localize = useUiText();
+  return <FormCard permission={event?"birthdays.edit":"birthdays.create"} title={event ? (isArabic ? "تعديل عيد الميلاد" : "Edit birthday") : (isArabic ? "عيد ميلاد جديد" : "New birthday")} hint={isArabic ? "بيانات العميل والطفل والموعد والوجبات وعدد الضيوف." : "Customer, child, timing, meals and guests."} button={isArabic ? "حفظ عيد الميلاد" : "Save birthday"} onSubmit={(formEvent) => submit(event ? "updateEvent" : "createEvent", formEvent, event ? { eventId: event.id, branch: event.branch || "MOT" } : {}, event ? "PATCH" : "POST")} secondary={event && <ActionButton type="button" className="secondary" onClick={cancel}>{isArabic ? "إلغاء التعديل" : "Cancel edit"}</ActionButton>}>
     <select name="birthdayCustomerId" aria-label={isArabic ? "عميل مسجل" : "Saved customer"} defaultValue="" onChange={(event) => { const item = daily?.birthdayCustomers?.find((row) => row.id === event.target.value); const form = event.currentTarget.form; if (item && form) { form.elements.customerName.value = item.customerName; form.elements.customerPhone.value = item.phone; form.elements.childName.value = item.childName || ""; } }}><option value="">{isArabic ? "عميل جديد" : "New customer"}</option>{(daily?.birthdayCustomers || []).map((item) => <option key={item.id} value={item.id}>{item.customerName} · {item.phone}{item.childName ? ` · ${item.childName}` : ""}</option>)}</select>
-    <input name="name" defaultValue={event?.name || ""} placeholder={isArabic ? "عنوان الحجز (اختياري)" : "Booking title (optional)"} /><input name="customerName" defaultValue={event?.customerName || ""} placeholder={isArabic ? "اسم العميل" : "Customer name"} /><input name="customerPhone" type="tel" defaultValue={event?.customerPhone || ""} placeholder={isArabic ? "رقم التليفون" : "Phone number"} /><input name="childName" defaultValue={event?.childName || ""} placeholder={isArabic ? "اسم الطفل" : "Child name"} />
-    <label>{isArabic ? "من" : "From"}<input name="startTime" type="time" required defaultValue={event?.startTime || ""} /></label><label>{isArabic ? "إلى" : "To"}<input name="endTime" type="time" defaultValue={event?.endTime || ""} /></label><input name="expectedGuests" type="number" min="0" defaultValue={event?.expectedGuests ?? ""} placeholder={isArabic ? "عدد الضيوف" : "Guests"} />
+    <input name="name" defaultValue={event?.name || ""} placeholder={isArabic ? "عنوان الحجز (اختياري)" : "Booking title (optional)"} /><input name="customerName" defaultValue={event?.customerName || ""} placeholder={isArabic ? "اسم العميل" : localize("Customer name")} /><input name="customerPhone" type="tel" defaultValue={event?.customerPhone || ""} placeholder={isArabic ? "رقم التليفون" : "Phone number"} /><input name="childName" defaultValue={event?.childName || ""} placeholder={isArabic ? "اسم الطفل" : "Child name"} />
+    <label>{isArabic ? "من" : localize("From")}<input name="startTime" type="time" required defaultValue={event?.startTime || ""} /></label><label>{isArabic ? "إلى" : localize("To")}<input name="endTime" type="time" defaultValue={event?.endTime || ""} /></label><input name="expectedGuests" type="number" min="0" defaultValue={event?.expectedGuests ?? ""} placeholder={isArabic ? "عدد الضيوف" : "Guests"} />
     <MealCountFields item={event} meals={catalogues.meals || []} isArabic={isArabic} />
     <input name="partyRoomHours" type="number" min="0" step="0.5" defaultValue={event?.partyRoomHours ?? ""} placeholder={isArabic ? "حجز Party Room بالساعات" : "Party Room hours"} /><select name="location" defaultValue={event?.location || ""}><option value="">{isArabic ? "اختر الغرفة" : "Choose room"}</option>{(catalogues.partyRooms || []).map((item) => { const name = typeof item === "string" ? item : item.name; return <option key={name} value={name}>{name}</option>; })}</select>
-    <input name="staffingRequired" type="number" min="0" defaultValue={event?.staffingRequired ?? ""} placeholder={isArabic ? "الموظفون المطلوبون" : "Staff required"} /><textarea name="notes" defaultValue={event?.notes || ""} aria-label={isArabic ? "ملاحظات عيد الميلاد" : "Birthday notes"} placeholder={isArabic ? "ملاحظات" : "Notes"} />
+    <input name="staffingRequired" type="number" min="0" defaultValue={event?.staffingRequired ?? ""} placeholder={isArabic ? "الموظفون المطلوبون" : "Staff required"} /><textarea name="notes" defaultValue={event?.notes || ""} aria-label={isArabic ? "ملاحظات عيد الميلاد" : "Birthday notes"} placeholder={isArabic ? "ملاحظات" : localize("Notes")} />
   </FormCard>;
 }
 
 function OfferForm({ offer, busy, isArabic, submit, cancel }) {
   const selected = useMemo(() => parseWeekdays(offer?.weekdaysJson), [offer]);
   const action = offer ? "updateOffer" : "createOffer";
-  return <FormCard title={offer ? (isArabic ? "تعديل العرض" : "Edit offer") : (isArabic ? "عرض جديد" : "New offer")} hint={isArabic ? "اختر أيام التشغيل. ترك التواريخ والساعات فارغة يعني بدون قيود." : "Choose active weekdays. Dates and times may stay empty."} button={busy ? (isArabic ? "جارٍ الحفظ…" : "Saving…") : (isArabic ? "حفظ العرض" : "Save offer")} onSubmit={(event) => submit(action, event, offer ? { offerId: offer.id, branch: offer.branch || "MOT" } : {}, offer ? "PATCH" : "POST")} secondary={offer && <button type="button" className="secondary" onClick={cancel}>{isArabic ? "إلغاء التعديل" : "Cancel edit"}</button>}>
+  return <FormCard permission={offer?"offers.edit":"offers.create"} title={offer ? (isArabic ? "تعديل العرض" : "Edit offer") : (isArabic ? "عرض جديد" : "New offer")} hint={isArabic ? "اختر أيام التشغيل. ترك التواريخ والساعات فارغة يعني بدون قيود." : "Choose active weekdays. Dates and times may stay empty."} button={busy ? (isArabic ? "جارٍ الحفظ…" : "Saving…") : (isArabic ? "حفظ العرض" : "Save offer")} onSubmit={(event) => submit(action, event, offer ? { offerId: offer.id, branch: offer.branch || "MOT" } : {}, offer ? "PATCH" : "POST")} secondary={offer && <ActionButton type="button" className="secondary" onClick={cancel}>{isArabic ? "إلغاء التعديل" : "Cancel edit"}</ActionButton>}>
     {offer?.id && <input type="hidden" name="offerId" value={offer.id} />}<input name="title" required defaultValue={offer?.title || ""} placeholder={isArabic ? "اسم العرض" : "Offer title"} />
     <select name="offerMode" aria-label={isArabic ? "مدة العرض" : "Offer duration"} defaultValue={offer?.permanent === false ? "RANGE" : "PERMANENT"}><option value="PERMANENT">{isArabic ? "عرض دائم" : "Permanent offer"}</option><option value="RANGE">{isArabic ? "فترة اختيارية" : "Optional date range"}</option></select>
     <fieldset className="ops-weekday-picker"><legend>{isArabic ? "أيام تشغيل العرض" : "Active weekdays"}</legend>{WEEKDAYS.map(([day, en, ar]) => <label key={day}><input type="checkbox" name="weekdays" value={day} defaultChecked={selected.includes(day)} /><span>{isArabic ? ar : en}</span></label>)}</fieldset>
@@ -260,53 +273,22 @@ function OfferForm({ offer, busy, isArabic, submit, cancel }) {
   </FormCard>;
 }
 
-function OfferList({ offers, isArabic, busy, edit, remove }) {
-  return <section className="panel ops-setup-current"><h2>{isArabic ? "كل العروض المسجلة" : "All saved offers"}</h2>{offers.length ? <div className="ops-offer-manager-list">{offers.map((offer) => <article key={offer.id}><div><b>{offer.title} {offer.discountPercent != null && <em className="ops-discount-badge">-{offer.discountPercent}%</em>}</b><span>{offerSchedule(offer, isArabic)}</span><small>{offer.priceBefore != null ? `${offer.priceBefore} → ` : ""}{offer.priceAfter ?? ""} · {offer.childrenCount || 1} {isArabic ? "طفل" : "children"}{offer.details ? ` · ${offer.details}` : ""}</small></div><div><button type="button" disabled={busy} onClick={() => { edit(offer); window.scrollTo({ top: 0, behavior: "smooth" }); }}>{isArabic ? "تعديل" : "Edit"}</button><button type="button" className="danger" disabled={busy} onClick={() => remove(offer)}>{isArabic ? "حذف" : "Delete"}</button></div></article>)}</div> : <p className="muted">—</p>}</section>;
-}
-
-function StockCard({ title, category, unit, kind, stock, cancel, submit, isArabic, catalog = {} }) {
-  const editing = Boolean(stock);
-  const braceletTypes = normalizeBraceletTypes(catalog.braceletUsages);
-  const [typeValue, setTypeValue] = useState(stock?.usageType || braceletTypes[0]?.code || "KID");
-  const selectedType = braceletTypes.find((item) => item.code === typeValue) || braceletTypes[0];
-  return <FormCard title={editing ? `${isArabic ? "تعديل" : "Edit"} ${title}` : title} hint={isArabic ? "أدخل كمية الكاشير وكمية المخزن؛ الإعداد دائم لكل الأيام." : "Enter cashier and warehouse quantities; this applies every day."} button={editing ? (isArabic ? "حفظ التعديل" : "Save changes") : (isArabic ? "حفظ" : "Save")} onSubmit={(event) => submit(editing ? "updateStock" : "setStock", event, editing ? { stockId: stock.id, branch: stock.branch || "MOT" } : {}, editing ? "PATCH" : "POST")} secondary={editing && <button type="button" className="secondary" onClick={cancel}>{isArabic ? "إلغاء التعديل" : "Cancel edit"}</button>}>
-    <input type="hidden" name="stockCategory" value={category} /><input type="hidden" name="unit" value={unit} />
-    {kind === "socks" && <label>{isArabic ? "المقاس" : "Size"}<select name="size" defaultValue={stock?.size || catalog.socksSizes?.[0] || "M"}>{(catalog.socksSizes || ["M","L"]).map((item) => <option key={item} value={item}>{item}</option>)}</select></label>}
-    {kind === "bracelet" && <>
-      <label>{isArabic ? "Type / نوع البريسلت" : "Bracelet type"}<select name="usageType" required value={typeValue} onChange={(event) => setTypeValue(event.target.value)}>{braceletTypes.map((item) => <option key={item.code} value={item.code}>{item.label}</option>)}</select></label>
-      <input type="hidden" name="material" value={selectedType?.material || "PAPER"} />
-      <input type="hidden" name="color" value={selectedType?.color || "#cccccc"} />
-      <input type="hidden" name="colorName" value={selectedType?.colorName || ""} />
-      <div className="bracelet-type-stock-preview"><i style={{ backgroundColor: selectedType?.color || "#cccccc" }} /><span><b>{selectedType?.label}</b><small>{selectedType?.material} · {selectedType?.colorName || selectedType?.color}</small></span></div>
-    </>}
-    {kind === "roll" && <label>{isArabic ? "حالة الرول" : "Roll type"}<select name="rollStyle" defaultValue={stock?.rollStyle || catalog.rollStyles?.[0]?.code || "PRINTED"}>{(catalog.rollStyles || [{code:"PRINTED",label:isArabic?"مطبوع":"Printed"},{code:"PLAIN",label:isArabic?"سادة":"Plain"}]).map((item) => <option key={item.code} value={item.code}>{item.label}</option>)}</select></label>}
-    {kind === "socks" && <label>{isArabic ? "لون الشراب" : "Sock color"}<select name="color" defaultValue={stock?.color || catalog.socksColors?.[0]?.value || "#f2c94c"}>{(catalog.socksColors || [{label:"Yellow",value:"#f2c94c"},{label:"Pink",value:"#e77aa8"}]).map((item) => <option key={`${item.label}-${item.value}`} value={item.value}>{item.label}</option>)}</select></label>}
-    <label>{isArabic ? "الكمية في الكاشير" : "Cashier quantity"}<input name="cashierQuantity" type="number" min="0" required defaultValue={stock?.cashierQuantity ?? 0} /></label>
-    <label>{isArabic ? "الكمية في المخزن" : "Warehouse quantity"}<input name="warehouseQuantity" type="number" min="0" required defaultValue={stock?.warehouseQuantity ?? 0} /></label>
-    <textarea name="notes" defaultValue={stock?.notes || ""} aria-label={`${title} notes`} placeholder={isArabic ? "ملاحظات" : "Notes"} />
-  </FormCard>;
-}
-
-function StockList({ items, catalog = {}, isArabic, busy, edit, issue, remove }) {
-  const braceletTypes = normalizeBraceletTypes(catalog.braceletUsages);
-  const typeConfig = (type) => braceletTypes.find((item) => item.code === type);
-  const label = (item) => item.stockCategory === "BRACELET" ? [typeConfig(item.usageType || item.wristbandType)?.label || item.usageType, typeConfig(item.usageType || item.wristbandType)?.material, typeConfig(item.usageType || item.wristbandType)?.colorName].filter(Boolean).join(" · ") || (isArabic ? "بريسلت" : "Bracelet") : item.stockCategory === "SOCKS" ? `${item.size || "—"}${item.color ? ` · ${item.color}` : ""}` : `${item.stockCategory === "CASH_ROLL" ? (isArabic ? "رول كاش" : "Cash roll") : (isArabic ? "رول فيزا" : "Visa roll")} · ${item.rollStyle === "PLAIN" ? (isArabic ? "سادة" : "Plain") : (isArabic ? "مطبوع" : "Printed")}`;
-  const quantities = (item) => {
-    const cashier = Number(item.cashierQuantity || 0);
-    const warehouse = Number(item.warehouseQuantity || 0);
-    return cashier + warehouse > 0 || Number(item.availableStock || 0) === 0
-      ? { cashier, warehouse }
-      : { cashier: 0, warehouse: Math.max(0, Number(item.availableStock || 0)) };
-  };
-  return <section className="panel ops-setup-current"><h2>{isArabic ? "الستوك الدائم" : "Global stock"}</h2>{items.length ? <div className="ops-stock-list">{items.map((item) => { const quantity = quantities(item); const total = quantity.cashier + quantity.warehouse; const available = Math.max(0, total - Number(item.allocated || 0) - Number(item.issued || 0)); const configuredColor = item.stockCategory === "BRACELET" ? typeConfig(item.usageType || item.wristbandType)?.color : item.color; return <article key={item.id}><span className="ops-stock-swatch" style={{ background: configuredColor || "#e9dfd0" }} /><div><b>{label(item)}</b><small>{item.stockCategory}</small></div><strong>{isArabic ? "الكاشير" : "Cashier"}: {quantity.cashier}</strong><strong>{isArabic ? "المخزن" : "Warehouse"}: {quantity.warehouse}</strong><small className="ops-stock-balance">{isArabic ? "متاح" : "Available"}: {available} · {isArabic ? "محجوز" : "Reserved"}: {Number(item.allocated || 0)} · {isArabic ? "مصروف" : "Issued"}: {Number(item.issued || 0)}</small><div className="ops-stock-actions"><button type="button" disabled={busy} onClick={() => edit(item)}>{isArabic ? "تعديل" : "Edit"}</button><button type="button" disabled={busy || available + Number(item.allocated || 0) <= 0} onClick={() => issue(item)}>{isArabic ? "صرف" : "Issue"}</button><button type="button" className="danger" disabled={busy || Number(item.allocated || 0) > 0 || Number(item.issued || 0) > 0} onClick={() => remove(item)}>{isArabic ? "حذف" : "Delete"}</button></div></article>; })}</div> : <p className="muted">—</p>}</section>;
+function OfferList({ date, offers, isArabic, busy, edit, remove }) {
+  const localize = useUiText();
+  const [filter,setFilter] = useState('RELEVANT');
+  const visible = offers.filter(offer=>filter==='INACTIVE'?!offer.active:filter==='ACTIVE'?offer.active:offerAppliesOnDate(offer,date));
+  return <section className="panel ops-setup-current"><header className="ui-section-head"><div><h2>{isArabic?'العروض المتاحة':'Available offers'}</h2><p className="ui-filter-criteria">{isArabic?'سريان العروض في تاريخ العرض':'Offer eligibility on view date'}: {date}</p></div><label>{isArabic?'عرض العروض':'Offer view'}<select aria-label={isArabic?"عرض العروض":"Offer view"} value={filter} onChange={event=>setFilter(event.target.value)}>{[['RELEVANT','Applicable on selected date','السارية في التاريخ المحدد'],['ACTIVE','All active offers','كل العروض النشطة'],['INACTIVE','Inactive offers','العروض المتوقفة']].map(([value,en,ar])=><option key={value} value={value}>{isArabic?ar:en}</option>)}</select></label></header>{visible.length?<div className="record-table-scroll"><table className="record-line-table ui-comparison-table"><thead><tr>{(isArabic?['العرض','الحالة','السعر النهائي','الأطفال','الأيام وفترة السريان','الإجراءات']:['Offer','Status','Final price','Children','Days and effective period','Actions']).map(label=><th key={label}>{label}</th>)}</tr></thead><tbody>{visible.map(offer=><tr key={offer.id}><td><b>{offer.title}</b>{offer.discountPercent!=null&&<small>-{offer.discountPercent}%</small>}<small>{offer.details}</small></td><td>{offer.active?(isArabic?'نشط':'Active'):(isArabic?'متوقف':'Inactive')}</td><td><b>{offer.priceAfter??'—'}</b>{offer.priceBefore!=null&&<small><del>{offer.priceBefore}</del></small>}</td><td>{offer.childrenCount||1}</td><td>{offerSchedule(offer,isArabic)}</td><td><div className="ui-page-actions"><ActionButton title={isArabic?`تعديل عرض ${offer.title}`:`Edit offer ${offer.title}`} type="button" disabled={busy} onClick={()=>{edit(offer);document.getElementById('create-offers')?.scrollIntoView({block:'start'});}}>{isArabic?'تعديل':'Edit'}</ActionButton><ActionButton type="button" className="danger" disabled={busy} title={isArabic?`حذف عرض ${offer.title}`:`Delete offer ${offer.title}`} onClick={()=>remove(offer)}>{isArabic?'حذف':'Delete'}</ActionButton></div></td></tr>)}</tbody></table></div>:<EmptyState title={isArabic?'لا توجد عروض مطابقة لهذا العرض':'No offers match this view'}/>}</section>;
 }
 
 function RosterNameRow({ employee, disabled, save, isArabic }) {
+  const localize = useUiText();
   const [value, setValue] = useState(employee.operationalName || "");
   useEffect(() => setValue(employee.operationalName || ""), [employee.operationalName]);
-  return <div><span><b>{employee.name}</b><small>{employee.hrisNumber || employee.localEmployeeCode}</small></span><input aria-label={`${employee.name} roster name`} value={value} onChange={(event) => setValue(event.target.value)} placeholder={isArabic ? "الاسم الثنائي" : "Two-name roster label"} /><button type="button" disabled={disabled || !value.trim()} onClick={() => save(employee.id, value)}>{isArabic ? "حفظ" : "Save"}</button></div>;
+  return <div><span><b>{employee.name}</b><small>{employee.hrisNumber || employee.localEmployeeCode}</small></span><input aria-label={`${employee.name} roster name`} value={value} onChange={(event) => setValue(event.target.value)} placeholder={isArabic ? "الاسم الثنائي" : "Two-name roster label"} /><ActionButton type="button" disabled={disabled || !value.trim()} onClick={() => save(employee.id, value)}>{isArabic ? "حفظ" : localize("Save")}</ActionButton></div>;
 }
 
 function Current({ title, items = [], render, edit, remove, isArabic }) {
-  return <article><h3>{title}</h3>{items.length ? items.map((item) => <div className="ops-current-item" key={item.id}><p>{render(item)}</p><span><button type="button" onClick={() => edit(item)}>{isArabic ? "تعديل" : "Edit"}</button><button type="button" className="danger" onClick={() => remove(item)}>{isArabic ? "حذف" : "Delete"}</button></span></div>) : <p className="muted">—</p>}</article>;
+  const localize = useUiText();
+  return <div aria-label={title}>{items.length ? items.map((item) => <div className="ops-current-item" key={item.id}><p>{render(item)}</p><span><ActionButton type="button" onClick={() => edit(item)}>{isArabic ? "تعديل" : localize("Edit")}</ActionButton><ActionButton type="button" className="danger" onClick={() => remove(item)}>{isArabic ? "حذف" : localize("Delete")}</ActionButton></span></div>) : <EmptyState title={isArabic ? "لا توجد حجوزات في التاريخ المحدد" : "No bookings on this date"}><p>{isArabic ? "استخدم زر الإضافة بجوار التاريخ لتسجيل حجز جديد." : "Use the add action beside the date to record a booking."}</p></EmptyState>}</div>;
 }
+

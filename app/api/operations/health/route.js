@@ -1,3 +1,4 @@
+import { withAccountAccess } from '@/lib/accounts/routes';
 import fs from "node:fs/promises";
 import path from "node:path";
 import { NextResponse } from "next/server";
@@ -5,7 +6,7 @@ import { prisma } from "@/lib/db";
 import { authorizeApi } from "@/lib/api-auth";
 import { databaseProvider } from "@/lib/database-provider";
 
-export async function GET() {
+async function GETHandler() {
   const { error } = await authorizeApi("OPS_HEALTH_READ");
   if (error) return error;
   try {
@@ -38,3 +39,5 @@ export async function GET() {
     return NextResponse.json({ success: false, error: healthError.message }, { status: 500 });
   }
 }
+
+export const GET=withAccountAccess(GETHandler);

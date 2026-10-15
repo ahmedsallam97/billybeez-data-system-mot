@@ -4,10 +4,11 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import PreferenceIconButtons from "../PreferenceIconButtons";
 import { useI18n } from "../i18n";
+import {PageShell,PageHeader} from '../ui/DesktopLayout';
 
 export default function LoginForm() {
   const router = useRouter();
-  const { t } = useI18n();
+  const { t, isArabic } = useI18n();
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [message, setMessage] = useState("");
@@ -18,29 +19,37 @@ export default function LoginForm() {
     setLoading(true);
     setMessage("");
 
+    try {
     const res = await fetch("/api/auth/login", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ username, password }),
     });
-    const data = await res.json();
+    const data = await res.json().catch(()=>null);
 
-    setLoading(false);
-
-    if (!data.success) {
-      setMessage(data.error || t("login.failed"));
+    if (!res.ok || !data?.success) {
+      setMessage(res.status === 401 || res.status === 400
+        ? (isArabic ? "اسم المستخدم أو كلمة المرور غير صحيحة. راجع البيانات وحاول مرة أخرى." : "The username or password is incorrect. Check your credentials and try again.")
+        : (isArabic ? "خدمة الدخول غير متاحة مؤقتًا. حاول مرة أخرى بعد قليل." : "Sign-in is temporarily unavailable. Try again shortly."));
       return;
     }
 
     router.replace(data.home);
+    } catch {
+      setMessage(isArabic ? "تعذر الاتصال بالخادم. تحقق من اتصالك ثم أعد المحاولة." : "Could not connect to the server. Check your connection and retry.");
+    } finally {
+      setLoading(false);
+    }
   }
 
   return (
     <main className="login-page">
       <PreferenceIconButtons className="login-tools" />
+      <PageShell className="login-layout">
       <form className="login-box stack" onSubmit={submit}>
         <img src="/bb-logo-fast.png" alt="BillyBeez" className="logo" width="240" height="74" fetchPriority="high" />
-        <h1>{t("login.title")}</h1>
+        <PageHeader title={t("login.submit")} description={t("login.title")} breadcrumb={false}/>
+        <label>{t("login.username")}
         <input
           value={username}
           onChange={(event) => setUsername(event.target.value)}
@@ -48,6 +57,8 @@ export default function LoginForm() {
           autoComplete="username"
           required
         />
+        </label>
+        <label>{t("login.password")}
         <input
           value={password}
           onChange={(event) => setPassword(event.target.value)}
@@ -56,9 +67,11 @@ export default function LoginForm() {
           autoComplete="current-password"
           required
         />
+        </label>
         <button type="submit" disabled={loading}>{loading ? t("common.loading") : t("login.submit")}</button>
-        <div className="message">{message}</div>
+        {message && <div className="message" role="alert">{message}</div>}
       </form>
+      </PageShell>
     </main>
   );
 }

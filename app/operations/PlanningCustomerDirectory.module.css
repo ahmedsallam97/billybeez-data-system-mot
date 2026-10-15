@@ -1,0 +1,25 @@
+.directory{display:grid;gap:16px;min-width:0;border-top:5px solid var(--bb-purple)}
+.header{display:flex;align-items:start;justify-content:space-between;gap:18px}
+.header span{color:#8a617e;font-size:10px;font-weight:950;letter-spacing:.1em}
+.header h2{margin:4px 0;color:var(--bb-purple)}
+.header p{margin:0;color:var(--bb-muted)}
+.header>b{display:grid;place-items:center;min-width:42px;min-height:42px;padding:6px;border-radius:999px;background:var(--theme-primary-soft,#f0e6f7);color:var(--bb-purple);font-size:18px}
+.tableWrap{max-width:100%;overflow-x:auto;border:1px solid var(--bb-line);border-radius:11px;background:#fff}
+.tableWrap:focus-visible{outline:3px solid var(--theme-focus,#a378c1);outline-offset:2px}
+.tableWrap table{width:100%;min-width:720px;border-collapse:collapse;font-size:13px}
+.tableWrap th,.tableWrap td{padding:11px 12px;border-bottom:1px solid var(--theme-card-border,#eee7f1);text-align:start;vertical-align:top;overflow-wrap:anywhere}
+.tableWrap th{background:var(--theme-primary-soft,#f2edf6);color:var(--theme-accent-text,#453057);font-size:11px}
+.tableWrap tbody tr:last-child td{border-bottom:0}
+.actions{display:flex;gap:7px;justify-content:flex-end}
+.actions button{min-width:70px;min-height:36px;padding:7px 10px}
+.empty{text-align:center!important;color:var(--bb-muted);padding:22px!important}
+.form{display:grid;gap:12px;padding:15px;border:1px solid #eadfce;border-radius:12px;background:#fffaf2}
+.form h3{margin:0;color:var(--bb-purple)}
+.form fieldset{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin:0;padding:0;border:0;min-width:0}
+.form label{display:grid;gap:6px;min-width:0;color:var(--theme-accent-text,#685774);font-size:12px;font-weight:850}
+.form input,.form textarea{width:100%;min-width:0}
+.form textarea{min-height:76px;resize:vertical}
+.notes{grid-column:1/-1}
+.formActions{display:flex;flex-wrap:wrap;gap:9px}
+.formActions button{min-height:42px}
+@media(max-width:760px){.header{align-items:start}.form fieldset{grid-template-columns:1fr}.notes{grid-column:auto}.actions{justify-content:stretch}.actions button{flex:1}}

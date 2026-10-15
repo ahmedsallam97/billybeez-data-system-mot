@@ -1,14 +1,15 @@
+import { withAccountAccess } from '@/lib/accounts/routes';
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { authorizeApi } from "@/lib/api-auth";
 import { writeAudit } from "@/lib/audit";
 import { getSetting } from "@/lib/settings";
-import { allocateLeaveDates, assertLeaveEligible, assertNonNegativeLeaveBalance, attendanceStatusForLeaveType, leaveDateRange } from "@/lib/operations/leave";
+import { validLeaveDate, allocateLeaveDates, assertLeaveEligible, assertNonNegativeLeaveBalance, attendanceStatusForLeaveType, leaveDateRange } from "@/lib/operations/leave";
 import { assertNonNegativeBalance, hoursToMinutes, overtimeSummary } from "@/lib/operations/overtime";
 
 const WORKED_HOLIDAY_STATUSES = ["PRESENT", "LATE", "EARLY_LEAVE", "UNEXPECTED_PRESENT"];
 const LEAVE_ATTENDANCE_STATUSES = ["LEAVE", "REPLACEMENT_LEAVE"];
-function validDate(value) { return /^\d{4}-\d{2}-\d{2}$/.test(String(value || "")); }
+const validDate = validLeaveDate;
 function localDate() { const now = new Date(); return new Date(now.getTime() - now.getTimezoneOffset() * 60000).toISOString().slice(0, 10); }
 function requiredReason(body) { const reason = String(body.reason || "").trim(); if (!reason) throw new Error("A reason is required"); return reason; }
 
@@ -72,11 +73,12 @@ async function syncBookingAttendance(tx, booking, oldAllocations, newPlan, userI
   }
 }
 
-export async function GET(request) {
+async function GETHandler(request) {
   const { error } = await authorizeApi("OPS_LEAVE_READ");
   if (error) return error;
   const year = Number(new URL(request.url).searchParams.get("year") || new Date().getFullYear());
-  let leaveRules = {}; try { leaveRules = JSON.parse(await getSetting("OPS_LEAVE_RULES", "{}")); } catch {}
+  if(!Number.isInteger(year)||year<2020||year>2100)return NextResponse.json({success:false,error:"Invalid leave year"},{status:400});
+  const leaveRules = JSON.parse(await getSetting("OPS_LEAVE_RULES", "{}"));
   const [employees, holidays, bookings] = await Promise.all([
     prisma.employee.findMany({ where: { active: true }, include: { leaveAccounts: { where: { leaveYear: year }, include: { transactions: { orderBy: { createdAt: "desc" } } } }, overtimeAccount: { include: { transactions: { orderBy: { createdAt: "desc" } } } } }, orderBy: { name: "asc" } }),
     prisma.opsOfficialHolidayPeriod.findMany({ where: { startDate: { startsWith: String(year) } }, orderBy: { startDate: "asc" } }),
@@ -87,13 +89,15 @@ export async function GET(request) {
   return NextResponse.json({ success: true, year, holidays, bookings, employees: employees.map((employee) => ({ id: employee.id, name: employee.name, nameEn: employee.nameEn, hrisNumber: employee.hrisNumber, localEmployeeCode: employee.localEmployeeCode, employmentType: employee.employmentType, leaveAccounts: employee.leaveAccounts.map((account) => ({ id: account.id, leaveType: account.leaveType, entitlement: account.entitlement, balance: account.transactions.filter((item) => item.status === "VALID").reduce((sum, item) => sum + item.amount, 0), transactions: account.transactions })), overtime: overtimeSummary(employee.overtimeAccount?.transactions.reduce((sum, item) => sum + item.minutes, 0) || 0, leaveRules.overtimeHoursPerDay || 8), overtimeTransactions: employee.overtimeAccount?.transactions || [] })) });
 }
 
-export async function POST(request) {
-  const body = await request.json();
+async function POSTHandler(request) {
+  let body; try { body = await request.json(); if(!body || typeof body !== "object" || Array.isArray(body)) throw new Error(); } catch { return NextResponse.json({success:false,error:"Invalid request body"},{status:400}); }
   const permission = ["createBooking", "approveBooking", "correctBooking", "cancelBooking"].includes(body.action) ? "OPS_LEAVE_MANAGE" : "OPS_TIME_MANAGE";
   const { user, error } = await authorizeApi(permission);
   if (error) return error;
   try {
-    let leaveRules = {}; try { leaveRules = JSON.parse(await getSetting("OPS_LEAVE_RULES", "{}")); } catch {}
+    for(const key of ["date","startDate","endDate"])if(body[key] !== undefined && !validDate(body[key]))throw new Error("Invalid "+key);
+    if(body.year !== undefined && (!Number.isInteger(Number(body.year)) || Number(body.year)<2020 || Number(body.year)>2100))throw new Error("Invalid leave year");
+    const leaveRules = JSON.parse(await getSetting("OPS_LEAVE_RULES", "{}"));
     const preventNegativeBalance = leaveRules.preventNegativeBalance !== false;
     if (body.action === "createBooking") {
       const reason = requiredReason(body);
@@ -218,7 +222,7 @@ export async function POST(request) {
       const reason = requiredReason(body);
       const holiday = await prisma.opsOfficialHolidayPeriod.findUnique({ where: { id: String(body.holidayId || "") } });
       if (!holiday || !holiday.active) throw new Error("Active official holiday not found");
-      let holidayRules = {}; try { holidayRules = JSON.parse(await getSetting("OPS_LEAVE_RULES", "{}")); } catch {}
+      const holidayRules = JSON.parse(await getSetting("OPS_LEAVE_RULES", "{}"));
       const holidayCredit = Number(holidayRules.holidayWorkCreditDays || 2);
       const result = await prisma.$transaction(async (tx) => {
         const records = await tx.opsAttendanceRecord.findMany({ where: { attendanceDay: { status: "FINALIZED", workDate: { gte: holiday.startDate, lte: holiday.endDate } }, status: { in: WORKED_HOLIDAY_STATUSES }, employee: { employmentType: "HRIS", hrisNumber: { not: null } } }, include: { attendanceDay: true } });
@@ -250,3 +254,6 @@ export async function POST(request) {
     return NextResponse.json({ success: false, error: operationError.message }, { status: 400 });
   }
 }
+
+export const GET=withAccountAccess(GETHandler);
+export const POST=withAccountAccess(POSTHandler);

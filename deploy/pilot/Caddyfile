@@ -1,0 +1,27 @@
+{
+    email {$ACME_EMAIL}
+    admin off
+}
+
+{$PILOT_HOST} {
+    header {
+        X-Operations-Environment "supervised-pilot"
+        X-Robots-Tag "noindex, nofollow, noarchive"
+        X-Content-Type-Options "nosniff"
+        Referrer-Policy "same-origin"
+        Strict-Transport-Security "max-age=86400"
+        -Server
+    }
+    request_body {
+        max_size 20MB
+    }
+    route {
+        basic_auth {
+            {$PILOT_GATE_USER} {$PILOT_GATE_HASH}
+        }
+        # The pilot does not expose the legacy backup/restore administration API.
+        @legacyBackup path /api/backups /api/backups/*
+        respond @legacyBackup 404
+        reverse_proxy app:3000
+    }
+}

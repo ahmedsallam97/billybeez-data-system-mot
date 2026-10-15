@@ -1,0 +1,42 @@
+/* Component geometry only. Navigation, page headers, colors and print artwork
+   retain their existing styling. Long data tables keep their scroll containers. */
+.scope{min-width:0}
+.scope :global(.performance-workspace){grid-template-columns:minmax(0,1fr)}
+.scope :global(.performance-workspace)>*{min-inline-size:0}
+.scope :global(.operational-position-settings){container:position-settings / inline-size}
+.scope :global(.operational-position-settings) :global(.settings-compact-grid){grid-template-columns:repeat(5,minmax(0,1fr));gap:12px}
+@container position-settings (max-width:1000px){.scope :global(.operational-position-settings) :global(.settings-compact-grid){grid-template-columns:repeat(2,minmax(0,1fr))}}
+@container position-settings (max-width:480px){.scope :global(.operational-position-settings) :global(.settings-compact-grid){grid-template-columns:minmax(0,1fr)}}
+.scope :global(.daily-controls){display:flex;flex-wrap:wrap;align-items:center;gap:12px}
+.scope :global(.daily-controls)>*{flex:0 0 auto;max-width:100%;min-width:0}
+.scope :global(.daily-controls)>input[type=date]{flex:0 1 250px;width:250px;min-width:min(100%,210px)}
+.scope :global(.daily-controls)>span{flex:1 1 180px;white-space:normal;overflow-wrap:normal;word-break:normal}
+.scope :global(.daily-controls)>button,.scope :global(.daily-controls) :global(.button-link){min-height:44px;white-space:normal;word-break:normal;padding:12px 18px}
+.scope :global(.daily-command-tabs),.scope :global(.leave-time-tabs),.scope :global(.performance-tabs),.scope :global(.hall-toolbar),.scope :global(.ops-form-actions){display:flex;flex-wrap:wrap;max-width:100%;width:auto;overflow:visible;gap:10px}
+.scope :global(.daily-command-tabs)>button,.scope :global(.leave-time-tabs)>button,.scope :global(.performance-tabs)>button,.scope :global(.ops-form-actions)>button{white-space:normal;min-height:44px;flex:0 1 auto}
+.scope :global(.performance-controls){display:flex;flex-wrap:wrap;align-items:end;gap:12px}
+.scope :global(.performance-controls)>label{flex:1 1 180px;min-width:0}
+.scope :global(.performance-controls)>button{min-height:44px;white-space:normal}
+.scope :global(.ops-settings-section) :global(.form-grid){grid-template-columns:repeat(auto-fit,minmax(min(100%,220px),1fr));gap:16px}
+.scope :global(.ops-settings-section) :global(.form-grid)>h3,.scope :global(.ops-settings-section) :global(.form-grid)>h4{grid-column:1/-1}
+.scope :global(.ops-settings-section) :global(.form-grid)>*,.scope :global(.ops-setting-field){min-width:0;max-width:100%}
+.scope :global(.ops-setting-field)>span{white-space:normal;overflow-wrap:anywhere}
+.scope :global(.ops-settings-section) :global(.settings-check-grid){grid-template-columns:repeat(auto-fit,minmax(min(100%,190px),1fr))}
+.scope :global(.evaluation-editor){container:evaluation-editor / inline-size;min-width:0}
+.scope :global(.evaluation-editor) :global(.modal-head),.scope :global(.evaluation-editor-footer){flex-wrap:wrap}
+.scope :global(.evaluation-editor) label,.scope :global(.evaluation-editor) input,.scope :global(.evaluation-editor) select,.scope :global(.evaluation-editor) textarea{min-width:0;max-width:100%}
+.scope :global(.evaluation-editor) button{white-space:normal;min-height:44px;max-width:100%}
+@container evaluation-editor (max-width:750px){.scope :global(.evaluation-criteria-editor)>section{grid-template-columns:repeat(2,minmax(0,1fr))}.scope :global(.evaluation-criteria-editor)>section>div,.scope :global(.evaluation-criteria-editor)>section>label:last-child{grid-column:1/-1}}
+@media(max-width:600px){.scope :global(.daily-controls)>input[type=date]{flex:1 1 210px;width:auto}.scope :global(.daily-controls)>button,.scope :global(.daily-controls) :global(.button-link){flex:1 1 120px}.scope :global(.performance-controls)>*{max-width:100%}}
+@media print{.scope :global(.daily-controls),.scope :global(.performance-controls),.scope :global(.ops-form-actions){display:none!important}}
+
+@media screen{
+.scope :global(.recognition-preview){width:100%;min-width:0;grid-template-columns:minmax(0,1fr);overflow:visible}
+.scope :global(.recognition-preview-actions),.scope :global(.recognition-template-picker){min-width:0;max-width:100%;flex-wrap:wrap}
+.scope :global(.recognition-preview-actions) button{min-height:44px;white-space:normal}
+.scope :global(.recognition-preview-canvas){min-width:0;max-width:100%;overflow:auto;direction:ltr}
+}
+.scope :global(.employee-removal-dialog) { width: min(680px, calc(100vw - 64px)); max-height: calc(100dvh - 64px); overflow: auto; padding: 28px; border: 1px solid var(--theme-card-border); border-radius: 16px; background: var(--theme-surface); color: var(--theme-body-text); }
+.scope :global(.employee-removal-dialog::backdrop) { background: #0008; }
+.scope :global(.employee-removal-dialog label) { display: grid; gap: 8px; }
+.scope :global(.employee-removal-dialog .actions) { display: flex; gap: 12px; flex-wrap: wrap; }

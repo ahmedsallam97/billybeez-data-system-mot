@@ -3,7 +3,7 @@
     "dev": "next dev --webpack -H 127.0.0.1 -p 3008",
     "build": "node scripts/ensure-prisma-clients.js && next build",
     "start": "next start -H 0.0.0.0 -p 3000",
-    "test": "node --test",
+    "test": "node --test --test-concurrency=1 tests/*.test.js",
     "lint": "node scripts/ui-audit.js",
     "db:push": "prisma db push",
     "db:clients": "prisma generate && node scripts/generate-postgres-client.js",
@@ -35,20 +35,26 @@
     "@aws-sdk/client-s3": "^3.1140.0",
     "@fontsource/tajawal": "^5.2.7",
     "@pdf-lib/fontkit": "^1.1.1",
-    "@prisma/client": "^6.19.1",
+    "@prisma/client": "6.19.3",
     "bcryptjs": "^3.0.3",
     "html-to-image": "^1.11.13",
-    "next": "^16.2.9",
+    "next": "16.3.8",
     "pdf-lib": "^1.17.1",
-    "prisma": "^6.19.1",
+    "prisma": "6.19.3",
     "qrcode": "^1.5.4",
     "react": "^19.2.7",
     "react-dom": "^19.2.7",
-    "read-excel-file": "^9.3.1"
+    "read-excel-file": "^9.3.1",
+    "sharp": "0.35.5"
   },
   "devDependencies": {
     "@google/clasp": "^3.3.0",
     "@playwright/test": "^1.63.0"
+  },
+  "overrides": {
+    "@prisma/config": {
+      "deepmerge-ts": "8.0.2"
+    }
   },
   "prisma": {
     "seed": "node scripts/seed.js"

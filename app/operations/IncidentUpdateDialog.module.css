@@ -1,0 +1,7 @@
+@media (min-width:1101px){
+ .dialog{max-inline-size:640px}
+ .fields{display:grid;gap:16px}
+ .fields label{display:grid;gap:7px;font-size:14px}
+ .fields textarea{inline-size:100%;min-block-size:110px;resize:vertical;border:1px solid var(--theme-card-border);border-radius:8px;padding:10px 12px;background:var(--theme-surface,#fff);color:var(--theme-text);font:inherit}
+ .actions{display:flex;justify-content:flex-end;gap:12px}
+}

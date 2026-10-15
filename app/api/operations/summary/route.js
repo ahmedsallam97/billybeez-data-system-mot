@@ -1,3 +1,4 @@
+import { withAccountAccess } from '@/lib/accounts/routes';
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { authorizeApi } from "@/lib/api-auth";
@@ -13,11 +14,12 @@ function isoDaysBefore(value, days) {
   return date.toISOString().slice(0, 10);
 }
 
-export async function GET() {
+async function GETHandler() {
   const { error } = await authorizeApi("OPERATIONS_DASHBOARD_READ");
   if (error) return error;
-  let branchConfig = {}; try { branchConfig = JSON.parse(await getSetting("OPS_BRANCH_CONFIG", "{}")); } catch {}
-  let stockRules = {}; try { stockRules = JSON.parse(await getSetting("OPS_STOCK_RULES", "{}")); } catch {}
+  let branchConfig,stockRules;
+  try { [branchConfig,stockRules]=await Promise.all([getSetting("OPS_BRANCH_CONFIG","{}"),getSetting("OPS_STOCK_RULES","{}")]).then(values=>values.map(value=>JSON.parse(value))); }
+  catch(error){return NextResponse.json({success:false,error:error.message},{status:422});}
   const lowStockThreshold = Math.max(0, Number(stockRules.lowStockThreshold ?? 10));
   const today = todayInTimezone(branchConfig.timezone || "Africa/Cairo");
   const currentYear = Number(today.slice(0, 4));
@@ -184,3 +186,5 @@ export async function GET() {
 
   return NextResponse.json({ success: true, today, metrics: { activeEmployees, hrisEmployees, partTimeEmployees, publishedSchedules: schedules.length, draftAppraisals, draftLeaveRequests }, currentSchedule, attendanceDay: attendanceDay ? { status: attendanceDay.status, records: attendanceDay.records.length } : null, performance, attention, assistant: { name: "Billy Assistant", generatedAt: new Date().toISOString(), insights: assistantInsights }, planning: { upcomingTrips: upcomingTrips.length, upcomingEvents: upcomingEvents.length, upcomingBookings: upcomingTrips.length + upcomingEvents.length, expectedGuests: bookingTrend.reduce((sum, item) => sum + item.expectedGuests, 0), lowStock }, charts: { attendanceTrend, bookingTrend, recognitionTimeline }, dataQuality: { inconsistentActiveStatus: activeMismatch, missingRosterNames } });
 }
+
+export const GET=withAccountAccess(GETHandler);

@@ -1,5 +1,9 @@
+import { withAccountAccess } from '@/lib/accounts/routes';
 import { NextResponse } from "next/server";
-import { prisma } from "@/lib/db";
+import { prisma, basePrisma } from "@/lib/db";
+import { removeEmployee } from "@/lib/operations/employee-removal";
+import { getCurrentUser } from "@/lib/auth";
+import { accountResponse } from "@/lib/accounts/http";
 import { authorizeApi } from "@/lib/api-auth";
 import { writeAudit } from "@/lib/audit";
 import { normalizeOperationsEmployee, serializeOperationsEmployee } from "@/lib/operations/employees";
@@ -13,7 +17,7 @@ const employeeInclude = {
   monthlyAppraisals: { orderBy: [{ year: "desc" }, { month: "desc" }] },
 };
 
-export async function GET(_request, { params }) {
+async function GETHandler(_request, { params }) {
   const { error } = await authorizeApi("OPS_EMPLOYEE_SENSITIVE_READ");
   if (error) return error;
   const { id } = await params;
@@ -40,7 +44,7 @@ export async function GET(_request, { params }) {
   });
 }
 
-export async function PATCH(request, { params }) {
+async function PATCHHandler(request, { params }) {
   const { user, error } = await authorizeApi("OPS_EMPLOYEE_MANAGE");
   if (error) return error;
   const { id } = await params;
@@ -49,6 +53,7 @@ export async function PATCH(request, { params }) {
 
   try {
     const body = await request.json();
+    if (body.action === 'restoreEmployee') return NextResponse.json(await removeEmployee(basePrisma, user, id, { password: body.password, restore: true }));
     const data = normalizeOperationsEmployee(body, current);
     const employee = await prisma.employee.update({ where: { id }, data });
     await writeAudit({
@@ -60,6 +65,14 @@ export async function PATCH(request, { params }) {
     return NextResponse.json({ success: true, employee: serializeOperationsEmployee(employee, { includeNationalId: true }) });
   } catch (updateError) {
     const message = updateError?.code === "P2002" ? "Employee identifier must be unique" : updateError.message;
-    return NextResponse.json({ success: false, error: message }, { status: 400 });
+    return NextResponse.json({ success: false, error: message }, { status: updateError.status || 400 });
   }
 }
+
+export const GET=withAccountAccess(GETHandler);
+export const PATCH=withAccountAccess(PATCHHandler);
+export const DELETE=withAccountAccess(accountResponse(async (request, { params }) => {
+  const { id } = await params;
+  const body = await request.json();
+  return NextResponse.json(await removeEmployee(basePrisma, await getCurrentUser(), id, { password: body.password }));
+}));

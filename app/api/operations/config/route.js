@@ -1,22 +1,20 @@
+import { withAccountAccess } from '@/lib/accounts/routes';
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { authorizeApi } from "@/lib/api-auth";
 import { writeAudit } from "@/lib/audit";
-import { ensureDefaultSettings, getSetting } from "@/lib/settings";
+import { getSettingsRows, getSetting } from "@/lib/settings";
+import { parseOperationsSetting } from "@/lib/operations/config-validation";
+import { isOperationsWorkspaceSetting } from "@/lib/operations/settings-scope";
+import { operationsBranch } from '@/lib/operations/business-access';
+import {loadDistributions,saveDistributions} from '@/lib/operations/rotation-distributions';
 
-const OPS_KEYS = [
-  "DAILY_OPERATIONS_TEMPLATE_CONFIG", "OPS_MOTIVATION_PHRASES", "OPS_CASHIER_CONFIG", "OPS_BRANCH_CONFIG",
-  "OPS_SCHEDULE_CODE_CONFIG", "OPS_ROTATION_RULES", "OPS_ATTENDANCE_RULES", "OPS_EVALUATION_RULES", "OPS_LEAVE_RULES", "OPS_PLANNING_CATALOGS",
-  "OPS_STOCK_RULES",
-  "RECOGNITION_ARTWORK_CONFIG",
-];
-
-export async function GET() {
-  const { error } = await authorizeApi("SYSTEM_SETTING_READ");
+async function GETHandler(request) {
+  const { user, error } = await authorizeApi("OPS_EMPLOYEE_READ");
   if (error) return error;
-  await ensureDefaultSettings();
+  if (!user.permissions?.['settings.view']) return NextResponse.json({ success: false, error: "Permission denied" }, { status: 403 });
   const [settings, shifts, scheduleCodes, positions, criteriaVersion, partners, customers, employees, notices] = await Promise.all([
-    prisma.systemSetting.findMany({ where: { key: { in: OPS_KEYS } }, orderBy: { key: "asc" } }),
+    getSettingsRows().then(rows => rows.filter(row => isOperationsWorkspaceSetting(row.key))),
     prisma.opsShiftDefinition.findMany({ orderBy: [{ sortOrder: "asc" }, { code: "asc" }] }),
     prisma.opsScheduleCode.findMany({ orderBy: [{ sortOrder: "asc" }, { code: "asc" }] }),
     prisma.opsOperationalPosition.findMany({ include: { staffingRequirements: { orderBy: { effectiveFrom: "desc" } } }, orderBy: [{ sortOrder: "asc" }, { code: "asc" }] }),
@@ -26,22 +24,34 @@ export async function GET() {
     prisma.employee.findMany({ where: { active: true }, select: { id: true, name: true, nameEn: true, operationalName: true, gender: true, operationsTeamLeader: true, department: true, jobTitle: true, documents: { where: { documentType: "EMPLOYEE_PHOTO", status: "ACTIVE" }, select: { id: true }, orderBy: { uploadedAt: "desc" }, take: 1 } }, orderBy: { name: "asc" } }),
     prisma.opsOperationalNotice.findMany({ orderBy: [{ active: "desc" }, { effectiveFrom: "desc" }], take: 50 }),
   ]);
+  let parsedSettings;
+  try { parsedSettings = Object.fromEntries(settings.map((item) => [item.key, parseOperationsSetting(item.key, item.value)])); }
+  catch (configError) { return NextResponse.json({ success: false, error: configError.message }, { status: 422 }); }
+  const defaultBranch=parsedSettings.OPS_BRANCH_CONFIG?.branchCode||'MOT';
+  const branch=await operationsBranch(prisma,user,new URL(request.url).searchParams.get('branch')||defaultBranch);
+  const distributions=await loadDistributions(prisma,{branch,positions,legacy:parsedSettings.OPS_ROTATION_RULES||{},defaultBranch});
   return NextResponse.json({
     success: true,
-    settings: Object.fromEntries(settings.map((item) => { try { return [item.key, JSON.parse(item.value)]; } catch { return [item.key, item.value]; } })),
-    shifts, scheduleCodes, positions, criteriaVersion, partners, customers, employees, notices,
+    settings: parsedSettings,
+    shifts, scheduleCodes, positions, criteriaVersion, partners, customers, employees, notices,distributions,branch,
+    branches:user.profile?.allBranches?[...new Set([defaultBranch,branch,...(await prisma.employee.findMany({select:{branch:true},distinct:['branch']})).map(e=>e.branch).filter(Boolean)])]:user.profile?.branches||[branch],
   });
 }
 
-export async function POST(request) {
+async function POSTHandler(request) {
   const { user, error } = await authorizeApi("SYSTEM_SETTING_MANAGE");
   if (error) return error;
   const body = await request.json().catch(() => ({}));
   try {
-    let branchConfig = {}; try { branchConfig = JSON.parse(await getSetting("OPS_BRANCH_CONFIG", "{}")); } catch {}
+    const branchConfig = JSON.parse(await getSetting("OPS_BRANCH_CONFIG", "{}"));
     const defaultBranch = String(branchConfig.branchCode || "MOT");
     let record;
-    if (body.action === "saveShift") {
+    if(body.action==='saveDistributions'){
+      const branch=await operationsBranch(prisma,user,body.branch||defaultBranch);
+      const positions=await prisma.opsOperationalPosition.findMany({include:{staffingRequirements:true}});
+      record=await saveDistributions(prisma,{user,branch,positions,value:body.value,expectedRevision:body.expectedRevision});
+      return NextResponse.json({success:true,distributions:record});
+    } else if (body.action === "saveShift") {
       const code = String(body.code || "").trim().toUpperCase();
       if (!code || !body.startTime || !body.endTime) throw new Error("Shift code and times are required");
       record = await prisma.opsShiftDefinition.upsert({ where: { code }, update: { label: String(body.label || code), labelAr: String(body.labelAr || "") || null, startTime: String(body.startTime), endTime: String(body.endTime), colorKey: String(body.colorKey || code), active: body.active !== false }, create: { code, label: String(body.label || code), labelAr: String(body.labelAr || "") || null, startTime: String(body.startTime), endTime: String(body.endTime), colorKey: String(body.colorKey || code), active: true } });
@@ -49,8 +59,10 @@ export async function POST(request) {
       const code = String(body.code || "").trim().toUpperCase();
       if (!code) throw new Error("Position code is required");
       const sortOrder = Number.isFinite(Number(body.sortOrder)) ? Number(body.sortOrder) : 0;
+      if(body.sortOrder!==undefined&&(!Number.isInteger(sortOrder)||sortOrder<0||sortOrder>1000))throw new Error('Location priority must be a whole number from 0 to 1000');
       const color = /^#[0-9a-f]{6}$/i.test(String(body.color || "")) ? String(body.color).toLowerCase() : null;
-      record = await prisma.opsOperationalPosition.upsert({ where: { code }, update: { label: String(body.label || code), labelAr: String(body.labelAr || "") || null, color, critical: Boolean(body.critical), requiresQualification: body.requiresQualification !== false, active: body.active !== false, sortOrder }, create: { code, label: String(body.label || code), labelAr: String(body.labelAr || "") || null, color, critical: Boolean(body.critical), requiresQualification: body.requiresQualification !== false, sortOrder } });
+      const existing=await prisma.opsOperationalPosition.findUnique({where:{code}});
+      record = await prisma.opsOperationalPosition.upsert({ where: { code }, update: { label: String(body.label || code), labelAr: String(body.labelAr || "") || null, color, requiresQualification: body.requiresQualification !== false, active: body.active !== false, ...(body.sortOrder!==undefined?{sortOrder}:{}),...(body.critical!==undefined?{critical:Boolean(body.critical)}:{}) }, create: { code, label: String(body.label || code), labelAr: String(body.labelAr || "") || null, color, requiresQualification: body.requiresQualification !== false,active:body.active!==false,sortOrder:body.sortOrder!==undefined?sortOrder:0,critical:Boolean(body.critical) } });
     } else if (body.action === "saveRequirement") {
       const position = await prisma.opsOperationalPosition.findUnique({ where: { id: String(body.operationalPositionId || "") } });
       const shiftCode = String(body.shiftCode || "").trim().toUpperCase();
@@ -111,6 +123,9 @@ export async function POST(request) {
     await writeAudit({ action: "OPS_CONFIGURATION_UPDATED", user, summary: `Updated operations configuration: ${body.action}`, metadata: { action: body.action, recordId: record.id } });
     return NextResponse.json({ success: true, record });
   } catch (operationError) {
-    return NextResponse.json({ success: false, error: operationError.message }, { status: 400 });
+    return NextResponse.json({ success: false, error: operationError.message }, { status: operationError.status||400 });
   }
 }
+
+export const GET=withAccountAccess(GETHandler);
+export const POST=withAccountAccess(POSTHandler);

@@ -1,0 +1,11 @@
+.navigation{flex:1;min-height:0;display:flex;flex-direction:column;padding:10px 7px;color:#fff;direction:inherit}
+.toggle{display:flex;align-items:center;justify-content:center;flex-shrink:0;gap:12px;width:48px;height:43px;padding:10px;background:transparent;border:0;border-radius:9px;color:var(--theme-sidebar-fg,#efdefc);margin-bottom:12px;box-shadow:none}
+.toggle:hover{background:var(--theme-sidebar-hover,#ffffff16)}.toggle svg{width:22px;height:22px;flex-shrink:0}.toggle b{display:none;font-size:13px}
+.items{display:flex;flex-direction:column;gap:3px;overflow:auto;min-height:0;scrollbar-width:none;overscroll-behavior:contain;padding-bottom:7px}.items::-webkit-scrollbar{display:none}
+.items a{display:flex;align-items:center;justify-content:center;gap:12px;flex-shrink:0;min-height:42px;width:48px;padding:10px;color:var(--theme-sidebar-muted,#e9dff2);border:1px solid transparent;text-decoration:none;border-radius:9px;line-height:1.35;position:relative}
+.items a svg{width:21px;height:21px;flex-shrink:0}.items a b{display:none;font-size:12px;font-weight:650}
+.items a:hover{background:var(--theme-sidebar-hover,#ffffff12);color:#fff}.items a[aria-current="page"]{background:var(--theme-sidebar-active-bg,#f7ce4a);color:var(--theme-sidebar-active-fg,#38214e)}.items a[aria-current="page"]::before{content:"";position:absolute;inset-inline-start:-6px;width:3px;height:21px;border-radius:3px;background:var(--theme-sidebar-active-bg,#f7ce4a)}
+.items a:focus-visible,.toggle:focus-visible{outline:2px solid var(--theme-sidebar-focus,#ffe6a0);outline-offset:-2px}
+.navigation[data-expanded="true"] .toggle,.navigation[data-expanded="true"] .items a{width:100%;justify-content:flex-start}.navigation[data-expanded="true"] b{display:block}.navigation[data-expanded="true"] .toggle{padding-inline:12px}.navigation[data-expanded="true"] .items a{padding-inline:12px}
+.tooltip{position:fixed;z-index:1000;pointer-events:none;max-width:210px;padding:7px 11px;border-radius:7px;background:var(--theme-sidebar-end,#251333);color:#fff;font-size:12px;box-shadow:0 4px 14px #20112830;white-space:nowrap}
+@media(max-width:620px){.navigation{padding-top:12px}.toggle,.items a{width:100%;justify-content:flex-start}.navigation b{display:block}.tooltip{display:none}}

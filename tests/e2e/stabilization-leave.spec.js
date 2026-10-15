@@ -1,0 +1,23 @@
+const {test,expect}=require("@playwright/test");
+const {database,evidence}=require("./stabilization-helpers");
+test("leave approval, correction, cancellation and overtime reversal preserve balances and history",async({page,request})=>{
+ test.setTimeout(150000);await page.addInitScript(()=>localStorage.setItem("bbLanguage","en"));
+ const endpoint="/api/operations/leave-time",year=2096,date="2096-08-01";
+ const employee=database(db=>db.prepare("SELECT id,name FROM Employee WHERE active=1 AND employmentType='HRIS' ORDER BY name LIMIT 1").get());
+ const post=data=>request.post(endpoint,{data:{reason:"Isolated leave UAT",...data}});
+ const read=async()=> (await (await request.get(endpoint+"?year="+year)).json()).employees.find(item=>item.id===employee.id);
+ const balance=async()=>(await read()).leaveAccounts.find(item=>item.leaveType==="ANNUAL")?.balance||0;
+ const credit=await post({action:"adjustLeave",employeeId:employee.id,year,date,leaveType:"ANNUAL",amount:5});expect(credit.ok(),await credit.text()).toBeTruthy();expect(await balance()).toBe(5);
+ for(const data of [{action:"adjustLeave",employeeId:employee.id,year,date:"2096-02-30",leaveType:"ANNUAL",amount:1},{action:"createHoliday",name:"Invalid",startDate:"2096-02-30",endDate:"2096-03-01"},{action:"createBooking",employeeId:employee.id,startDate:"2096-02-30",endDate:"2096-03-01"}])expect((await post(data)).status()).toBe(400);
+ expect((await request.post(endpoint,{data:"{",headers:{"content-type":"application/json"}})).status()).toBe(400);expect(await balance()).toBe(5);
+ await page.goto("/operations?tab=time",{waitUntil:"networkidle"});await page.getByLabel("Year",{exact:true}).fill(String(year));await page.getByLabel("Employee",{exact:true}).selectOption(employee.id);await page.getByLabel("Start date",{exact:true}).fill(date);await page.getByLabel("End date",{exact:true}).fill("2096-08-02");await page.getByLabel("Request reason",{exact:true}).fill("UAT two days");await page.getByRole("button",{name:"Create request",exact:true}).click();
+ const row=page.locator(".leave-bookings-table tbody tr").filter({hasText:employee.name});await expect(row).toContainText("DRAFT");expect(await balance()).toBe(5);
+ await row.getByRole("button",{name:"Approve",exact:true}).click();let dialog=page.getByRole("dialog");await dialog.getByLabel("Action reason").fill("UAT reviewed approval");await dialog.getByRole("button",{name:"Confirm and save",exact:true}).dblclick();await expect(row).toContainText("APPROVED");expect(await balance()).toBe(3);
+ await row.getByRole("button",{name:"Correct",exact:true}).click();await dialog.getByLabel("Corrected end date").fill(date);await dialog.getByLabel("Action reason").fill("UAT correct to one day");await dialog.getByRole("button",{name:"Confirm and save",exact:true}).click();await expect(row).toContainText(date+" — "+date);expect(await balance()).toBe(4);
+ await row.getByRole("button",{name:"Cancel / reverse",exact:true}).click();await dialog.getByLabel("Action reason").fill("UAT cancellation");await dialog.getByRole("button",{name:"Confirm and save",exact:true}).click();await expect(row).toContainText("CANCELLED");expect(await balance()).toBe(5);
+ const txs=(await read()).leaveAccounts.find(item=>item.leaveType==="ANNUAL").transactions;expect(txs).toHaveLength(5);expect(txs.filter(item=>item.reversesTransactionId)).toHaveLength(2);
+ const before=(await read()).overtime.balanceMinutes;const ot=await post({action:"adjustOvertime",employeeId:employee.id,date,hours:2});expect(ot.ok()).toBeTruthy();const transaction=(await ot.json()).transaction;
+ expect((await post({action:"reverseOvertime",transactionId:transaction.id,date})).ok()).toBeTruthy();expect((await post({action:"reverseOvertime",transactionId:transaction.id,date})).status()).toBe(400);expect((await read()).overtime.balanceMinutes).toBe(before);
+ expect((await post({action:"adjustLeave",employeeId:employee.id,year,date,leaveType:"ANNUAL",amount:-6})).status()).toBe(400);expect(await balance()).toBe(5);
+ await page.reload({waitUntil:"networkidle"});await page.getByLabel("Year",{exact:true}).fill(String(year));await expect(row).toContainText("CANCELLED");await page.screenshot({path:evidence("leave-request-ledger-workflow.png"),fullPage:true});
+});

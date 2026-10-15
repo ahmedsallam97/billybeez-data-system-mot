@@ -1,0 +1,40 @@
+const test=require('node:test'),assert=require('node:assert/strict');
+const {PrismaClient}=require('@prisma/client');
+const {prepareIsolatedEnvironment,assertIsolatedEnvironment}=require('./e2e/isolation');
+test('saving a scheduled leader creates one report before day opening and reuses it across repeat saves, day versions and legacy IDs',async()=>{
+ prepareIsolatedEnvironment();assertIsolatedEnvironment();const db=new PrismaClient();
+ try{
+  const accounts=require('../lib/accounts/service'),fixture=require('./e2e/account-fixtures');
+  const raw=await db.user.create({data:{username:'leadership-link-'+Date.now(),name:'Leadership linkage test manager',password:'unusable-test-password',role:'ADMIN',active:true}});
+  await fixture.registerAccountFixture(db,raw);const user=await accounts.loadAccount(db,raw);
+  const branch='LINK',date='2095-03-17';
+  const leader=await db.employee.create({data:{name:'Isolated scheduled shift leader',branch,department:'OPERATION',jobTitle:'Ride Operator'}});
+  const schedule=await db.opsSchedule.create({data:{year:2095,month:3,operationalYear:2095,operationalMonth:3,periodStart:'2095-03-01',periodEnd:'2095-03-31',version:1,status:'PUBLISHED'}});
+  await db.systemSetting.create({data:{key:'OPS_SCHEDULE_STATE:'+schedule.id,value:JSON.stringify({branch,revision:0,dayResponsibilities:{}})}});
+  await db.opsScheduleAssignment.create({data:{scheduleId:schedule.id,employeeId:leader.id,workDate:date,code:'AM',shiftCode:'AM',source:'ISOLATED_LINK_TEST'}});
+  const config=require('../lib/operations/performance-settings-service'),state=await config.getPerformanceSettingsState(db,'GLOBAL',{date}),value=structuredClone(state.effective.value);
+  Object.assign(value.shiftLeadership,{active:true,enabledBranches:[branch],selectedDates:[date],requiredWeekdays:[],shiftCodes:['AM'],automaticReportCreation:true});
+  value.reports.SHIFT_LEADERSHIP.active=true;
+  let saved=await config.changePerformanceSettings(db,{user,scope:'GLOBAL',action:'saveDraft',expectedRevision:state.revision,value,reason:'Configure isolated leadership report linkage'});
+  await config.changePerformanceSettings(db,{user,scope:'GLOBAL',action:'publish',expectedRevision:saved.state.revision,effectiveFrom:'2095-03-01',reason:'Publish isolated leadership report linkage'});
+  const duties=require('../lib/operations/day-responsibilities'),reports=require('../lib/operations/operational-report-service');
+  let current=await duties.loadResponsibilities(db,user,{branch,date,scheduleId:schedule.id});
+  const input=()=>({branch,date,scheduleId:schedule.id,expectedRevision:current.previous.state.revision,values:{AM:leader.id}});
+  const first=await duties.saveResponsibilities(db,user,input());assert.equal(first.leadershipReports.created.length,1);assert.deepEqual(first.leadershipReports.warnings,[]);
+  const id=first.leadershipReports.created[0],row=await db.systemSetting.findUnique({where:{key:reports.REPORT_PREFIX+id}}),report=JSON.parse(row.value);
+  assert.equal(report.source.type,'OPS_PUBLISHED_SCHEDULE_SHIFT');assert.equal(report.draft.participants[0].employeeId,leader.id);assert.equal(report.draft.participants[0].primaryLeader,true);
+  assert.equal(await db.opsOperationsDay.count({where:{branch,workDate:date}}),0);
+  current=await duties.loadResponsibilities(db,user,{branch,date,scheduleId:schedule.id});
+  const repeat=await duties.saveResponsibilities(db,user,input());assert.deepEqual(repeat.leadershipReports.existing,[id]);assert.equal((await db.systemSetting.findUnique({where:{key:row.key}})).value,row.value);
+  const day=await db.opsOperationsDay.create({data:{branch,workDate:date,status:'OPEN'}});
+  assert.deepEqual((await reports.ensureAutomaticShiftLeadershipReports(db,{user,day})).existing,[id]);
+  const legacyId=`SHIFT_LEADERSHIP:${day.id}:AM`;
+  await db.systemSetting.update({where:{key:row.key},data:{key:reports.REPORT_PREFIX+legacyId,value:JSON.stringify({...report,id:legacyId})}});
+  const newerDay=await db.opsOperationsDay.create({data:{branch,workDate:date,version:2,status:'OPEN'}});
+  assert.deepEqual((await reports.ensureAutomaticShiftLeadershipReports(db,{user,day:newerDay})).existing,[legacyId]);
+  assert.equal((await db.systemSetting.findMany({where:{key:{startsWith:reports.REPORT_PREFIX}}})).map(row=>JSON.parse(row.value)).filter(row=>row.branch===branch&&row.workDate===date&&row.shiftCode==='AM').length,1);
+  assert.equal(await db.auditLog.count({where:{action:'OPS_OPERATIONAL_REPORT_CREATED',userId:user.id}}),1);
+  assert.equal(await reports.reportSourceIsAvailable(db,report),true);
+  await assert.rejects(reports.changeOperationalReport(db,{user,action:'create',reportType:'SHIFT_LEADERSHIP',sourceId:newerDay.id,shiftCode:'AM',branch}),{code:'REPORT_ALREADY_EXISTS'});
+ }finally{await db.$disconnect();}
+});

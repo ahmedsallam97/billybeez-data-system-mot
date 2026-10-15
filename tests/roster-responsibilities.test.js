@@ -1,0 +1,57 @@
+const test = require('node:test'), assert = require('node:assert/strict');
+const fs = require('node:fs'), path = require('node:path');
+const { DatabaseSync } = require('node:sqlite');
+const { PrismaClient } = require('@prisma/client');
+const { readConfig, loadAccount } = require('../lib/accounts/service');
+const { qualifyCurrentEmployees, KEY } = require('../lib/operations/current-employee-qualifications');
+const { loadResponsibilities, saveResponsibilities, applyDayRoles } = require('../lib/operations/day-responsibilities');
+const { readScheduleState } = require('../lib/operations/schedule-state');
+const { buildExpectedTeam, generateRotation, canAssign } = require('../lib/operations/live-daily');
+const { orderRoster } = require('../lib/operations/roster');
+test('cashier is first within each shift even when saved display order puts cashier last', () => {
+  const row=(id,shift,department='OPERATION',metadata={})=>({employee:{id,name:id,department},shiftCode:shift,code:shift,metadata});
+  const ordered=orderRoster([row('a','AM'),row('b','AM','CASHIER'),row('c','AM','OPERATION',{frontAssignment:'FRONT_CASHIER'}),row('d','PM'),row('e','PM','CASHIER')],['a','d','b','e','c']);
+  assert.deepEqual(ordered.filter(row=>row.shiftCode==='AM').map(row=>row.employee.id),['c','b','a']);
+  assert.deepEqual(ordered.filter(row=>row.shiftCode==='PM').map(row=>row.employee.id),['e','d']);
+});
+test('qualification baseline is one-time; rotations work for existing staff but exclude future unqualified hires; daily roles persist with validation and CAS', async () => {
+  const root=fs.mkdtempSync(path.resolve('tmp/roster-service-')),database=path.join(root,'test.db');
+  const source=new DatabaseSync(path.resolve('prisma/dev.db'),{readOnly:true});source.prepare('VACUUM INTO ?').run(database);source.close();
+  const db=new PrismaClient({datasources:{db:{url:'file:'+database.replaceAll('\\','/')}}});
+  try {
+    await db.systemSetting.deleteMany({where:{key:KEY}});
+    const {config}=await readConfig(db),role=config.roles.find(row=>row.name==='Super Admin');
+    const id=Object.entries(config.accounts).find(([,profile])=>profile.roleId===role.id&&!profile.archivedAt)[0];
+    const actor=await loadAccount(db,await db.user.findUnique({where:{id}}));
+    const result=await qualifyCurrentEmployees(db,{userId:id,backupReference:'disposable test'});
+    assert.ok(result.qualificationCount>0);
+    const newcomer=await db.employee.create({data:{name:'Unqualified new hire fixture',active:true,department:'OPERATION',branch:'MOT'}});
+    assert.equal((await qualifyCurrentEmployees(db,{userId:id,backupReference:'disposable test'})).applied,false);
+    assert.equal(await db.employeeQualification.count({where:{employeeId:newcomer.id}}),0);
+    const position=await db.opsOperationalPosition.findFirst({where:{active:true,requiresQualification:true},include:{staffingRequirements:true}});
+    assert.equal(canAssign({employeeId:newcomer.id,position,workDate:'2026-10-11',qualifications:[]}),false);
+    const schedule=await db.opsSchedule.findFirst({where:{status:'PUBLISHED',periodStart:{lte:'2026-10-11'},periodEnd:{gte:'2026-10-11'}},orderBy:{version:'desc'}});
+    assert.ok(schedule);
+    const data=await loadResponsibilities(db,actor,{date:'2026-10-11',scheduleId:schedule.id,branch:'MOT'});
+    const am=data.rows.find(row=>(row.shiftCode||row.code)==='AM'),pm=data.rows.find(row=>(row.shiftCode||row.code)==='PM');assert.ok(am&&pm);
+    const trip=await db.opsDailyTrip.create({data:{name:'Responsibility test trip',branch:'MOT',workDate:data.date,startTime:'10:00',endTime:'12:00'}});
+    const birthday=await db.opsDailyEvent.create({data:{name:'Responsibility test birthday',branch:'MOT',workDate:data.date,eventType:'BIRTHDAY',startTime:'16:00',endTime:'18:00'}});
+    const input={date:data.date,branch:data.branch,scheduleId:schedule.id,expectedRevision:data.previous.state.revision,values:{AM:am.employeeId,PM:pm.employeeId,TRIP:pm.employeeId,BIRTHDAY:am.employeeId,trips:{[trip.id]:am.employeeId},birthdays:{[birthday.id]:pm.employeeId}}};
+    const saved=await saveResponsibilities(db,actor,input);assert.equal(saved.values.AM,am.employeeId);
+    assert.equal(saved.values.TRIP,pm.employeeId);assert.equal(saved.values.BIRTHDAY,am.employeeId);
+    const reloaded=await loadResponsibilities(db,actor,{date:data.date,branch:'MOT'});assert.deepEqual(reloaded.values,saved.values);
+    await assert.rejects(saveResponsibilities(db,actor,input),{status:409});
+    await assert.rejects(saveResponsibilities(db,actor,{...input,expectedRevision:saved.revision,values:{AM:pm.employeeId}}),/scheduled AM/);
+    await assert.rejects(saveResponsibilities(db,actor,{...input,expectedRevision:saved.revision,values:{trips:{[trip.id]:newcomer.id}}}),/working on this date/);
+    await assert.rejects(saveResponsibilities(db,actor,{...input,expectedRevision:saved.revision,values:{TRIP:newcomer.id}}),/working on this date/);
+    await assert.rejects(saveResponsibilities(db,{...actor,permissions:{}},{...input,expectedRevision:saved.revision}),{status:403});
+    assert.deepEqual((await readScheduleState(db,schedule.id)).state.dayResponsibilities[data.date],saved.values);
+    const worker=data.rows.find(row=>row.employeeId!==am.employeeId&&row.employeeId!==pm.employeeId);
+    const team=buildExpectedTeam(applyDayRoles([worker,am],saved.values),{AM:{startTime:'10:00',endTime:'18:00'},PM:{startTime:'15:00',endTime:'23:00'}});
+    const qualifications=await db.employeeQualification.findMany();
+    const positions=await db.opsOperationalPosition.findMany({where:{active:true},include:{staffingRequirements:true}});
+    const shift=worker.shiftCode||worker.code,startTime=shift==='AM'?'10:00':shift==='BW'?'13:00':'15:00';
+    const generated=generateRotation({workDate:data.date,team,positions,qualifications,slots:[{shiftCode:shift,startTime,endTime:String(Number(startTime.slice(0,2))+1).padStart(2,'0')+':00'}],rules:{excludeCashiers:false}});
+    assert.ok(generated.assignments.length>0);assert.ok(!generated.assignments.some(row=>row.employeeId===am.employeeId));
+  } finally {await db.$disconnect();}
+});

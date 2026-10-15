@@ -2,6 +2,14 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 const { documentExpiryStatus, sectionsForFile, buildEmployeeTimeline } = require("../lib/operations/employee360");
 
+test("timeline excludes future schedule entries at the report horizon", () => {
+  const result = buildEmployeeTimeline({ scheduleAssignments: [
+    { workDate: "2026-09-29", code: "AM" }, { workDate: "2026-12-31", code: "PM" },
+  ] }, "2026-09-29");
+  assert.equal(result.length, 1);
+  assert.equal(result[0].title, "AM");
+});
+
 test("Employee 360 classifies document expiry without changing records", () => {
   const now = new Date("2026-09-13T00:00:00Z");
   assert.equal(documentExpiryStatus(null, now), "NO_EXPIRY");

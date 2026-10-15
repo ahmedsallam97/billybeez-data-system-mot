@@ -13,17 +13,24 @@ function loadEnv() {
 }
 
 module.exports = async () => {
+  require("./isolation").assertIsolatedEnvironment();
   loadEnv();
   const { PrismaClient } = require("@prisma/client");
   const prisma = new PrismaClient();
   try {
+    await require("../../lib/accounts/service").migrateAccounts(prisma);
+    // A copied personal language preference must not override browser test locales.
+    const accounts = require("../../lib/accounts/service");
+    const { config } = await accounts.readConfig(prisma);
+    for (const profile of Object.values(config.accounts)) profile.preferredLanguage = null;
+    await prisma.systemSetting.update({ where: { key: accounts.KEY }, data: { value: JSON.stringify(config) } });
     const admin = await prisma.user.findFirst({ where: { active: true, role: "ADMIN" }, select: { id: true } });
     const secret = process.env.SESSION_SECRET;
     if (!admin || !secret || secret.length < 32) throw new Error("E2E requires an active admin and a valid SESSION_SECRET in the local environment");
     const now = Math.floor(Date.now() / 1000);
     const payload = Buffer.from(JSON.stringify({ sub: admin.id, iat: now, exp: now + 3600, jti: randomBytes(16).toString("base64url"), v: 1 })).toString("base64url");
     const signature = createHmac("sha256", secret).update(payload).digest("base64url");
-    const authDir = path.join(process.cwd(), "playwright", ".auth");
+    const authDir = path.resolve(process.env.OPS_E2E_AUTH_DIR || path.join(process.cwd(), "playwright", ".auth"));
     fs.mkdirSync(authDir, { recursive: true });
     fs.writeFileSync(path.join(authDir, "admin.json"), JSON.stringify({ cookies: [{ name: process.env.AUTH_COOKIE_NAME || "billybeez_session", value: `${payload}.${signature}`, domain: "127.0.0.1", path: "/", expires: now + 3600, httpOnly: true, secure: false, sameSite: "Strict" }], origins: [] }, null, 2));
 

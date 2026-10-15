@@ -1,0 +1,76 @@
+const test=require('node:test'),assert=require('node:assert/strict');
+const {defaultPerformanceSettings}=require('../lib/operations/performance-settings-config');
+const {proposedFramework,planPath,successionProgress}=require('../lib/operations/succession-workspace');
+const {saveSuccessionPlan,changeSuccessionAction,enrichSuccessionActions}=require('../lib/operations/succession-actions');
+const {prepareIsolatedEnvironment,assertIsolatedEnvironment}=require('./e2e/isolation');
+const {capturePerformanceSettingsSnapshot,readPerformanceSettingsSnapshot}=require('../lib/operations/performance-settings-service');
+const {PrismaClient}=require('@prisma/client');
+test('role proposals are cumulative and do not assume capability or publish settings',()=>{
+ const configuration=defaultPerformanceSettings().succession,before=JSON.stringify(configuration);
+ for(const [currentRole,targetRole,count] of [['Ride Operator','Front Cashier',6],['Ride Operator','Operation Supervisor',9],['Front Cashier','Operation Supervisor',9]]){
+  const candidate={currentRole,targetRole,configuration,developmentActions:[],evidenceReports:[],evidenceDocuments:[]};
+  const framework=proposedFramework(configuration,candidate);assert.equal(framework.length,count);
+  assert.equal(planPath(configuration,candidate).competencies.length,0);
+  candidate.plan={framework};const progress=successionProgress(candidate);assert.equal(progress.coverage,0);assert.equal(progress.unassessed,count);assert.ok(progress.gaps.every(row=>row.currentLevel===null));
+ }
+ assert.equal(JSON.stringify(configuration),before);
+});
+test('stale or missing proof never fulfils a requirement; dates identify overdue work',()=>{
+ const configuration=defaultPerformanceSettings().succession,candidate={currentRole:'Ride Operator',targetRole:'Front Cashier',configuration,developmentActions:[],evidenceReports:[{id:'proof',revision:2}],evidenceDocuments:[]};
+ candidate.plan={framework:proposedFramework(configuration,candidate).slice(0,1),assessments:{'RIDE_OPERATOR:SAFE_OPERATION':{currentLevel:3,evidence:[{reportId:'proof',revision:1}]}},nextReviewDate:'2026-10-01'};
+ candidate.developmentActions=[{id:'late',competency:'RIDE_OPERATOR:SAFE_OPERATION',status:'IN_PROGRESS',targetDate:'2026-10-02'},{id:'closed',status:'NOT_REQUIRED',targetDate:'2026-10-02'}];
+ let progress=successionProgress(candidate,'2026-10-10');assert.equal(progress.met,0);assert.equal(progress.unassessed,1);assert.equal(progress.overdue.length,1);assert.equal(progress.reviewDue,true);
+ candidate.plan.assessments['RIDE_OPERATOR:SAFE_OPERATION'].evidence[0].revision=2;progress=successionProgress(candidate);assert.equal(progress.met,1);assert.equal(progress.coverage,100);assert.equal(candidate.readinessStatus,undefined);
+});
+test('persisted succession commitments enforce ownership, revisions, evidence and scales without changing readiness or pinned policy',async t=>{
+ prepareIsolatedEnvironment();assertIsolatedEnvironment();let db=new PrismaClient();t.after(()=>db.$disconnect());
+ const user=await db.user.create({data:{name:'Succession test manager',username:'succession-test-'+Date.now(),role:'ADMIN',password:'unusable-test-password'}}),branch='PLAN_TEST';
+ const employee=await db.employee.create({data:{name:'Succession test employee',branch,jobTitle:'Ride Operator'}});
+ const candidate=await db.opsSuccessionCandidate.create({data:{employeeId:employee.id,currentRole:'Ride Operator',targetRole:'Front Cashier'}});
+ const snapshot=await capturePerformanceSettingsSnapshot(db,{kind:'SUCCESSION',recordId:candidate.id,branch,date:'2026-10-10'});
+ const configuration=snapshot.effective.value.succession,framework=proposedFramework(configuration,candidate),reason='Set practical requirements for this isolated plan';
+ const base={user,branch,candidateId:candidate.id,expectedRevision:0,reason};
+ const saved=await saveSuccessionPlan(db,{...base,framework});assert.equal(saved.plan.revision,1);assert.equal(saved.plan.framework.length,6);
+ await assert.rejects(saveSuccessionPlan(db,{...base,framework}),/changed/);
+ await assert.rejects(saveSuccessionPlan(db,{...base,expectedRevision:1,details:{ownerUserId:'foreign',targetDate:'2027-03-01',nextReviewDate:'2026-12-01',reviewFrequency:'MONTHLY',priority:'HIGH',careerInterest:'INTERESTED',businessNeed:'Maintain shift continuity'}}),/owner/);
+ const details={ownerUserId:user.id,targetDate:'2027-03-01',nextReviewDate:'2026-12-01',reviewFrequency:'MONTHLY',priority:'HIGH',careerInterest:'INTERESTED',businessNeed:'Maintain safe shift coverage and continuity',careerNotes:'Career discussion recorded'};
+ const owned=await saveSuccessionPlan(db,{...base,expectedRevision:1,details});assert.equal(owned.plan.details.ownerUserId,user.id);
+ const key='RIDE_OPERATOR:SAFE_OPERATION',assessment={key,currentLevel:3,notes:'Observed safe opening checks',documentIds:[]};
+ await assert.rejects(saveSuccessionPlan(db,{...base,expectedRevision:2,assessmentUpdates:[assessment]}),/verified evidence/);
+ const docData={employeeId:employee.id,displayName:'Observed safe opening checklist',mimeType:'application/pdf',sizeBytes:20};
+ const proof=await db.employeeDocument.create({data:{...docData,documentType:'OTHER',storageKey:'test-'+candidate.id+'.pdf'}});
+ const photo=await db.employeeDocument.create({data:{...docData,documentType:'EMPLOYEE_PHOTO',storageKey:'photo-'+candidate.id+'.jpg'}});
+ await assert.rejects(saveSuccessionPlan(db,{...base,expectedRevision:2,assessmentUpdates:[{...assessment,documentIds:[photo.id]}]}),/belong/);
+ await saveSuccessionPlan(db,{...base,expectedRevision:2,assessmentUpdates:[{...assessment,documentIds:[proof.id]}]});
+ const actionBase={user,branch,candidateId:candidate.id,type:'PRACTICAL_ASSIGNMENT',competency:key,status:'COMPLETED',completionDate:'2026-10-10',targetDate:'2026-10-10',attainedLevel:3,reason:'Record the supervised practical demonstration',documentIds:[proof.id],planDetails:{objective:'Demonstrate safe opening checks independently',successCriteria:'Signed opening checklist and witnessed safety drill',ownerUserId:user.id,startDate:'2026-10-01',reviewDate:'2026-10-10',priority:'HIGH',blocker:''}};
+ await assert.rejects(changeSuccessionAction(db,{...actionBase,attainedLevel:5}),/scale/);
+ await assert.rejects(changeSuccessionAction(db,{...actionBase,targetDate:'2026-09-01'}),/start date/);
+ const action=await changeSuccessionAction(db,actionBase);assert.equal(action.action.metadata.planDetails.ownerUserId,user.id);
+ await assert.rejects(changeSuccessionAction(db,{...actionBase,id:action.action.id,expectedRevision:0}),/changed/);
+ await assert.rejects(saveSuccessionPlan(db,{...base,expectedRevision:3,framework:framework.slice(1)}),/cannot be removed/);
+ await db.$disconnect();db=new PrismaClient();
+ const persisted=await db.opsSuccessionCandidate.findUnique({where:{id:candidate.id},include:{developmentActions:true}});persisted.configuration=configuration;
+ await enrichSuccessionActions(db,[persisted],branch);assert.equal(persisted.progress.met,1);assert.equal(persisted.readinessStatus,'NOT_ASSESSED');assert.equal(persisted.plan.revision,3);assert.equal(persisted.evidenceDocuments.length,1);
+ assert.deepEqual(await readPerformanceSettingsSnapshot(db,{kind:'SUCCESSION',recordId:candidate.id}),snapshot);
+ await db.employeeDocument.update({where:{id:proof.id},data:{status:'ARCHIVED'}});await enrichSuccessionActions(db,[persisted],branch);assert.equal(persisted.progress.met,0);
+ await assert.rejects(saveSuccessionPlan(db,{...base,branch:'OTHER',expectedRevision:3,details}),/branch/);
+ const self={...user,employeeId:employee.id};await assert.rejects(saveSuccessionPlan(db,{...base,user:self,expectedRevision:3,details}),/own/);
+ assert.equal(await db.auditLog.count({where:{userId:user.id,action:'OPS_SUCCESSION_PLAN_UPDATED'}}),3);
+});
+test('fresh access, session revocation and branch scope are checked inside plan transactions',async t=>{
+ prepareIsolatedEnvironment();assertIsolatedEnvironment();const db=new PrismaClient();t.after(()=>db.$disconnect());
+ const {readConfig,loadAccount,KEY}=require('../lib/accounts/service');
+ const raw=await db.user.create({data:{name:'Fresh succession manager',username:'fresh-succession-'+Date.now(),password:'test-unusable',role:'ADMIN'}});
+ await require('./e2e/account-fixtures').registerAccountFixture(db,raw);const user=await loadAccount(db,raw),branch='MOT';
+ const employee=await db.employee.create({data:{name:'Fresh succession employee '+Date.now(),branch,jobTitle:'Ride Operator'}});
+ const candidate=await db.opsSuccessionCandidate.create({data:{employeeId:employee.id,currentRole:'Ride Operator',targetRole:'Front Cashier'}});
+ const snapshot=await capturePerformanceSettingsSnapshot(db,{kind:'SUCCESSION',recordId:candidate.id,branch,date:'2026-10-10'}),framework=proposedFramework(snapshot.effective.value.succession,candidate);
+ const input={user,branch,candidateId:candidate.id,expectedRevision:0,framework,reason:'Configure an isolated target-role framework'};
+ let {config}=await readConfig(db);config.accounts[raw.id].overrides={'succession.edit':null};await db.systemSetting.update({where:{key:KEY},data:{value:JSON.stringify(config)}});
+ await assert.rejects(saveSuccessionPlan(db,input),error=>error.status===403&&/Permission denied/.test(error.message));
+ config.accounts[raw.id].overrides={};config.accounts[raw.id].sessionVersion++;await db.systemSetting.update({where:{key:KEY},data:{value:JSON.stringify(config)}});
+ await assert.rejects(saveSuccessionPlan(db,input),error=>error.status===401);
+ const renewed=await loadAccount(db,raw);config.accounts[raw.id].allBranches=false;config.accounts[raw.id].branches=['OTHER'];await db.systemSetting.update({where:{key:KEY},data:{value:JSON.stringify(config)}});
+ await assert.rejects(saveSuccessionPlan(db,{...input,user:renewed}),error=>error.status===403);
+ assert.equal(await db.systemSetting.count({where:{key:'OPS_SUCCESSION_PLAN:'+candidate.id}}),0);
+});

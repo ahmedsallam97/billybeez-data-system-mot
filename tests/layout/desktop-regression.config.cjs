@@ -1,0 +1,5 @@
+require('../e2e/isolation').prepareIsolatedEnvironment();
+process.env.OPS_NEXT_DIST_DIR='tmp/.next-desktop-layout-release-5';
+process.env.OPS_E2E_PRODUCTION='1';process.env.OPS_E2E_REUSE_BUILD='1';process.env.OPS_E2E_DESKTOP_ONLY='1';process.env.OPS_UIUX_QUICK='1';
+const {defineConfig}=require('@playwright/test'),path=require('node:path');
+module.exports=defineConfig({testDir:path.resolve(__dirname,'..'),testMatch:['e2e/**/*.spec.js','layout/**/*.spec.cjs'],testIgnore:['**/desktop-audit.spec.cjs','**/settings-before.spec.cjs','**/regression.spec.cjs'],workers:1,fullyParallel:false,retries:0,timeout:180000,globalSetup:require.resolve('../e2e/global-setup'),outputDir:'../../tmp/desktop-audit/regression-results',reporter:[['list'],['json',{outputFile:'tmp/desktop-audit/regression-results.json'}]],use:{channel:'chrome',baseURL:'http://127.0.0.1:3018',storageState:'playwright/.auth/admin.json',trace:'retain-on-failure',screenshot:'only-on-failure',actionTimeout:15000},webServer:{command:'node tests/layout/server.cjs',cwd:path.resolve(__dirname,'../..'),url:'http://127.0.0.1:3018/login',reuseExistingServer:false,timeout:300000}});

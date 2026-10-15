@@ -1,8 +1,10 @@
 const { test, expect } = require("@playwright/test");
 
+test.beforeEach(async ({ page }) => { await page.addInitScript(() => localStorage.setItem("bbLanguage", "en")); });
+
 test("authenticated employee 360 exposes incidents and protected complete PDF", async ({ page, request }) => {
   await page.goto("/operations?tab=employees");
-  await expect(page.getByText("EMPLOYEE 360")).toBeVisible();
+  await expect(page.locator(".employee360-identity h2")).toBeVisible();
   await expect(page.locator(".employee-directory-picker")).toBeVisible();
   await expect(page.locator(".operations-employee-list")).toHaveCount(0);
   await expect(page.locator(".employee-directory-profile")).toBeVisible();
@@ -20,7 +22,9 @@ test("authenticated employee 360 exposes incidents and protected complete PDF", 
   await expect(shiftRows.nth(0).locator("td").first()).toHaveText("January");
   await expect(shiftRows.nth(1).locator("td").first()).toHaveText("February");
   await expect(page.locator(".employee-schedule-summary")).toContainText("Total to date");
-  await expect(page.locator(".employee-schedule-summary")).not.toContainText("October");
+  const currentMonth = new Date().getUTCMonth();
+  const expectedMonths = Array.from({length:currentMonth+1},(_,month)=>new Intl.DateTimeFormat("en",{month:"long",timeZone:"UTC"}).format(new Date(Date.UTC(2026,month,1))));
+  await expect(shiftRows.locator("td:first-child")).toHaveText([...expectedMonths,"Total to date"]);
   const convertButton = page.getByRole("button", { name: "Convert PT to HRIS" });
   if (await convertButton.count()) {
     await convertButton.click();
@@ -42,20 +46,20 @@ test("authenticated employee 360 exposes incidents and protected complete PDF", 
   expect((await pdfResponse.body()).subarray(0, 4).toString()).toBe("%PDF");
 });
 
-test("core operations tabs and settings render without JSON/session errors", async ({ page }) => {
+test("core operations tabs and settings render without JSON/session errors", async ({ page,request }) => {
   for (const tab of ["roster", "daily", "evaluation", "schedule", "trips", "birthdays", "offers", "stock", "time", "employees", "performance"]) {
     await page.goto(`/operations?tab=${tab}`, { waitUntil: "domcontentloaded" });
     await expect(page.locator("body")).not.toContainText("Unexpected end of JSON input");
     await expect(page.locator("body")).not.toContainText("Login required");
     await expect(page.locator("body")).not.toContainText("Roster data could not be loaded");
   }
-  await page.goto("/settings", { waitUntil: "networkidle" });
+  await page.goto("/opmanager", { waitUntil: "networkidle" });
   await expect(page.locator("body")).not.toContainText("Login required");
   await expect(page.locator("body")).not.toContainText("Unexpected end of JSON input");
   await expect(page.getByRole("heading", { name: "Billy Assistant" })).toBeVisible();
   await expect(page.locator(".billy-assistant")).toContainText("AI GENERATED");
   await expect(page.locator("body")).not.toContainText("OPERATIONS AI ASSISTANT");
-  await expect(page.locator(".system-pulse-card")).toHaveCount(8);
+  const ui=await (await request.get("/api/operations/settings?keys=OPS_DASHBOARD_UI_CONFIG")).json();const value=require("../../lib/operations/dashboard-settings").parseDashboardSettings(ui.settings[0]?.value);await expect(page.locator("[data-card]")).toHaveCount(value.dashboard.cards.filter(card=>card.visible).length);
   await expect(page.locator(".insight-chart-grid > article")).toHaveCount(4);
   await expect(page.locator(".follow-up-map")).toBeVisible();
   await expect(page.locator(".operations-performance-summary > .performance-summary-card")).toHaveCount(2);
@@ -69,6 +73,7 @@ test("core operations tabs and settings render without JSON/session errors", asy
 });
 
 test("mobile workspaces stay inside the viewport and collapse navigation after selection", async ({ page }) => {
+  test.skip(process.env.OPS_E2E_DESKTOP_ONLY==='1','Mobile is outside this task');
   await page.setViewportSize({ width: 390, height: 844 });
 
   await page.goto("/operations?tab=performance", { waitUntil: "networkidle" });
@@ -86,16 +91,17 @@ test("mobile workspaces stay inside the viewport and collapse navigation after s
   expect(dailyControlsBox.x + dailyControlsBox.width).toBeLessThanOrEqual(391);
   expect(await dailyControls.evaluate((element) => element.scrollWidth)).toBeLessThanOrEqual(Math.ceil(dailyControlsBox.width));
 
-  await page.goto("/data", { waitUntil: "networkidle" });
+  await page.goto("/opmanager", { waitUntil: "networkidle" });
   const topbarBox = await page.locator(".topbar").boundingBox();
   expect(topbarBox.height).toBeLessThan(150);
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
 
   await page.goto("/settings", { waitUntil: "networkidle" });
-  const toggle = page.locator(".settings-main-nav .operations-nav-toggle");
-  if (await toggle.getAttribute("aria-expanded") !== "true") await toggle.click();
-  await page.locator(".settings-main-nav > button:not(.operations-nav-toggle)").nth(1).click();
-  await expect(toggle).toHaveAttribute("aria-expanded", "false");
+  const categories = page.getByRole("navigation", { name: "Settings categories" });
+  await page.locator("details>summary").click();
+  await categories.getByRole("button", { name: /Schedule, shifts & team/ }).click();
+  await expect(page.locator(".cashier-picker-panel")).toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
 });
 
 test("daily tables fit their panels and roster settings use focused editors", async ({ page }) => {
@@ -121,13 +127,12 @@ test("daily tables fit their panels and roster settings use focused editors", as
   await expect(page.getByLabel(/Guidance action|الإجراء التوجيهي/)).toBeVisible();
 
   await page.goto("/settings", { waitUntil: "networkidle" });
-  const toggle = page.locator(".settings-main-nav .operations-nav-toggle");
-  await toggle.click();
-  await page.locator(".settings-main-nav > button").filter({ hasText: /Roster & shifts|الروستر والشيفتات/ }).click();
+  await page.getByRole("navigation", { name: "Settings categories" }).getByRole("link", { name: /Schedule, shifts & team/ }).click();
   await expect(page.locator(".cashier-picker-panel select")).toHaveCount(2);
   await expect(page.locator(".roster-name-settings select")).toHaveCount(1);
   const editorInputs = page.locator(".operational-position-settings .settings-editor-form").first().locator("input");
   const firstInput = await editorInputs.nth(0).boundingBox();
   const secondInput = await editorInputs.nth(1).boundingBox();
-  expect(secondInput.y).toBeGreaterThan(firstInput.y + firstInput.height - 1);
+  expect(secondInput.x).toBeGreaterThan(firstInput.x + firstInput.width - 1);
+  expect(Math.abs(secondInput.y-firstInput.y)).toBeLessThanOrEqual(2);
 });

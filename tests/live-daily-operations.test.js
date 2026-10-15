@@ -29,6 +29,7 @@ const position = (
   id,
   code,
   label: code,
+  sortOrder: 10,
   requiresQualification,
   critical,
   staffingRequirements: [
@@ -78,8 +79,8 @@ test("qualification gates and same-hour exclusivity protect automatic rotation",
     qualifications: [{ employeeId: "b", operationalPositionId: "tower", status: "QUALIFIED" }],
     slots: [{ shiftCode: "AM", startTime: "09:00", endTime: "10:00" }],
   });
-  assert.equal(result.assignments.length, 1);
-  assert.equal(result.assignments[0].positionCode, "LOCKER");
+  assert.equal(result.assignments.length, 0);
+  assert.ok(result.unassigned.every(row=>row.reason==='REQUIRED_COVERAGE_BLOCKED'));
   assert.ok(result.alerts.some((x) => x.positionCode === "TOWER"));
 });
 

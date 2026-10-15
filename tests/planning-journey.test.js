@@ -1,0 +1,55 @@
+const test=require('node:test'),assert=require('node:assert/strict');
+const {prepareIsolatedEnvironment,assertIsolatedEnvironment}=require('./e2e/isolation');
+const {PrismaClient}=require('@prisma/client');
+const {readConfig,loadAccount,KEY}=require('../lib/accounts/service');
+const {registerAccountFixture}=require('./e2e/account-fixtures');
+const {getEffectivePerformanceSettings}=require('../lib/operations/performance-settings-service');
+const {proposedFramework,PLAN_PREFIX}=require('../lib/operations/succession-workspace');
+const service=require('../lib/operations/planning-service'),domain=require('../lib/operations/career-planning');
+test('objective status reflects started and blocked work before any assignment completes',()=>{
+ const objective={targetDate:'2027-01-01',assignments:[{status:'IN_PROGRESS',dueDate:'2027-01-01'}]};
+ assert.equal(domain.objectiveStatus(objective,'2026-10-10'),'IN_PROGRESS');
+ objective.assignments[0].status='BLOCKED';assert.equal(domain.objectiveStatus(objective,'2026-10-10'),'BLOCKED');
+ objective.assignments[0].status='NOT_STARTED';objective.assignments[0].dueDate='2026-10-01';assert.equal(domain.objectiveStatus(objective,'2026-10-10'),'OVERDUE');
+ objective.assignments[0].status='COMPLETED';assert.equal(domain.objectiveStatus(objective,'2026-10-10'),'COMPLETED');
+});
+test('planning priorities identify setup, blockers, overdue work and manual review without assigning readiness',()=>{
+ const candidate={id:'p',plan:{details:{ownerUserId:'manager'},status:'ACTIVE',nextReviewDate:'2026-10-01',decisions:[]},progress:{total:1,gaps:[{met:false}]},readinessStatus:'NOT_ASSESSED'};
+ assert.equal(domain.attention(candidate,[],'2026-10-10').code,'REVIEW');
+ const development={candidateId:'p',status:'ACTIVE',objectives:[{assignments:[{id:'a',status:'BLOCKED',dueDate:'2026-10-02'}]}]};
+ assert.equal(domain.attention(candidate,[development],'2026-10-10').code,'BLOCKER');assert.equal(domain.developmentProgress(development,'2026-10-10').overdue.length,1);assert.equal(domain.latestDecision(candidate),'NOT_ASSESSED');
+ development.objectives[0].assignments[0].status='COMPLETED';assert.equal(domain.developmentProgress(development).percent,100);assert.equal(domain.latestDecision(candidate),'NOT_ASSESSED');
+ assert.equal(domain.filterPlans([{...candidate,employeeId:'employee',employee:{name:'Test employee'},targetRole:'Front Cashier'}],{q:'test',readiness:'READY'}).length,0);
+});
+test('complete persistent journey: guided plan, objectives, assignments, evidence, manual decisions, audit and independent access',async t=>{
+ prepareIsolatedEnvironment();assertIsolatedEnvironment();let db=new PrismaClient();t.after(()=>db.$disconnect());
+ const raw=await db.user.create({data:{name:'Planning journey manager',username:'planning-journey-'+Date.now(),password:'unusable',role:'ADMIN'}});await registerAccountFixture(db,raw);let user=await loadAccount(db,raw);
+ const employee=await db.employee.create({data:{name:'Planning journey employee '+Date.now(),jobTitle:'Ride Operator',branch:'MOT',department:'OPERATION'}}),other=await db.employee.create({data:{name:'Foreign evidence employee '+Date.now(),jobTitle:'Ride Operator',branch:'OTHER'}});
+ const config=(await getEffectivePerformanceSettings(db,{branch:'MOT'})).value.succession,framework=proposedFramework(config,{currentRole:'Ride Operator',targetRole:'Front Cashier'}).slice(0,1);
+ const create={user,branch:'MOT',employeeId:employee.id,targetRole:'Front Cashier',framework,details:{ownerUserId:user.id,nextReviewDate:'2026-10-01',targetDate:'2027-02-01',reviewFrequency:'MONTHLY',businessNeed:'Provide a documented backup for cashier continuity'}};
+ await assert.rejects(service.createSuccession(db,{...create,framework:[]}),/requirement/);assert.equal(await db.opsSuccessionCandidate.count({where:{employeeId:employee.id}}),0);
+ const {candidate}=await service.createSuccession(db,create);await assert.rejects(service.createSuccession(db,create),/already/);
+ const proof=await db.employeeDocument.create({data:{employeeId:employee.id,documentType:'OTHER',storageKey:'planning-proof-'+candidate.id,displayName:'Supervised practical observation',mimeType:'application/pdf',sizeBytes:20}}),foreign=await db.employeeDocument.create({data:{employeeId:other.id,documentType:'OTHER',storageKey:'foreign-'+candidate.id,displayName:'Foreign document',mimeType:'application/pdf',sizeBytes:20}});
+ const objective={gapKey:'RIDE_OPERATOR:SAFE_OPERATION',outcome:'Demonstrate safe opening and emergency response',successCriteria:'Complete a signed checklist and witnessed emergency drill',targetDate:'2026-10-08',assignments:[{task:'Run a supervised opening and emergency drill',responsibleUserId:user.id,dueDate:'2026-10-07'}]};
+ await assert.rejects(service.createDevelopment(db,{user,branch:'MOT',candidateId:candidate.id,ownerUserId:user.id,objectives:[{...objective,assignments:[]}]}),/assignment/);
+ let {development}=await service.createDevelopment(db,{user,branch:'MOT',candidateId:candidate.id,ownerUserId:user.id,objectives:[objective]});
+ const task=development.objectives[0].assignments[0],base={user,branch:'MOT',developmentId:development.id,assignmentId:task.id,expectedRevision:1,status:'IN_PROGRESS',reason:'Supervised exercise scheduled and started'};
+ await assert.rejects(service.updateAssignment(db,{...base,status:'COMPLETED',completionNote:'Completed drill',documentIds:[foreign.id]}),/employee/);
+ await service.updateAssignment(db,base);await assert.rejects(service.updateAssignment(db,base),/changed/);
+ await service.updateAssignment(db,{...base,expectedRevision:2,status:'BLOCKED',blocker:'Emergency drill equipment is unavailable'});
+ let snapshot=await service.loadPlanning(db,{user,mode:'development',branch:'MOT',asOf:'2026-10-10'}),loaded=snapshot.developments.find(row=>row.id===development.id);assert.equal(loaded.progress.blocked.length,1);assert.equal(loaded.progress.overdue.length,1);assert.ok(snapshot.notifications.some(row=>row.id===task.id));
+ await assert.rejects(service.updateAssignment(db,{...base,expectedRevision:3,status:'COMPLETED',completionNote:''}),/completion note or verified supporting evidence/);
+ await assert.rejects(service.updateAssignment(db,{...base,expectedRevision:3,dueDate:'2027-02-01'}),/target date/);
+ await service.updateAssignment(db,{...base,expectedRevision:3,status:'COMPLETED',completionNote:'Signed checklist and witnessed drill completed',documentIds:[proof.id]});
+ const {development:standalone}=await service.createDevelopment(db,{user,branch:'MOT',employeeId:employee.id,targetRole:'Front Cashier',ownerUserId:user.id,objectives:[objective]});assert.equal(standalone.candidateId,null);await service.updateAssignment(db,{user,branch:'MOT',developmentId:standalone.id,assignmentId:standalone.objectives[0].assignments[0].id,expectedRevision:1,status:'COMPLETED',completionNote:'Manager observed the supervised assignment and documented its completion',reason:'Record a completion note without requiring a duplicate uploaded file'});await service.changeLifecycle(db,{user,branch:'MOT',developmentId:standalone.id,expectedRevision:2,status:'CLOSED',reason:'Close the explicitly completed development plan'});assert.ok(!(await service.loadPlanning(db,{user,mode:'development',branch:'MOT'})).notifications.some(row=>row.href.includes(standalone.id)));assert.equal(await db.opsSuccessionCandidate.count({where:{employeeId:employee.id}}),1);
+ const scores=await db.opsMonthlyAppraisal.findMany({where:{employeeId:employee.id}}),qualifications=await db.employeeQualification.findMany({where:{employeeId:employee.id}});
+ const decision={user,branch:'MOT',candidateId:candidate.id,expectedRevision:1,decision:'READY_WITH_CONDITIONS',decisionDate:'2026-10-10',reason:'Observed successful practical work; retain supervised cover',remainingConditions:'Continue supervised cover for the first two cashier shifts',nextReviewDate:'2026-11-01',documentIds:[proof.id]};
+ await service.decideReadiness(db,decision);await service.decideReadiness(db,{...decision,expectedRevision:2,decision:'READY',reason:'Management confirms readiness after checking the recorded evidence'});await assert.rejects(service.decideReadiness(db,decision),/changed/);
+ const saved=JSON.parse((await db.systemSetting.findUnique({where:{key:PLAN_PREFIX+candidate.id}})).value);assert.equal(saved.decisions.length,2);assert.equal(saved.decisions[0].decision,'READY_WITH_CONDITIONS');assert.equal(saved.status,'ACTIVE');assert.equal((await db.employee.findUnique({where:{id:employee.id}})).jobTitle,'Ride Operator');assert.deepEqual(await db.employeeQualification.findMany({where:{employeeId:employee.id}}),qualifications);assert.deepEqual(await db.opsMonthlyAppraisal.findMany({where:{employeeId:employee.id}}),scores);assert.equal(await db.opsSuccessionDevelopmentAction.count({where:{candidateId:candidate.id}}),0);
+ await db.$disconnect();db=new PrismaClient();snapshot=await service.loadPlanning(db,{user,mode:'reports',branch:'MOT',asOf:'2026-10-10'});assert.equal(snapshot.developments.find(row=>row.id===development.id).progress.percent,100);assert.equal(snapshot.succession.find(row=>row.id===candidate.id).plan.decisions.length,2);assert.ok(await db.auditLog.count({where:{userId:user.id,action:'OPS_DEVELOPMENT_PROGRESS'}})>=3);
+ // Explicit denial of one page does not deny the independently granted related page.
+ let {config:accessConfig}=await readConfig(db);accessConfig.accounts[user.id].overrides['succession.view']=null;await db.systemSetting.update({where:{key:KEY},data:{value:JSON.stringify(accessConfig)}});user=await loadAccount(db,raw);
+ await assert.rejects(service.loadPlanning(db,{user,mode:'succession',branch:'MOT'}),/denied/i);assert.equal((await service.loadPlanning(db,{user,mode:'development',branch:'MOT'})).success,true);
+ ({config:accessConfig}=await readConfig(db));accessConfig.accounts[user.id].overrides['development.edit']=null;await db.systemSetting.update({where:{key:KEY},data:{value:JSON.stringify(accessConfig)}});await assert.rejects(service.updateAssignment(db,{...base,user,expectedRevision:4}),/denied/i);
+ ({config:accessConfig}=await readConfig(db));accessConfig.accounts[user.id].overrides['development.view']='OWN';await db.systemSetting.update({where:{key:KEY},data:{value:JSON.stringify(accessConfig)}});user=await loadAccount(db,raw);assert.equal((await service.loadPlanning(db,{user,mode:'development',branch:'MOT'})).developments.length,0);
+});

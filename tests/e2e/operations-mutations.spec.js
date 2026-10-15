@@ -1,4 +1,5 @@
 const { test, expect } = require("@playwright/test");
+const path=require("node:path");
 
 let rehearsalDate;
 let employeeId;
@@ -27,7 +28,7 @@ test.describe("isolated operations mutations", () => {
     expect(deleted.active).toBeFalsy();
   });
 
-  test("monthly appraisals can be approved and completed through Employee of the Month", async ({ request, page }) => {
+  test("manual monthly appraisals can be approved while missing sources block Employee of the Month", async ({ request, page }) => {
     await page.goto("/operations?tab=performance&year=2099&month=10", { waitUntil: "networkidle" });
     const approveAll = page.getByRole("button", { name: /Approve all monthly appraisals|اعتماد كل تقييمات الشهر/ });
     await expect(approveAll).toBeVisible();
@@ -39,7 +40,7 @@ test.describe("isolated operations mutations", () => {
     expect(initial.appraisals.filter((item) => item.status === "DRAFT")).toHaveLength(2);
 
     const manualTarget = initial.appraisals[0];
-    const manualResponse = await request.post("/api/operations/performance", { data: { action: "appraisalManualOverride", year: 2099, month: 10, reason: "Historical signed appraisal entered during E2E", rows: [{ employeeId: manualTarget.employeeId, totalScore: 95 }] } });
+    const manualResponse = await request.post("/api/operations/performance", { data: { action: "appraisalManualOverride", year: 2099, month: 10, reason: "Historical signed appraisal entered during E2E", rows: initial.appraisals.map((row,index)=>({employeeId:row.employeeId,totalScore:95-index*10})) } });
     expect(manualResponse.ok()).toBeTruthy();
     const manualAppraisal = (await manualResponse.json()).appraisals[0];
     expect(manualAppraisal.version).toBe(2);
@@ -57,33 +58,14 @@ test.describe("isolated operations mutations", () => {
     expect(approvalResponse.ok()).toBeTruthy();
     expect((await approvalResponse.json()).approved).toBe(2);
 
-    await page.reload({ waitUntil: "networkidle" });
-    const calculate = page.getByRole("button", { name: /Calculate candidates|حساب المرشحين/ });
-    await expect(calculate).toBeEnabled();
+    await page.goto('/operations/employee-of-the-month?year=2099&month=10',{waitUntil:'networkidle'});
+    const calculate=page.getByRole('button',{name:/Calculate candidate snapshot|حساب نسخة المرشحين/});
+    await expect(calculate).toBeDisabled();
+    const createResponse=await request.post('/api/operations/performance',{data:{action:'eotmCreate',year:2099,month:10}});
+    expect(createResponse.status()).toBe(400);
+    const finalResponse=await request.get('/api/operations/performance?year=2099&month=10');
+    expect((await finalResponse.json()).appraisals.every(row=>row.status==='APPROVED')).toBe(true);
 
-    const createResponse = await request.post("/api/operations/performance", { data: { action: "eotmCreate", year: 2099, month: 10 } });
-    expect(createResponse.ok()).toBeTruthy();
-    const competitionId = (await createResponse.json()).competition.id;
-    const calculatedResponse = await request.get("/api/operations/performance?year=2099&month=10");
-    const calculated = await calculatedResponse.json();
-    const competition = calculated.competitions.find((item) => item.id === competitionId);
-    expect(competition.candidates).toHaveLength(2);
-
-    const winnerId = competition.candidates[0].employeeId;
-    const winnerResponse = await request.post("/api/operations/performance", { data: { action: "eotmWinner", competitionId, employeeId: winnerId } });
-    expect(winnerResponse.ok()).toBeTruthy();
-    const lockResponse = await request.post("/api/operations/performance", { data: { action: "eotmLock", competitionId } });
-    expect(lockResponse.ok()).toBeTruthy();
-    expect((await lockResponse.json()).competition.status).toBe("LOCKED");
-
-    const lockedOverride = await request.post("/api/operations/performance", { data: { action: "appraisalManualOverride", year: 2099, month: 10, reason: "This should be rejected after lock", rows: [{ employeeId: manualTarget.employeeId, totalScore: 99 }] } });
-    expect(lockedOverride.status()).toBe(400);
-    expect((await lockedOverride.json()).error).toContain("Reopen the locked Employee of the Month competition");
-
-    const finalResponse = await request.get("/api/operations/performance?year=2099&month=10");
-    const finalCompetition = (await finalResponse.json()).competitions.find((item) => item.id === competitionId);
-    expect(finalCompetition.status).toBe("LOCKED");
-    expect(finalCompetition.winnerEmployeeId).toBe(winnerId);
   });
 
   test("schedule publishing supports exact roster image copy, PNG fallback, revision and deletion", async ({ request, page, context }) => {
@@ -96,6 +78,14 @@ test.describe("isolated operations mutations", () => {
     expect(draftResponse.ok()).toBeTruthy();
     const draft = (await draftResponse.json()).schedule;
     rehearsalDate = draft.periodStart;
+    // Future rehearsal days require an explicitly effective criteria publication.
+    const settingsUrl="/api/operations/performance-settings";
+    const state=(await (await request.get(settingsUrl+"?scope=MOT")).json()).state;
+    const rehearsalConfig=structuredClone(state.effective.value);
+    rehearsalConfig.evaluation.criteria=[{code:"E2E_REVIEW",label:"Isolated operational review",labelAr:"",category:"DAILY_EVALUATION",maxScore:50,active:true,sortOrder:10,reasons:[]}];
+    const staged=await request.post(settingsUrl,{data:{scope:"MOT",action:"saveDraft",expectedRevision:state.revision,config:rehearsalConfig,reason:"Prepare isolated future evaluation criteria"}});expect(staged.ok(),await staged.text()).toBeTruthy();
+    const stagedState=(await staged.json()).state;
+    const configuration=await request.post(settingsUrl,{data:{scope:"MOT",action:"publish",expectedRevision:stagedState.revision,effectiveFrom:rehearsalDate,reason:"Publish criteria for isolated rehearsal"}});expect(configuration.ok(),await configuration.text()).toBeTruthy();
     const employeesResponse = await request.get("/api/operations/employees?status=ACTIVE");
     expect(employeesResponse.ok()).toBeTruthy();
     const employees = (await employeesResponse.json()).employees.filter((employee) => ["OPERATION", "CASHIER"].includes(employee.department));
@@ -120,12 +110,18 @@ test.describe("isolated operations mutations", () => {
     await expect(page.locator('input[type="date"]')).toHaveValue(expectedTomorrow);
     await page.locator('input[type="date"]').fill(rehearsalDate);
     await expect(page.locator(".daily-operations-poster")).toBeVisible();
-    const dailySummary = page.locator(".ops-daily-summary-pair");
-    await expect(dailySummary).toBeVisible();
-    await expect(dailySummary.locator(":scope > .ops-bottom-card")).toHaveCount(2);
-    const summaryBox = await dailySummary.boundingBox();
-    const offersBox = await page.locator(".ops-offers-section").boundingBox();
-    expect(summaryBox.y + summaryBox.height).toBeLessThanOrEqual(offersBox.y + 1);
+    const cards = page.locator(".ops-info-cards > .ops-info-card");
+    await expect(cards).toHaveCount(2);
+    await expect(page.locator(".ops-offers-section")).toContainText("E2E poster layout");
+    await expect(page.locator(".ops-bracelet-section")).toBeVisible();
+    await expect(page.locator(".ops-bracelet-list")).not.toContainText("remaining");
+    await expect(page.locator(".ops-daily-summary-pair")).toBeVisible();
+    expect(await page.locator(".ops-offers-section").evaluate(node=>node.nextElementSibling.classList.contains("ops-notes"))).toBeTruthy();
+    expect(await page.locator(".ops-rotation-head").evaluate(node=>getComputedStyle(node).gridRow)).toBe("1 / 3");
+    await expect(page.locator(".ops-table-subhead")).toHaveCount(0);
+    const cardsBox = await page.locator(".ops-info-cards").boundingBox();
+    const rosterBox = await page.locator(".ops-roster-scroll").boundingBox();
+    expect(cardsBox.y + cardsBox.height).toBeLessThanOrEqual(rosterBox.y + 1);
     const logo = page.locator(".daily-operations-poster img").first();
     await expect(logo).toBeVisible();
     expect(await logo.evaluate((image) => image.complete && image.naturalWidth > 0)).toBeTruthy();
@@ -192,8 +188,18 @@ test.describe("isolated operations mutations", () => {
     const openedResponse = await request.get(`/api/operations/attendance?date=${rehearsalDate}`);
     expect(openedResponse.ok()).toBeTruthy();
     const openedRecord = (await openedResponse.json()).day.records[0];
-    const completeResponse = await request.patch("/api/operations/attendance", { data: { action: "update", recordId: openedRecord.id, status: "PRESENT", actualIn: "10:00", actualOut: "18:00" } });
-    expect(completeResponse.ok()).toBeTruthy();
+    const row = page.locator(".attendance-table tbody tr").filter({hasText:openedRecord.employee.name});
+    expect(openedRecord.actualIn).toBeNull();expect(openedRecord.actualOut).toBeNull();
+    await expect(row.getByLabel(openedRecord.employee.name+" In",{exact:true})).toHaveValue(openedRecord.expectedStart);
+    await expect(row.getByLabel(openedRecord.employee.name+" Out",{exact:true})).toHaveValue(openedRecord.expectedEnd);
+    await row.getByLabel(openedRecord.employee.name+" In",{exact:true}).fill("10:15");
+    await row.getByLabel(openedRecord.employee.name+" Out",{exact:true}).fill("18:00");
+    const saveResponse=page.waitForResponse(response=>response.url().endsWith("/api/operations/attendance")&&response.request().method()==="PATCH");
+    await row.getByRole("button",{name:/Save|حفظ/,exact:true}).click();expect((await saveResponse).ok()).toBeTruthy();
+    await page.reload({waitUntil:"networkidle"});
+    await expect(row.getByLabel(openedRecord.employee.name+" In",{exact:true})).toHaveValue("10:15");
+    await expect(row.getByLabel(openedRecord.employee.name+" Out",{exact:true})).toHaveValue("18:00");
+    await page.screenshot({path:path.resolve(process.env.OPS_E2E_EVIDENCE_DIR || "docs/stabilization-evidence","attendance-shift-times.png")});
 
     const finalizeResponse = await request.patch("/api/operations/attendance", { data: { action: "finalize", dayId: day.id } });
     expect(finalizeResponse.ok()).toBeTruthy();
@@ -208,15 +214,17 @@ test.describe("isolated operations mutations", () => {
 
   test("daily evaluation can apply actions, close and receive an authorized correction", async ({ request }) => {
     const openResponse = await request.post("/api/operations/evaluations", { data: { action: "open", date: rehearsalDate } });
-    expect(openResponse.ok()).toBeTruthy();
+    expect(openResponse.ok(),await openResponse.text()).toBeTruthy();
+    const context=await (await request.get(`/api/operations/evaluations?date=${rehearsalDate}`)).json();
+    const maximum=context.day.evaluations.find(item=>item.employeeId===employeeId).maxScore;
 
     const saveResponse = await request.post("/api/operations/evaluations", { data: { action: "save", date: rehearsalDate, evaluations: [{ employeeId, exceptions: [], penaltyNote: "E2E penalty", guidanceNote: "E2E guidance", supervisorNote: "Reviewed" }] } });
     expect(saveResponse.ok()).toBeTruthy();
 
     const savedResponse = await request.get(`/api/operations/evaluations?date=${rehearsalDate}`);
     const saved = (await savedResponse.json()).day.evaluations.find((item) => item.employeeId === employeeId);
-    expect(saved.maxScore).toBe(50);
-    expect(saved.finalScore).toBe(10);
+    expect(saved.maxScore).toBe(maximum);
+    expect(saved.finalScore).toBe(Math.max(0,maximum-context.rules.penaltyDeduction-context.rules.guidanceDeduction));
     expect(saved.penaltyNote).toBe("E2E penalty");
     expect(saved.guidanceNote).toBe("E2E guidance");
 
@@ -229,7 +237,7 @@ test.describe("isolated operations mutations", () => {
     const correctedResponse = await request.get(`/api/operations/evaluations?date=${rehearsalDate}`);
     const corrected = (await correctedResponse.json()).day.evaluations.find((item) => item.employeeId === employeeId);
     expect(corrected.status).toBe("MODIFIED");
-    expect(corrected.finalScore).toBe(50);
+    expect(corrected.finalScore).toBe(maximum);
   });
 
   test("employee upload remains bound to the selected employee through download and removal", async ({ request }) => {

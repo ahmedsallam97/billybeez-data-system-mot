@@ -1,0 +1,11 @@
+const fs=require('node:fs'),path=require('node:path'),buildDist=process.env.OPS_NEXT_DIST_DIR||'.next';
+const isolation=require('../e2e/isolation');isolation.prepareIsolatedEnvironment();isolation.assertIsolatedEnvironment();
+process.env.E2E_MUTATIONS='0';process.env.OPS_E2E_DESKTOP_ONLY='1';
+process.env.OPS_NEXT_DIST_DIR=buildDist;process.env.OPS_E2E_PRODUCTION='1';process.env.OPS_E2E_REUSE_BUILD='1';
+const verificationRoot=path.resolve(process.env.OPS_E2E_VERIFICATION_ROOT||process.env.OPS_E2E_RUN_DIR);
+process.env.PHASE_EVIDENCE_DIR=path.resolve(process.env.PHASE_EVIDENCE_DIR||path.join(verificationRoot,'desktop-evidence'));
+process.env.OPS_E2E_AUTH_DIR=path.resolve(process.env.OPS_E2E_AUTH_DIR||path.join(verificationRoot,'private-auth'));
+fs.mkdirSync(verificationRoot,{recursive:true});
+fs.writeFileSync(path.join(verificationRoot,'environment.json'),JSON.stringify(Object.fromEntries(['OPS_E2E_RUN_DIR','OPS_E2E_OUTPUT_ROOT','OPS_E2E_SOURCE_DATABASE','OPS_E2E_SOURCE_STORAGE','DATABASE_URL','DATABASE_PROVIDER','EMPLOYEE_FILE_STORAGE_ROOT','EMPLOYEE_FILE_STORAGE_PROVIDER','SESSION_SECRET','AUTH_COOKIE_NAME','E2E_MUTATIONS','OPS_E2E_AUTH_DIR'].filter(key=>process.env[key]!==undefined).map(key=>[key,process.env[key]]))));
+const {defineConfig}=require('@playwright/test');
+module.exports=defineConfig({testDir:__dirname,testMatch:['rotation-preview-phase1.spec.cjs','phases-workflows.spec.cjs'],workers:1,retries:0,timeout:150000,globalSetup:require.resolve('../e2e/global-setup'),outputDir:path.join(verificationRoot,'results'),reporter:[['list'],['json',{outputFile:path.join(verificationRoot,'browser-results.json')}]],use:{channel:'chrome',baseURL:'http://127.0.0.1:3018',storageState:path.join(process.env.OPS_E2E_AUTH_DIR,'admin.json'),trace:'retain-on-failure',screenshot:'only-on-failure',actionTimeout:15000},webServer:{command:'node tests/layout/server.cjs',cwd:path.resolve(__dirname,'../..'),url:'http://127.0.0.1:3018/login',reuseExistingServer:false,timeout:180000}});

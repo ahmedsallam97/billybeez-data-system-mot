@@ -1,0 +1,42 @@
+const test=require('node:test'),assert=require('node:assert/strict');
+const {prepareIsolatedEnvironment,assertIsolatedEnvironment}=require('./e2e/isolation');
+const {PrismaClient}=require('@prisma/client');
+const {templateSheets,configuredCodes}=require('../lib/operations/schedule-import');
+const {workbookFromSheets}=require('../lib/operations/schedule-export');
+const {dryRun,applyImport,restoreSnapshot,importRecord}=require('../lib/operations/schedule-import-service');
+const {readScheduleState,writeScheduleState,scheduleEmployees,scheduleBranch}=require('../lib/operations/schedule-state');
+const {readEmployeeFile}=require('../lib/employee-file-storage');
+test('isolated import validates first, applies atomically, protects locks/stale previews, restores snapshot and retains source after restart',async t=>{
+ prepareIsolatedEnvironment();assertIsolatedEnvironment();let db=new PrismaClient();t.after(()=>db.$disconnect());
+ const user=await db.user.create({data:{name:'Schedule importer',username:'import-'+Date.now(),password:'test-only',role:'ADMIN'}});
+ const employee=await db.employee.create({data:{name:'Import fixture',branch:'IMPORT',hrisNumber:'IMPORT-01',department:'OPERATION'}});
+ const other=await db.employee.create({data:{name:'Unrelated import fixture',branch:'OTHER',department:'OPERATION'}});
+ const manager=await db.user.create({data:{name:'Scoped import manager',username:'scoped-import-'+Date.now(),password:'test-only',role:'MANAGER',employeeId:other.id}});
+ await assert.rejects(scheduleBranch(db,manager,'IMPORT'),/access denied/);
+ const schedule=await db.opsSchedule.create({data:{year:2097,month:10,operationalYear:2097,operationalMonth:10,periodStart:'2097-09-16',periodEnd:'2097-10-15',status:'DRAFT',version:1}});
+ await db.$transaction(async tx=>writeScheduleState(tx,schedule.id,await readScheduleState(tx,schedule.id),{branch:'IMPORT',revision:0,displayOrder:[employee.id]},user.id));
+ await db.opsScheduleAssignment.create({data:{scheduleId:schedule.id,employeeId:employee.id,workDate:'2097-09-16',code:'PM',shiftCode:'PM',importRawValue:'PM',manualLock:true,source:'MANUAL'}});
+ const employees=await scheduleEmployees(db,'IMPORT'),codes=await configuredCodes(db);
+ function workbook(mutator){const sheets=templateSheets(schedule,employees,codes,'IMPORT');mutator(sheets[1].rows);return Buffer.from(workbookFromSheets(sheets));}
+ const bytes=workbook(rows=>{rows[1][4]='AM';rows[1][5]='OFF';});
+ let preview=await dryRun(db,user,{scheduleId:schedule.id,branch:'IMPORT',buffer:bytes,fileName:'valid.xlsx',mode:'merge',overwriteLocked:false});assert.equal(preview.valid,true);assert.equal(preview.counts.created,1);assert.equal(preview.counts.updated,0);assert.equal((await db.opsScheduleAssignment.count({where:{scheduleId:schedule.id}})),1);
+ const applied=await applyImport(db,user,{importId:preview.importId,branch:'IMPORT'});assert.equal(applied.counts.created,1);assert.equal((await db.opsScheduleAssignment.findFirst({where:{scheduleId:schedule.id,workDate:'2097-09-16'}})).code,'PM');
+ await assert.rejects(applyImport(db,user,{importId:preview.importId,branch:'IMPORT'}),/already applied/);
+ const before=await db.opsScheduleAssignment.findMany({where:{scheduleId:schedule.id}});
+ preview=await dryRun(db,user,{scheduleId:schedule.id,branch:'IMPORT',buffer:workbook(rows=>{rows[1][4]='OFF';rows[1][5]='BAD';}),fileName:'invalid.xlsx',mode:'replace'});assert.equal(preview.valid,false);await assert.rejects(applyImport(db,user,{importId:preview.importId,branch:'IMPORT',confirmReplace:true}),/validation/);assert.deepEqual(await db.opsScheduleAssignment.findMany({where:{scheduleId:schedule.id}}),before);
+ preview=await dryRun(db,user,{scheduleId:schedule.id,branch:'IMPORT',buffer:bytes,fileName:'stale.xlsx',mode:'merge'});
+ await db.opsScheduleAssignment.update({where:{id:before[0].id},data:{importRawValue:'PM Front'}});await assert.rejects(applyImport(db,user,{importId:preview.importId,branch:'IMPORT'}),/changed after preview/);
+ preview=await dryRun(db,user,{scheduleId:schedule.id,branch:'IMPORT',buffer:workbook(rows=>{rows[1][4]='AM';}),fileName:'replace.xlsx',mode:'replace',overwriteLocked:true});
+ await assert.rejects(applyImport(db,user,{importId:preview.importId,branch:'IMPORT'}),/replacement confirmation/);await assert.rejects(applyImport(db,user,{importId:preview.importId,branch:'IMPORT',confirmReplace:true}),/locked-cell/);
+ // A database audit failure must roll back cells, state, source status and snapshot together.
+ await db.$executeRawUnsafe("CREATE TRIGGER schedule_import_fail BEFORE INSERT ON AuditLog WHEN NEW.action='OPS_SCHEDULE_IMPORTED' BEGIN SELECT RAISE(ABORT,'isolated audit failure'); END");
+ const rollbackBefore=await db.opsScheduleAssignment.findMany({where:{scheduleId:schedule.id}});
+ await assert.rejects(applyImport(db,user,{importId:preview.importId,branch:'IMPORT',confirmReplace:true,confirmLocked:true}));assert.deepEqual(await db.opsScheduleAssignment.findMany({where:{scheduleId:schedule.id}}),rollbackBefore);assert.equal((await importRecord(db,preview.importId)).record.status,'PREVIEW');
+ await db.$executeRawUnsafe('DROP TRIGGER schedule_import_fail');
+ const replacement=await applyImport(db,user,{importId:preview.importId,branch:'IMPORT',confirmReplace:true,confirmLocked:true});assert.equal(await db.opsScheduleAssignment.count({where:{scheduleId:schedule.id}}),1);assert.equal((await db.opsScheduleAssignment.findFirst({where:{scheduleId:schedule.id}})).code,'AM');
+ await assert.rejects(restoreSnapshot(db,user,{snapshotId:replacement.snapshotId,scheduleId:schedule.id,branch:'IMPORT',expectedRevision:0,confirmed:true}),/changed/);
+ const restored=await restoreSnapshot(db,user,{snapshotId:replacement.snapshotId,scheduleId:schedule.id,branch:'IMPORT',expectedRevision:replacement.state.revision,confirmed:true});assert.deepEqual(await db.opsScheduleAssignment.findMany({where:{scheduleId:schedule.id},orderBy:{id:'asc'}}),rollbackBefore.sort((a,b)=>a.id.localeCompare(b.id)));
+ const stateBefore=await readScheduleState(db,schedule.id);await db.$transaction(tx=>writeScheduleState(tx,schedule.id,stateBefore,{...stateBefore.state,displayOrder:[employee.id]},user.id));await assert.rejects(db.$transaction(tx=>writeScheduleState(tx,schedule.id,stateBefore,stateBefore.state,user.id)),/changed/);
+ await db.$disconnect();db=new PrismaClient();assert.deepEqual(await readEmployeeFile((await importRecord(db,preview.importId)).record.storageKey),workbook(rows=>{rows[1][4]='AM';}));assert.ok((await readScheduleState(db,schedule.id)).state.revision>restored.state.revision);
+ await db.opsSchedule.update({where:{id:schedule.id},data:{status:'PUBLISHED'}});await assert.rejects(dryRun(db,user,{scheduleId:schedule.id,branch:'IMPORT',buffer:bytes,fileName:'published.xlsx',mode:'merge'}),/draft/);await assert.rejects(restoreSnapshot(db,user,{snapshotId:applied.snapshotId,scheduleId:schedule.id,branch:'IMPORT',expectedRevision:99,confirmed:true}),/draft/);
+});

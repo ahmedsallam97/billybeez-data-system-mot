@@ -12,9 +12,9 @@ prisma-studio*.log
 next-production*.log
 server-*.log
 .codex-dev-*.log
-tmp/
-backups/
-storage/
+/tmp/
+/backups/
+/storage/
 artifacts/employee360-closure/
 output/pdf/
 playwright/.auth/
@@ -23,3 +23,48 @@ playwright-report/
 check-admin.js
 reset-admin.js
 scripts/migrate-bb-oms.js
+
+.next-e2e/
+
+# Deployment secrets and local pilot evidence/data never enter source control.
+.env.*
+!.env.example
+deploy/pilot/*.env
+deploy/pilot/secrets/
+*.opsbackup
+*.key
+*.pem
+
+# Isolated responsive layout validation build.
+.next-layout-check/
+
+# Private records and operational artifacts are kept outside source releases.
+*.db
+*.db-*
+*.sqlite
+*.sqlite-*
+*.sqlite3
+*.sqlite3-*
+*.log
+*.zip
+*.tar
+*.tar.gz
+*.tgz
+*.7z
+*.rar
+/uploads/
+**/auth-state*.json
+**/storage-state*.json
+**/cookies*.json
+**/pilot-accounts*.json
+**/pilot-access*.txt
+**/environment.json
+
+# Historical private evidence is preserved locally, never reconstructed in Git.
+/docs/stabilization-evidence/
+/docs/phases-completion-2026-10-13/
+/docs/audit-evidence/
+/docs/settings-navigation-2026-10-13/
+/docs/focused-functional-2026-10-12/
+/docs/ux-implementation-2026-10-12/
+/docs/ux-completion-2026-10-12/

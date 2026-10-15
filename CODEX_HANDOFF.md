@@ -206,9 +206,11 @@ Current roles are:
 
 Default role homes are defined in `lib/roles.js`:
 
-- ADMIN and MANAGER: `/manager`
+- ADMIN and MANAGER: `/opmanager` (active Operations management)
 - CASHIER and DATA: `/data`
 - KITCHEN: `/kitchen`
+
+Scope correction: CASHIER/DATA/KITCHEN homes belong to dormant legacy POS/Core. `/manager` is intentionally inactive; preserve its implementation and data without restoring it. Operations navigation must not expose legacy modules. Operations settings use `/api/operations/settings` with an explicit key allowlist; never migrate or expose `BUSINESS_DAY_PASSWORD` there. See `docs/STABILIZATION_PROGRESS.md` for the Operations-only release checklist.
 
 `lib/role-matrix.js` defines permission defaults. `lib/api-auth.js` loads the configured `ROLE_PERMISSION_CONFIG` setting and falls back safely to the code matrix.
 

@@ -1,0 +1,2 @@
+# Migration integrity checks hash exact source bytes; prevent Windows EOL conversion.
+prisma/** -text

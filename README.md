@@ -1,8 +1,8 @@
 # Billy Beez MOT Operations System
 
-Next.js + Prisma POS/data system for BillyBeez daily operations.
+Next.js + Prisma Operations Management System for Billy Beez.
 
-The current active system is the Next.js app. The old Google Apps Script/static HTML files are still kept in the repository as legacy migration references only.
+The active system is Operations Management, with `/opmanager` as the ADMIN/MANAGER home. The repository also preserves a dormant POS/Core system. Its routes, code and database tables are retained, but its UI and workflows are outside Operations release readiness. Do not restore or reconnect legacy modules during this phase. The old Google Apps Script/static HTML files remain legacy migration references.
 
 This branch is the stable daily-operation version. Larger upgrades should continue on a separate upgrade branch/worktree so this version can still be run when needed.
 
@@ -24,14 +24,12 @@ This branch is the stable daily-operation version. Larger upgrades should contin
 | Interface | URL | Purpose |
 | --- | --- | --- |
 | Login | `/login` | User login |
+| Operations Management | `/opmanager` | ADMIN/MANAGER home and Operations insights |
 | Operations | `/operations` | Roster, attendance, schedule, daily setup, Employee 360, and recognition |
 | Settings | `/settings` | Operations rules, templates, shifts, roles, and configuration |
-| Data | `/data` | Add/edit orders, customer exit |
-| Kitchen | `/kitchen` | Preparation, delivery, payment, Geidea |
-| Manager | `/manager` | Orders, reports, records, settings, activity |
-| Database Studio | `http://127.0.0.1:5555` | Prisma Studio database browser |
+Legacy `/manager` is inactive (404 after authorization). Front, Data, Kitchen, Kitchen Cashier, Orders, Customers, Children, Payments and Loyalty remain preserved but hidden from Operations navigation. They are **LEGACY / OUT OF CURRENT SCOPE**.
 
-`/cashier` now redirects to `/data`.
+Operations clients use `/api/operations/settings`, which allows only explicit Operations keys. `BUSINESS_DAY_PASSWORD` stays in the legacy subsystem and is neither readable nor editable through this endpoint. Shared `/api/settings` continues to redact secret values for legacy compatibility.
 
 ## Roles
 
@@ -43,7 +41,7 @@ Current roles in the database:
 - `KITCHEN`
 - `DATA`
 
-`DATA` is the main role for the data interface. `CASHIER` remains available as a separate role for future cashier-specific users.
+`ADMIN` and `MANAGER` enter `/opmanager`. `CASHIER`, `DATA` and `KITCHEN` retain their internal legacy role homes and are not integrated into Operations workflows.
 
 ## Departments
 

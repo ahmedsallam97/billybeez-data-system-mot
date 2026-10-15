@@ -5,6 +5,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { authorizeApi } from "@/lib/api-auth";
 import { databaseProvider } from "@/lib/database-provider";
+import { databasePath as configuredDatabasePath } from "@/scripts/db-path";
 
 async function GETHandler() {
   const { error } = await authorizeApi("OPS_HEALTH_READ");
@@ -19,11 +20,11 @@ async function GETHandler() {
       await prisma.$queryRawUnsafe("SELECT 1 AS ok");
       database = { provider, integrity: "reachable", sizeBytes: null, modifiedAt: null };
     } else {
-      const databasePath = path.join(process.cwd(), "prisma", "dev.db");
+      const databaseFile = configuredDatabasePath();
       const backupPath = path.join(process.cwd(), "backups");
       const [integrityRows, databaseStat, backupNames] = await Promise.all([
         prisma.$queryRawUnsafe("PRAGMA integrity_check"),
-        fs.stat(databasePath),
+        fs.stat(databaseFile),
         fs.readdir(backupPath).catch(() => []),
       ]);
       latestBackups = (await Promise.all(backupNames.filter((name) => name.endsWith(".db")).map(async (name) => {
